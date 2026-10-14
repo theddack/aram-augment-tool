@@ -181,6 +181,7 @@
   function setTarget(t) {
     Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP } : {});
   }
+  const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
 
   // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
@@ -199,6 +200,8 @@
     { what: "충전 공격(스태틱의 단검 등)은 기본 공격 8번에 1번", src: "assume", why: "충전 속도가 이동 거리에 따라 달라서 정확한 숫자가 없어요." },
     { what: "치명타 확률로 발동하는 효과는 치명타 확률만큼 기대값", src: "data", why: "설명의 '치명타 확률과 같은 확률'을 그대로 계산해요." },
     { what: "재사용 대기시간은 가속을 받아도 최소 0.5초로 셈", src: "assume", why: "징크스 Q처럼 전환형 스킬이 초당 피해를 부풀리지 않게 했어요." },
+    { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
+    { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초)." },
   ];
 
   function metrics(champ, L, stats, opts = {}) {
@@ -257,7 +260,9 @@
     });
     // 증강·아이템 고유 효과·패시브: 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
     const casts = out.spells.filter((s) => !s.disabled).length;
-    const castRate = out.spells.reduce((a, s) => a + (!s.disabled && s.cd > 0 ? 1 / Math.max(s.cd, 0.5) : 0), 0);
+    // '스킬 사용 시' 효과의 초당 발동 횟수: 한 스킬은 최대 CAST_MIN_CD 초에 1번으로 센다
+    // (재사용 대기시간이 아주 짧은 스킬은 대부분 토글·충전형이라 — 징크스 Q 무기 바꾸기 0.9초, 티모 R 0.25초)
+    const castRate = out.spells.reduce((a, s) => a + (!s.disabled && s.cd > 0 ? 1 / Math.max(s.cd, CAST_MIN_CD) : 0), 0);
     out.augCombo = 0;
     out.augDps = 0;
     out.effects = [];
@@ -269,12 +274,16 @@
       // 쿨다운이 있으면 콤보 한 번(COMBO_WINDOW초) 안 발동 횟수와 초당 발동 횟수를 제한
       // 기본 공격이 필요한 효과는 콤보 시간 동안 칠 수 있는 기본 공격 수·공격 속도로도 제한
       const autos = Math.max(1, Math.floor(t.AS * COMBO_WINDOW));
+      // 지속 피해(화상 등 N초 동안 매초)는 같은 대상에 다시 걸면 시간만 갱신되므로 N초마다 최대 1번
+      const refresh = e.ticks && tr.type !== "time" ? e.ticks : 0;
       const comboTimes = (n) => {
         let k = e.cooldown ? Math.min(n, 1 + Math.floor(COMBO_WINDOW / e.cooldown)) : n;
+        if (refresh) k = Math.min(k, Math.max(1, Math.ceil(COMBO_WINDOW / refresh)));
         return e.needsAuto ? Math.min(k, autos) : k;
       };
       const rate = (r) => {
         let k = e.cooldown ? Math.min(r, 1 / e.cooldown) : r;
+        if (refresh) k = Math.min(k, 1 / refresh);
         return e.needsAuto ? Math.min(k, t.AS) : k;
       };
       const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type };
