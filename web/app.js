@@ -1055,8 +1055,14 @@ window.addEventListener("pywebviewready", async () => {
   setInterval(async () => applyLcu(api, await api.get_lcu()), 3000);
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
-  // 1초마다: 증강 선택 화면을 읽으면 바로 카드 평가가 떠야 해서 (같은 값이면 다시 그리지 않아 가볍다)
-  setInterval(async () => { const L = await api.get_live(); applyLive(L); applyAug(L && L.aug); }, 1000);
+  // 게임 중엔 1초마다(증강 선택 화면을 읽으면 바로 카드 평가가 떠야 해서), 그 밖엔 3초마다.
+  // 화면 → 파이썬 호출이 잦을수록 창 스레드와 파이썬이 서로 기다리다 굳을 위험이 커서 필요할 때만 자주 부른다
+  const livePoll = async () => {
+    let L = null;
+    try { L = await api.get_live(); applyLive(L); applyAug(L && L.aug); } catch (e) { /* 다음에 다시 */ }
+    setTimeout(livePoll, L && L.inGame ? 1000 : 3000);
+  };
+  livePoll();
   const btn = $("#update-data");
   btn.addEventListener("click", async () => {
     btn.disabled = true;

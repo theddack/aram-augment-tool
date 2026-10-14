@@ -694,9 +694,11 @@ class Api:
         return bool(on)
 
     def set_on_top(self, on):
-        self._window.on_top = bool(on)
-        self._settings.set(on_top=bool(on))
-        return bool(on)
+        on = bool(on)
+        if not set_top_most_on_ui_thread(self._window, on):
+            self._window.on_top = on
+        self._settings.set(on_top=on)
+        return on
 
     def set_mini(self, on):
         """작게 보기: 창 크기를 줄이고(게임 옆에 띄우기), 끄면 원래 크기로"""
@@ -778,6 +780,29 @@ class Api:
         if not out["running"]:
             out.update(ok=p.returncode == 0, log=text[-2000:])
         return out
+
+
+def set_top_most_on_ui_thread(window, on):
+    """윈도우: '항상 위'를 창 스레드에서 바꾼다. pywebview(winforms)는 이 함수를 부른 스레드에서 TopMost 를 바로 바꾸는데,
+    WinForms 창 속성을 다른 스레드에서 바꾸면 창이 굳을 수 있다 ('항상 위'를 켠 판에서만 두 번 '응답 없음', 2026-10-14).
+    처리했으면 True, 윈도우가 아니거나 실패하면 False (그때는 pywebview 기본 방식)"""
+    if sys.platform != "win32":
+        return False
+    try:
+        from System import Func, Type  # pythonnet (pywebview winforms 가 이미 불러 둔 것)
+        from webview.platforms.winforms import BrowserView
+        form = BrowserView.instances.get(window.uid)
+        if form is None:
+            return False
+
+        def apply():
+            form.TopMost = on
+
+        form.Invoke(Func[Type](apply))
+        window._Window__on_top = on  # pywebview 가 기억하는 값도 맞춘다
+        return True
+    except Exception:
+        return False
 
 
 def update_step(line):
