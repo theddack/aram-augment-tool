@@ -242,3 +242,19 @@ test("게임에서 산 부품도 고른 아이템 밑에 보인다", async () =>
   p.w.applyLive({ enabled: true, inGame: true, champion: "Nami", level: 3, items: ["2052", "1001", "1042", "1052"], gold: 100 });
   assert.match(p.text("#chosen-items"), /증폭의 고서/, "골드·부품만 바뀌어도 갱신");
 });
+
+test("게임 화면 상자: 카드 평가가 없으면 추천 증강 TOP, 산 아이템 평가", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Irelia", level: 6, items: ["3153"] });  // 몰락한 왕의 검
+  p.w.sendOverlay();
+  const hud = sent.at(-1).hud.join("\n");
+  assert.match(hud, /첫 증강 추천 — 실버: .+ \/ 골드: .+ \/ 프리즘: /);
+  assert.match(hud, /산 아이템: 몰락한 왕의 검 (✅|👍)/);
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Irelia", level: 7, items: ["3153", "3089"] });  // 라바돈
+  p.w.sendOverlay();
+  assert.match(sent.at(-1).hud.join("\n"), /라바돈의 죽음모자 ⚠️/, "물리 챔피언의 AP 아이템은 경고");
+  assert.match(p.text("#chosen-items"), /라바돈의 죽음모자 물리 챔피언에겐 반대 유형이에요/);
+  assert.deepEqual(p.errors, []);
+});

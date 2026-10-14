@@ -534,11 +534,54 @@ function pushOverlay(rows) {
   }
   sendOverlay();
 }
+// 증강 추천 TOP (등급별 2개): 게임 카드에 직접 못 붙여도(인식 실패) 이름을 보고 고를 수 있게 게임 화면 상자에 띄운다.
+// 처음엔 챔피언 기준, 고른 뒤엔 고른 증강과의 연계 기준 (getTiers 가 알아서 바꾼다)
+const RARITY_NAME = ["실버", "골드", "프리즘"];
+function topAugs(per = 2) {
+  if (!state.champ || state.chosen.length >= 4) return [];
+  const tiers = getTiers();
+  const ok = (a) => tiers[a.id] && !noEffect(tiers[a.id]) && ["S", "A"].includes(tiers[a.id].tier) && !state.chosen.some((c) => c.id === a.id);
+  const rank = (x, y) => TIER_ORDER[tiers[x.id].tier] - TIER_ORDER[tiers[y.id].tier] || (tiers[y.id].gain ?? -1) - (tiers[x.id].gain ?? -1);
+  return [0, 1, 2].map((r) => ({ rarity: RARITY_NAME[r], augs: state.data.augments.filter((a) => a.rarity === r && ok(a)).sort(rank).slice(0, per) }))
+    .filter((g) => g.augs.length);
+}
+
+// 산 아이템 평가: 이 챔피언(+고른 증강)에 잘 맞는지. 그 아이템을 빼고 다시 순위를 매겨서 몇 등인지로 판단
+let verdictCache = { key: null, value: [] };
+function itemVerdicts() {
+  if (!state.champ || !state.items.length) return [];
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target]);
+  if (verdictCache.key === key) return verdictCache.value;
+  const d = state.data;
+  const concept = state.chosen.length ? "augment" : "balanced";
+  const value = state.items.map((it) => {
+    const others = state.items.filter((x) => x.id !== it.id);
+    const rows = S.rankItems(d.items, state.weights, state.chosen, others, d.rules, state.champ, statOpts(), concept)
+      .filter((r) => r.item.kind === it.kind);
+    const idx = rows.findIndex((r) => r.item.id === it.id);
+    const row = rows[idx];
+    const best = rows.find((r) => !others.some((o) => o.id === r.item.id));
+    if (row && row.offType) return { item: it, mark: "⚠️", text: `${state.champ.damageType === "magic" ? "마법" : "물리"} 챔피언에겐 반대 유형이에요` + (best ? ` (추천: ${best.item.name})` : "") };
+    if (idx >= 0 && idx < 5) return { item: it, mark: "✅", text: state.chosen.length ? "고른 증강과 잘 맞아요" : "잘 맞아요" };
+    if (idx >= 0 && idx < 15) return { item: it, mark: "👍", text: "괜찮아요" };
+    return { item: it, mark: "🤔", text: best ? `더 잘 맞는 것: ${best.item.name}` : "다른 선택이 나아요" };
+  });
+  verdictCache = { key, value };
+  return value;
+}
+
 function sendOverlay() {
   const api = window.pywebview && window.pywebview.api;
   if (!api || !api.set_overlay || !state.champ) return;
   const hud = [];
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
+  // 카드에 평가가 안 붙었을 때(선택지 모름) 대신 볼 추천 증강
+  if (!overlayCards.some(Boolean)) {
+    const top = topAugs();
+    if (top.length) hud.push((state.chosen.length ? "연계 좋은 증강 — " : "첫 증강 추천 — ") + top.map((g) => `${g.rarity}: ${g.augs.map((a) => a.name).join("·")}`).join(" / "));
+  }
+  const v = itemVerdicts();
+  if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
@@ -655,6 +698,7 @@ function renderChosenItems() {
   $("#chosen-items").innerHTML = slots.map((it) => it
     ? `<div class="islot" data-id="${it.id}" title="${esc(it.name)} (해제)"><img src="${icon("item", it.id)}" alt=""></div>`
     : `<div class="islot muted">빈 칸</div>`).join("")
+    + itemVerdicts().map((v) => `<div class="verdict small">${v.mark} <b>${esc(v.item.name)}</b> ${esc(v.text)}</div>`).join("")
     // 게임에서 산 부품도 보이게: 완성 아이템만 칸에 들어가서, 초반엔 산 게 하나도 안 보였다 (2026-10-14 지적)
     + ownedParts();
   $("#chosen-items").querySelectorAll(".islot[data-id]").forEach((el) => el.addEventListener("click", () => {
