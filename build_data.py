@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -33,11 +34,17 @@ MODE_PATH = "Maps/Shipping/Map12/Modes/KIWI"
 REFRESH = "--refresh" in sys.argv
 
 
+UA = "aram-augment-tool (+https://github.com/theddack/aram-augment-tool)"  # 누가 받는지 밝힌다
+FETCHED = {}  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
+
+
 def fetch(url, name):
     path = CACHE / name
+    FETCHED.setdefault(name, (url, time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime))
+                                   if path.exists() and not REFRESH else time.strftime("%Y-%m-%d %H:%M")))
     if path.exists() and not REFRESH:
         return path.read_bytes()
-    req = urllib.request.Request(url, headers={"User-Agent": "aram-augment-tool"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=120) as r:
         data = r.read()
     path.write_bytes(data)
@@ -298,6 +305,46 @@ MAYHEM_MOD_KEYS = {  # 위키 '증강 모드 전용 보정' 문구 → 우리 �
 }
 
 
+def patch_notes_url(ddragon_version, lang="ko-kr"):
+    """Data Dragon 16.20.1 → 공식 패치 노트 26.20 주소 (2026년부터 연도 기준 번호)"""
+    major, minor = ddragon_version.split(".")[:2]
+    return (f"https://www.leagueoflegends.com/{lang}/news/game-updates/"
+            f"league-of-legends-patch-{int(major) + 10}-{minor}-notes/"), f"{int(major) + 10}.{minor}"
+
+
+def parse_mayhem_patch(page_html):
+    """패치 노트의 '무작위 총력전: 아수라장' 섹션 → {intro, groups: [{title, entries: [{name, lines}]}]}"""
+    import html as _html
+    a = page_html.find('id="patch-aram:-mayhem"')
+    if a < 0:
+        return None
+    b = page_html.find('<h2 id="patch-', a + 10)
+    sec = page_html[a:b if b > 0 else None]
+    txt = re.sub(r"<(h[2-4]|li|p|br|div)[^>]*>", "\n", sec)
+    lines = [_html.unescape(x).strip() for x in re.sub(r"<[^>]+>", "", txt).split("\n")]
+    lines = [x for x in lines if x and not x.startswith('id="')]
+    groups, intro, cur, entry = [], [], None, None
+    for ln in lines:
+        if ln in ("챔피언", "증강", "아이템", "버그 수정", "룬"):
+            cur = {"title": ln, "entries": []}
+            groups.append(cur)
+            entry = None
+            continue
+        if cur is None:
+            intro.append(ln)
+        elif cur["title"] == "버그 수정":
+            cur["entries"].append({"name": "", "lines": [ln]})
+        elif "⇒" in ln or ln.startswith(("삭제", "신규")) or ":" in ln:
+            if entry is None:
+                entry = {"name": "", "lines": []}
+                cur["entries"].append(entry)
+            entry["lines"].append(ln)
+        else:
+            entry = {"name": ln, "lines": []}
+            cur["entries"].append(entry)
+    return {"intro": intro[1:] if intro and intro[0].startswith("무작위") else intro, "groups": groups}
+
+
 def norm_name(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
@@ -389,6 +436,61 @@ def wiki_mayhem_augments(module_text, wiki_champs):
     return out
 
 
+# ---------------------------------------------------------------- 출처 목록 (화면 '데이터 출처' 페이지)
+SOURCE_INFO = [  # (캐시 이름 앞부분, 이름, 라이선스·이용 조건, 쓰는 곳)
+    ("versions", "Riot Data Dragon", "라이엇 공개 데이터 (팬 제작물 정책)", "패치 버전"),
+    ("champion", "Riot Data Dragon 챔피언", "라이엇 공개 데이터", "챔피언 이름·기본 능력치·스킬 설명(한글)"),
+    ("item.json", "Riot Data Dragon 아이템", "라이엇 공개 데이터", "아이템 이름·능력치·설명"),
+    ("map12", "CommunityDragon map12", "게임 파일 추출 (공개)", "칼바람 증강 모드 상점 아이템 목록"),
+    ("kiwi", "CommunityDragon 칼바람 증강 모드", "게임 파일 추출 (공개)", "증강 수치·계산식·비활성 여부"),
+    ("augment-lists", "CommunityDragon 증강 목록", "게임 파일 추출 (공개)", "모드별 증강 목록"),
+    ("items.cdtb", "CommunityDragon 아이템 데이터", "게임 파일 추출 (공개)", "아이템 고유 효과 수치·모드 전용 수치"),
+    ("lol.stringtable.json", "CommunityDragon 한국어 문자열", "게임 파일 추출 (공개)", "증강·패시브 한글 설명"),
+    ("lol.stringtable.en", "CommunityDragon 영어 문자열", "게임 파일 추출 (공개)", "위키 증강 이름 짝짓기"),
+    ("bins/", "CommunityDragon 챔피언 데이터", "게임 파일 추출 (공개)", "스킬 수치·계산식·모드 전용 수치 (173명)"),
+    ("wiki_championdata", "LoL 위키 Module:ChampionData", "CC BY-SA 4.0", "칼바람 보정·공격 속도 계수"),
+    ("wiki_mayhemaugments", "LoL 위키 Module:MayhemAugmentData", "CC BY-SA 4.0", "비활성 증강·적용 스킬 목록"),
+    ("wiki_itemdata", "LoL 위키 Module:ItemData", "CC BY-SA 4.0", "아이템 같은 계열"),
+    ("wiki_mayhem_page", "LoL 위키 ARAM: Mayhem", "CC BY-SA 4.0", "증강 모드 전용 챔피언 보정·재사용 대기시간"),
+    ("patchnotes", "라이엇 공식 패치 노트 (한국어)", "라이엇 공개 게시물 (요약·링크)", "이번 패치 아수라장 변경"),
+]
+
+
+def build_sources(fetched, patch_url):
+    out = []
+    for prefix, name, lic, used in SOURCE_INFO:
+        hit = [(k, v) for k, v in fetched.items() if k.startswith(prefix)]
+        if not hit:
+            continue
+        url, when = hit[0][1]
+        if prefix == "bins/":
+            url = f"{CDRAGON}/game/data/characters/"
+        if prefix == "champion" and len(hit) > 1:
+            url = f"{DDRAGON}/cdn/"
+        out.append({"name": name, "url": url.split("?action=raw")[0], "license": lic, "used": used,
+                    "fetched": max(v[1] for _, v in hit), "count": len(hit)})
+    out.append({"name": "LoL 위키 골드 효율", "url": f"{WIKI}/Gold_efficiency", "license": "CC BY-SA 4.0",
+                "used": "골드·모루 → 능력치 환산 기준값", "fetched": "수동 확인 2026-10-14", "count": 1})
+    return out
+
+
+# ---------------------------------------------------------------- 출처 링크
+def wiki_page(name):
+    return f"{WIKI}/" + urllib.parse.quote(name.replace(" ", "_"), safe=":/'()")
+
+
+def aug_refs(en_name, wa, patch_url):
+    refs = [{"label": "게임 데이터", "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"}]
+    if wa:
+        refs.append({"label": "위키", "url": f"{WIKI}/ARAM:_Mayhem/Augments"})
+    if patch_url:
+        refs.append({"label": "이번 패치 노트", "url": patch_url + "#patch-aram:-mayhem"})
+    if en_name:  # 통계는 가져오지 않고 보러 가는 링크만
+        slug = re.sub(r"[^a-z0-9]+", "-", en_name.lower()).strip("-")
+        refs.append({"label": "통계 보기 (외부)", "url": f"https://arammayhem.com/augments/{slug}/", "external": True})
+    return refs
+
+
 # ---------------------------------------------------------------- 증강 능력치 (rules.json stats)
 def resolve_rule_stats(rules, aug_spells):
     """rules.json 의 stats 값을 숫자로 바꾼다.
@@ -469,9 +571,23 @@ def main():
     wiki_aug_text = fetch(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua").decode("utf-8")
     wiki_items = parse_lua_table(fetch(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua").decode("utf-8"))
     wiki_mayhem_page = fetch(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt").decode("utf-8")
+    pn_url, pn_patch = patch_notes_url(version)
+    try:
+        patch = parse_mayhem_patch(fetch(pn_url, f"patchnotes_{pn_patch}.html").decode("utf-8"))
+    except Exception as e:
+        print("  패치 노트 받기 실패:", e)
+        patch = None
+    if patch:
+        patch.update({"patch": pn_patch, "url": pn_url})
+    patch_lines = {}  # 이름(한글) → 변경 줄
+    for g in (patch or {}).get("groups", []):
+        for en in g["entries"]:
+            if en["name"]:
+                patch_lines[en["name"]] = en["lines"]
     wiki = parse_lua_table(fetch(f"{WIKI}/Module:ChampionData/data?action=raw",
                                  "wiki_championdata.lua").decode("utf-8"))
     wiki_augs = wiki_mayhem_augments(wiki_aug_text, wiki)
+    item_wiki = {str(v.get("id")): k for k, v in wiki_items.items() if isinstance(v, dict) and v.get("id")}
     item_limit = {str(v.get("id")): v["itemlimit"] for v in wiki_items.values()
                   if isinstance(v, dict) and v.get("itemlimit") and v.get("id")}
 
@@ -521,6 +637,10 @@ def main():
             "id": iid, "name": it["name"], "kind": kind, "gold": it["gold"]["total"],
             "tags": tags, "stats": stats, "desc": html, "effects": effects,
             "limit": item_limit.get(iid),  # 같은 계열 고유 효과(주문 검·히드라 …)는 하나만
+            "refs": [r for r in [
+                {"label": "게임 데이터", "url": f"{CDRAGON}/game/items.cdtb.bin.json"},
+                {"label": "위키", "url": wiki_page(item_wiki[iid])} if iid in item_wiki else None,
+            ] if r],
             "passiveHtml": passive_html, "modeValues": mode_used,
         })
 
@@ -561,6 +681,8 @@ def main():
             "id": name,
             "effects": effects,
             "enName": en_name,
+            "patch": patch_lines.get(strings.get((a.get("NameTra") or "").lower(), "")),  # 이번 패치 변경
+            "refs": aug_refs(en_name, wa, pn_url if strings.get((a.get("NameTra") or "").lower(), "") in patch_lines else None),
             "eligible": wa.get("eligible"),  # 위키에 적용 스킬 목록이 있으면 그 챔피언들만 발동
             "name": strings.get((a.get("NameTra") or "").lower(), name),
             "rarity": a.get("rarity", 0),
@@ -634,6 +756,13 @@ def main():
             "features": features + (["melee"] if c["stats"]["attackrange"] <= 250 else ["ranged"]),
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
             "aramSource": aram_source,
+            "patch": patch_lines.get(c["name"]),
+            "refs": [r for r in [
+                {"label": "스킬 수치 (게임 데이터)", "url": f"{CDRAGON}/game/data/characters/{cid.lower()}/{cid.lower()}.bin.json"},
+                {"label": "기본 능력치 (Data Dragon)", "url": f"{DDRAGON}/cdn/{version}/data/ko_KR/champion/{cid}.json"},
+                {"label": "칼바람 보정 (위키)", "url": f"{WIKI}/{urllib.parse.quote(c['id'])}/ARAM" if False else f"{WIKI}/ARAM:_Mayhem#List_of_mode_overrides"} if aram else None,
+                {"label": "이번 패치 노트", "url": pn_url + "#patch-aram:-mayhem"} if patch_lines.get(c["name"]) else None,
+            ] if r],
             "passive": {"name": d["passive"]["name"], "desc": p_html or to_html(d["passive"]["description"])[0],
                         "effects": p_effects,
                         "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", p_html or d["passive"]["description"]))},
@@ -654,7 +783,7 @@ def main():
     def dl(job):
         url, path = job
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "aram-augment-tool"})
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=60) as r:
                 path.write_bytes(r.read())
         except Exception:
@@ -686,7 +815,9 @@ def main():
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")
             continue
         item["passiveStats"] = ir["stats"]
-    data = {"version": version, "dataVersion": cd_version, "mode": MODE, "tags": TAGS, "rules": rules,
+    sources = build_sources(FETCHED, pn_url if patch else None)
+    data = {"version": version, "dataVersion": cd_version, "sources": sources, "patchNotes": patch,
+            "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "tags": TAGS, "rules": rules,
             "disabled": disabled,
             "champions": out_champs, "items": out_items, "augments": out_augs}
     (WEB / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

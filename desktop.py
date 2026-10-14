@@ -27,7 +27,7 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html")
+CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html", "sources.html")
 
 
 def resource_dir():

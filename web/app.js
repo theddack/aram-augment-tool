@@ -125,7 +125,7 @@ function renderChampCard() {
     <div><span class="muted small">가중치</span> ${top.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}</div>
     <div><span class="muted small">스킬 특성</span> ${traits.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}
       ${feats.map((f) => `<span class="chip on">${esc(featLabel[f] || f)}</span>`).join("")}</div>
-    ${aramChips(c)}</div>`;
+    ${aramChips(c)}${patchChip(c.patch)}${refLinks(c.refs)}</div>`;
 }
 
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
@@ -258,6 +258,15 @@ function tierBadge(t) {
   const detail = `${t.tier}등급 · ${t.basis === "수치" ? "실제 숫자 기준" : "효과 종류·조건 기준"} · 같은 등급 ${t.rank}위/${t.n}개`
     + (t.interaction != null ? ` · 궁합 ${t.interaction > 0 ? "+" : ""}${fmt(t.interaction * 100)}` : "");
   return `<span class="tier t-${t.tier}" title="${detail}">${icon} ${name}</span>`;
+}
+
+// 출처 링크 (클릭해도 증강·아이템이 선택되지 않게)
+function refLinks(refs) {
+  if (!refs || !refs.length) return "";
+  return `<div class="refs">🔗 ${refs.map((r) => `<a href="${esc(r.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"${r.external ? ' class="ext"' : ""}>${esc(r.label)}</a>`).join(" · ")}</div>`;
+}
+function patchChip(lines) {
+  return lines && lines.length ? `<div class="patch">🆕 이번 패치: ${esc(lines.slice(0, 3).join(" · "))}${lines.length > 3 ? " …" : ""}</div>` : "";
 }
 
 function transformChip(a) {
@@ -450,6 +459,7 @@ function renderAugs() {
           ${gains[r.aug.id] ? `<span class="chip ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
         ${(state.data.rules.augments[r.aug.id] || {}).model ? `<div class="muted small">📐 계산 기준: ${esc(state.data.rules.augments[r.aug.id].model)}</div>` : ""}
+        ${patchChip(r.aug.patch)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${r.unclassified ? `<span class="chip">효과 분류 안 됨</span>` : ""}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
           ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
@@ -484,7 +494,7 @@ function itemRow(r, extra = "") {
     <div>${r.parts.slice(0, 4).map((p) => `<span class="chip">${label(p.tag)} +${p.value.toFixed(2)}</span>`).join("")}</div>
     ${r.synergy ? `<span class="chip syn">🔗 연계 추천</span>` : ""}
     ${r.reasons && r.reasons.length ? `<div class="reason">${esc(itemReason(r))}</div>` : ""}
-    ${gainLine(r.gain)}</div>
+    ${gainLine(r.gain)}${r.fixed ? "" : refLinks((r.item.refs || []).filter((x) => x.label === "위키"))}</div>
     <div class="score">${r.score.toFixed(2)}${extra}</div></div>`;
 }
 

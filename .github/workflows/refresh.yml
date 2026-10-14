@@ -1,0 +1,57 @@
+# 매일 데이터 자동 갱신: 게임 데이터·위키·패치 노트를 새로 받아서 실제로 바뀌었을 때만 반영하고 사이트를 다시 배포한다.
+# 하루 1번 (서버에 부담이 없는 빈도). 승률 통계 사이트는 수집하지 않는다.
+name: refresh
+
+on:
+  schedule:
+    - cron: "0 18 * * *"  # 매일 03:00 (한국 시간)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 데이터 새로 받기
+        run: |
+          cp web/data.json /tmp/old.json
+          python build_data.py --refresh
+          python tools/changelog.py html
+
+      - name: 바뀌었는지 확인
+        id: diff
+        run: |
+          if python tools/data_changed.py /tmp/old.json web/data.json; then echo "changed=1" >> "$GITHUB_OUTPUT"; fi
+
+      - name: 저장소에 반영
+        if: steps.diff.outputs.changed == '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web
+          git commit -m "data: 자동 갱신 $(python -c "import json;d=json.load(open('web/data.json'));print(d['version'], d['builtAt'])")"
+          git push
+
+      - uses: actions/configure-pages@v5
+        if: steps.diff.outputs.changed == '1'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.diff.outputs.changed == '1'
+        with:
+          path: web
+      - uses: actions/deploy-pages@v4
+        if: steps.diff.outputs.changed == '1'
