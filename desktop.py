@@ -25,6 +25,7 @@ from pathlib import Path
 import webview
 
 import augocr
+import gamelog
 import lcu
 import overlay
 
@@ -298,6 +299,8 @@ class LiveWatcher(threading.Thread):
             # 한 번 끊긴 걸로 게임이 끝났다고 보지 않는다 (3번 연속 실패해야 끝, 기록 파일이 쓸데없이 늘지 않게)
             self._fails = getattr(self, "_fails", 0) + 1
             if self._fails >= 3:
+                if self.state.get("inGame") and getattr(self, "on_game_end", None):
+                    self.on_game_end()  # 한 판 기록 마무리 (zip)
                 self.state = {"inGame": False}
                 self._game_key = None
             return
@@ -310,7 +313,18 @@ class LiveWatcher(threading.Thread):
             self.snapshot(raw, st)  # 기록 저장이 실패해도(디스크·백신 잠금) 감시는 계속
         except Exception as e:
             st["snapshotError"] = str(e)[:120]
+        if getattr(self, "rec", None) and self.rec.active and self._items_changed(st):
+            # 산 아이템 (바뀔 때만). 레벨·골드·게임 시간은 그때 값을 함께
+            self.rec.event("items", {"items": st.get("items"), "level": st.get("level"), "gold": round(st.get("gold") or 0),
+                                     "gameTime": round(st.get("gameTime") or 0)})
         self.state = st  # 다 채운 뒤에 내보낸다 (화면이 읽는 도중 바뀌지 않게)
+
+    def _items_changed(self, st):
+        cur = tuple(st.get("items") or ())
+        if cur != getattr(self, "_last_items", None):
+            self._last_items = cur
+            return True
+        return False
 
     def snapshot(self, raw, st):
         # 게임 시작 시각으로 게임을 구분 (gameTime 이 줄어들면 새 게임)
@@ -320,7 +334,7 @@ class LiveWatcher(threading.Thread):
         # 증강 칸이 새로 보이면 바로 저장 (게임 데이터에 고른 증강이 들어오는지 확인용, 5분을 기다리지 않게)
         aug = tuple(st.get("augmentFields") or ())
         if key != self._game_key and getattr(self, "on_new_game", None):
-            self.on_new_game()  # 새 게임: 증강 칸 읽기 초기화
+            self.on_new_game(st)  # 새 게임: 증강 칸 읽기 초기화, 한 판 기록 시작
         if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY or aug != getattr(self, "_last_aug", ()):
             self._last_aug = aug
             self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -631,6 +645,7 @@ class Api:
     def __init__(self, settings, watcher=None, ov=None, lcu_watcher=None, reader=None):
         self._settings = settings
         self._reader = reader
+        self._rec = None  # 한 판 기록 (gamelog.GameRecorder)
         self._update = None  # 데이터 받기 별도 실행 (subprocess.Popen)
         self._window = None
         self._watcher = watcher
@@ -651,6 +666,10 @@ class Api:
             if cards:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME}
             self._ov.update(payload)
+        if self._rec:
+            # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
+            cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]
+            self._rec.event("shown", {"cards": cards, "box": payload.get("hud"), "shop": bool(payload.get("shop"))}, dedupe=True)
         return True
 
     def set_overlay_enabled(self, on):
@@ -847,9 +866,24 @@ def main():
             reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
         except (OSError, ValueError, KeyError):
             reader._id_names = {}
-        watcher.on_new_game = reader.new_game
+        watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
+    # 한 판 기록: logs/games/날짜_챔피언/ (끝나면 zip). 빗나간 인식·추천을 고치려고 읽은 화면 조각까지 남긴다
+    rec = gamelog.GameRecorder(user_dir() / "logs" / "games")
+    api._rec = rec
+    watcher.rec = rec
+    if reader:
+        reader.rec = rec
+    prev_new = getattr(watcher, "on_new_game", None)
+
+    def on_new_game(st):
+        if prev_new:
+            prev_new(st)
+        rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION})
+
+    watcher.on_new_game = on_new_game
+    watcher.on_game_end = rec.finish
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

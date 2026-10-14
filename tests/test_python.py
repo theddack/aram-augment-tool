@@ -639,3 +639,36 @@ class ShopBox(unittest.TestCase):
         kind, x, y, (lines, anchor) = items[0]
         self.assertEqual((kind, anchor), ("hud", "ne"))
         self.assertLess(x, 560, "상점 창 왼쪽 바깥")
+
+
+class GameLog(unittest.TestCase):
+    """한 판 기록: 폴더 하나에 순서별 기록·화면 조각, 끝나면 zip, 최근 몇 판만"""
+
+    def test_record_one_game(self):
+        import zipfile
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base, keep=2, max_images=2)
+        rec.event("ignored", {"x": 1})  # 게임 전에는 안 남는다
+        rec.start("Naafiri", {"enemies": ["Lux"]})
+        rec.event("offers", {"read": ["양파상"], "offers": ["메아리 시전", None, None]})
+        rec.event("shown", {"box": ["다음 구매: 크라켄"]}, dedupe=True)
+        rec.event("shown", {"box": ["다음 구매: 크라켄"]}, dedupe=True)  # 같은 내용은 한 번만
+        bgra = bytes([10, 20, 30, 255]) * (4 * 3)
+        if HAS_IMG:
+            self.assertEqual(rec.image("card", bgra, 4, 3), "card_01.png")
+            rec.image("card", bgra, 4, 3)
+            self.assertIsNone(rec.image("card", bgra, 4, 3), "한 판 그림 한도")
+        folder = rec.dir
+        rec.finish()
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertEqual([e["kind"] for e in ev], ["start", "offers", "shown", "end"])
+        self.assertEqual(ev[0]["enemies"], ["Lux"])
+        names = zipfile.ZipFile(str(folder) + ".zip").namelist()
+        self.assertIn(f"{folder.name}/events.json", names)
+        for i in range(3):  # 최근 2판만 남는다
+            time.sleep(1.05)
+            rec.start(f"C{i}")
+            rec.finish()
+        self.assertEqual(len([p for p in base.iterdir() if p.is_dir()]), 2)
+        self.assertEqual(len(list(base.glob("*.zip"))), 2)

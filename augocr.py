@@ -399,6 +399,7 @@ class Reader(threading.Thread):
         self.hud_ids = []  # 증강 칸에서 읽은 고른 증강 id (칸 순서)
         self.icon_dir = None
         self.offered = set()  # 이번 게임 선택 화면에서 본 증강 이름 (같은 그림 묶음을 가릴 때)
+        self.rec = None  # 한 판 기록 (gamelog.GameRecorder)
         self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
 
     @property
@@ -415,7 +416,24 @@ class Reader(threading.Thread):
         raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
         rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]]
         groups = self.hud.scan(rgb, gh, (x0, y0))
-        self.hud_ids, self.hud_unsure = resolve_groups(groups, self.id_names(), self.offered)
+        ids, unsure = resolve_groups(groups, self.id_names(), self.offered)
+        if (ids, unsure) != (self.hud_ids, self.hud_unsure) or not getattr(self, "_hud_logged", False):
+            names = self.id_names()
+            data = {"picked": [names.get(i, i) for i in ids], "unsure": unsure, "size": self.hud.size,
+                    "seen": [{"group": [names.get(a, a) for a in g], "score": round(sc, 3), "x": round(x / gw, 3), "y": round(y / gh, 3)}
+                             for g, sc, x, y in self.hud.last]}
+            if self.hud.last and self.rec:
+                # 증강 칸 부분만 잘라서 (찾은 아이콘들 둘레)
+                sz = (self.hud.size or 0.04) * gh
+                xs = [x for _, _, x, _ in self.hud.last]
+                ys = [y for _, _, _, y in self.hud.last]
+                bx0, by0 = max(0, int(min(xs) - sz)), max(0, int(min(ys) - sz))
+                bx1, by1 = min(gw, int(max(xs) + 3 * sz)), min(gh, int(max(ys) + 3 * sz))
+                data["image"] = self.rec.image("hud", cap.grab(gx + bx0, gy + by0, bx1 - bx0, by1 - by0), bx1 - bx0, by1 - by0)
+            if ids or unsure or self.hud.last:
+                self._rec("hud", data)
+                self._hud_logged = True
+        self.hud_ids, self.hud_unsure = ids, unsure
 
     def run(self):
         if not IS_WINDOWS:
@@ -454,10 +472,17 @@ class Reader(threading.Thread):
                 self.last_ms = int((time.time() - t0) * 1000)
             except Exception as e:
                 self.status = f"읽기 오류: {str(e)[:120]}"
+                self._rec("error", {"error": str(e)[:200]}, dedupe=True)
             self.wait_clicks(mouse, rect)
+
+    def _rec(self, kind, data, dedupe=False):
+        if self.rec:
+            self.rec.event(kind, data, dedupe=dedupe)
 
     def new_game(self):
         """새 게임: 증강 칸에서 읽은 것을 비운다 (게임 창을 내렸다 올린 것만으로는 비우지 않는다)"""
+        self._shop_img = False
+        self._hud_logged = False
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -478,7 +503,10 @@ class Reader(threading.Thread):
         while time.time() < end:
             hit = mouse.clicked()
             if hit:
-                self.tracker.click(card_at(self.tracker.state.get("pos"), (hit[0] - gx) / gw, (hit[1] - gy) / gh))
+                rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
+                slot = card_at(self.tracker.state.get("pos"), rx, ry)
+                self.tracker.click(slot)
+                self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
             time.sleep(CLICK_POLL)
 
     def scan(self, cap, ocr, matcher, rect):
@@ -489,20 +517,39 @@ class Reader(threading.Thread):
         offers = find_offers(words, gw, gh, matcher)
         self.offered.update(n for n, _, _ in offers)
         partial = False
+        segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
         if not offers:
             # 이름이 하나라도 (일부라도) 맞으면 선택 화면이 아직 떠 있는 것 → 읽은 글자를 기록에 남긴다
-            segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
             partial = any(matcher.match(t)[0] or matcher.partial(t) for t in segs)
             if partial:
                 self.near = " | ".join(segs)[:160]
+                self._rec("near", {"read": segs}, dedupe=True)
+        before = dict(self.tracker.state)
         self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
+        after = self.tracker.state
+        if after.get("seq") != before.get("seq"):  # 새 선택지 (새로고침 포함): 읽은 글자 원문과 카드 이름 줄 그림
+            self._rec("offers", {"read": segs, "offers": after.get("offers"), "pos": after.get("pos"),
+                                 "image": self.rec.image("card", img, gw, n1 - n0) if self.rec else None})
+        if after.get("pickSeq") != before.get("pickSeq"):
+            self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
         # 상점 창: 열려 있을 때만 게임 화면 상자를 그 옆에 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적)
         s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
         sw = [(t, x, y + s0, w, h) for t, x, y, w, h in ocr.words(cap.grab(gx, gy + s0, gw, s1 - s0), gw, s1 - s0)]
-        self.shop = find_shop(sw, gw, gh)
+        shop = find_shop(sw, gw, gh)
+        if bool(shop) != bool(self.shop):
+            data = {"open": bool(shop), "pos": shop}
+            if shop and self.rec and not getattr(self, "_shop_img", False):
+                # 상점 위쪽 탭 줄만 (처음 한 번)
+                ty = int(shop["top"] * gh) - s0
+                x0, x1 = max(0, int(shop["left"] * gw) - 20), min(gw, int(shop["right"] * gw) + 20)
+                rows = cap.grab(gx + x0, gy + s0 + max(0, ty - 10), x1 - x0, int(gh * 0.06))
+                data["image"] = self.rec.image("shop", rows, x1 - x0, int(gh * 0.06))
+                self._shop_img = True
+            self._rec("shop", data)
+        self.shop = shop
         # 증강 칸 아이콘 (고른 증강의 정답): 5번에 한 번 (무거워서)
         self._hud_n = getattr(self, "_hud_n", 0) + 1
         if self.hud and self._hud_n % 5 == 1:
