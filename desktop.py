@@ -852,8 +852,31 @@ def lower_priority():
         pass
 
 
+# 화면 엔진(WebView2) 설정: 애드온 화면은 글자·아이콘뿐이라 GPU 가 필요 없다. GPU 프로세스를 끄면 메모리가 줄고
+# 게임이 쓰는 GPU 를 나눠 쓰지 않는다. 화면 프로세스도 하나로 (메모리 최소화 요청 2026-10-14)
+WEBVIEW2_ARGS = "--disable-gpu --disable-gpu-compositing --renderer-process-limit=1 --disable-features=msSmartScreenProtection"
+
+
+def trim_memory():
+    """윈도우: 안 쓰는 메모리를 돌려준다 (한 번 크게 쓰고 끝나는 작업 뒤·게임이 끝날 때)"""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        import gc
+        gc.collect()
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+        k.SetProcessWorkingSetSize.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t]
+        k.SetProcessWorkingSetSize(k.GetCurrentProcess(), ctypes.c_size_t(-1), ctypes.c_size_t(-1))
+    except Exception:
+        pass
+
+
 def main():
     lower_priority()
+    if sys.platform == "win32":
+        os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", WEBVIEW2_ARGS)
     if "--update-data" in sys.argv:
         sys.exit(run_update_data())
     overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
@@ -882,6 +905,7 @@ def main():
         except (OSError, ValueError, KeyError):
             reader._id_names = {}
         watcher.on_new_game = lambda st: reader.new_game()
+        reader.on_ready = trim_memory
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
     # 한 판 기록: logs/games/날짜_챔피언/ (끝나면 zip). 빗나간 인식·추천을 고치려고 읽은 화면 조각까지 남긴다
@@ -898,7 +922,12 @@ def main():
         rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION})
 
     watcher.on_new_game = on_new_game
-    watcher.on_game_end = rec.finish
+
+    def on_game_end():
+        rec.finish()
+        trim_memory()
+
+    watcher.on_game_end = on_game_end
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

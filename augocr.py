@@ -423,6 +423,7 @@ class Reader(threading.Thread):
         self.icon_dir = None
         self.offered = set()  # 이번 게임 선택 화면에서 본 증강 이름 (같은 그림 묶음을 가릴 때)
         self.rec = None  # 한 판 기록 (gamelog.GameRecorder)
+        self.on_ready = None
         self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
 
     @property
@@ -481,6 +482,8 @@ class Reader(threading.Thread):
                 self.hud = hudicons.HudReader(hudicons.Templates(self.icon_dir, self.id_names()))
             except Exception as e:  # numpy·Pillow 가 없거나 아이콘을 못 읽으면 이 기능만 끈다
                 self.hud_error = str(e)[:120]
+            if self.on_ready:
+                self.on_ready()  # 아이콘 비교 준비가 끝나면 쓰고 남은 메모리 돌려주기
         matcher, names = None, None
         while True:
             self.beat = time.time()
