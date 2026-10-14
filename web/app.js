@@ -138,7 +138,7 @@ function aramChips(c) {
     const neutral = k !== "ability_haste" && v === 1;
     return `<span class="chip ${neutral ? "" : good ? "syn" : "bad"}">${ARAM_NAME[k] || k} ${pct}</span>`;
   });
-  return `<div><span class="muted small">칼바람 보정 (위키)</span> ${chips.join("")}</div>`;
+  return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}</div>`;
 }
 
 function renderStats() {
@@ -275,6 +275,7 @@ function augReason(a, t, sc, g) {
     const madeMelee = state.chosen.some((x) => ((state.data.rules.augments[x.id] || {}).setsFeatures || {}).add?.includes("melee"));
     if (f === "ranged") return `원거리 챔피언만 효과가 있어요. ${madeMelee ? "고른 증강 때문에 근접이 됐어요." : `${josa(state.champ.name, "은", "는")} 근접 챔피언이에요.`}`;
     if (f === "melee") return "근접 챔피언만 효과가 있어요.";
+    if (f === "eligible") return `${josa(state.champ.name, "은", "는")} 이 증강이 적용되는 스킬이 없어요 (위키 목록 기준).`;
     return `${state.champ.name}에게는 ${josa(feat[f] || f, "이", "가")} 없어서 발동하지 않아요.`;
   }
   const tr = transform(a);
@@ -476,7 +477,7 @@ function itemRow(r, extra = "") {
   const tip = (r.item.passiveHtml ? r.item.passiveHtml + " " : "") + r.item.desc;
   return `<div class="item ${r.fixed ? "fixed" : ""}" data-id="${r.item.id}" title="${esc(tip.replace(/<br>/g, "\n").replace(/<[^>]+>/g, "").replace(/[ \t]+/g, " "))}">
     <img src="icons/item/${r.item.id}.png" alt="">
-    <div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span> <span class="muted small">${KIND_NAME[r.item.kind] || ""}</span>${r.fixed ? ` <span class="chip on">고정</span>` : ""}${r.mismatch ? ` <span class="chip">성향 반대</span>` : ""}</div>
+    <div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span> <span class="muted small">${KIND_NAME[r.item.kind] || ""}${r.item.limit ? ` · ${LIMIT_NAME[r.item.limit] || r.item.limit} 계열` : ""}</span>${r.fixed ? ` <span class="chip on">고정</span>` : ""}${r.mismatch ? ` <span class="chip">성향 반대</span>` : ""}</div>
     <div>${r.parts.slice(0, 4).map((p) => `<span class="chip">${label(p.tag)} +${p.value.toFixed(2)}</span>`).join("")}</div>
     ${r.synergy ? `<span class="chip syn">🔗 연계 추천</span>` : ""}
     ${r.reasons && r.reasons.length ? `<div class="reason">${esc(itemReason(r))}</div>` : ""}
@@ -491,8 +492,13 @@ function gainLine(g) {
   return parts.length ? `<div class="gain">착용 시 ${parts.join(" · ")}</div>` : `<div class="gain muted">착용 시 수치 변화 없음 (고유 효과만)</div>`;
 }
 
+const LIMIT_NAME = { Spellblade: "주문 검", Hydra: "히드라", Fatality: "치명", Lifeline: "생명선", Manaflow: "마나 흐름",
+  Immolate: "불사르기", Annul: "무효화", Blight: "역병", Eternity: "영원", Quicksilver: "수은", Stasis: "경직",
+  Guardian: "수호자", "Soul Anchor": "영혼 닻", Elixir: "영약" };
 function canAdd(item) {
   if (state.items.some((i) => i.name === item.name)) return "이미 고른 아이템이에요.";
+  const same = item.limit && state.items.find((i) => i.limit === item.limit);
+  if (same) return `${LIMIT_NAME[item.limit] || item.limit} 계열 고유 효과는 하나만 적용돼요. 이미 ${josa(same.name, "을", "를")} 골랐어요.`;
   if (item.kind === "boots" && state.items.some((i) => i.kind === "boots")) return "신발은 1개만 고를 수 있어요.";
   if (state.items.length >= S.SLOTS) return "아이템 칸(6칸)이 다 찼어요.";
   return "";

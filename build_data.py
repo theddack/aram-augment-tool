@@ -290,6 +290,59 @@ def item_passive(item_bin, strings):
     return effects, html, mode_used
 
 
+# ---------------------------------------------------------------- 위키 보강 데이터 (CC BY-SA)
+MAYHEM_MOD_KEYS = {  # 위키 '증강 모드 전용 보정' 문구 → 우리 키
+    "damage dealt": "dmg_dealt", "damage received": "dmg_taken", "healing done": "healing",
+    "shielding done": "shielding", "ability haste": "ability_haste", "tenacity": "tenacity",
+    "total attack speed": "total_as", "attack speed": "total_as", "energy regen": "energyregen_mod",
+}
+
+
+def norm_name(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def mayhem_champion_overrides(page_text, wiki_champs):
+    """위키 ARAM: Mayhem 페이지의 챔피언 표 → {DDragon id: {키: 값}}. '… changed to X% from Y%' 의 X 를 쓴다."""
+    m = re.search(r"Champions=(.*?)(?:\|-\||</tabber>)", page_text, re.S)
+    if not m:
+        return {}
+    api = {k: v.get("apiname") for k, v in wiki_champs.items() if isinstance(v, dict)}
+    out = {}
+    for row in m.group(1).split("\n|-")[1:]:
+        cm = re.search(r"\{\{ci\|([^}|]+)", row)
+        if not cm:
+            continue
+        cid = api.get(cm.group(1).strip())
+        mods = {}
+        for line in re.findall(r"\*\s*([A-Za-z ]+?) changed to ([+-]?\d+(?:\.\d+)?)(%?)", row):
+            key = MAYHEM_MOD_KEYS.get(line[0].strip().lower())
+            if not key:
+                continue
+            v = float(line[1])
+            mods[key] = v if key == "ability_haste" or not line[2] else round(1 + v / 100, 4)
+        if cid and mods:
+            out[cid] = mods
+    return out
+
+
+def wiki_mayhem_augments(module_text, wiki_champs):
+    """위키 증강 모듈 → {정규화 영어 이름: {"disabled": bool, "eligible": [DDragon id …]}}"""
+    data = parse_lua_table(module_text)
+    api = {k: v.get("apiname") for k, v in wiki_champs.items() if isinstance(v, dict)}
+    out = {}
+    for name, v in data.items():
+        if not isinstance(v, dict):
+            continue
+        notes = v.get("notes", "") or ""
+        champs = sorted({api[c] for c in re.findall(r"\{\{c?ai\|[^|}]+\|([^|}]+)", notes) if c in api})
+        # 위키는 퀘스트 증강 이름 앞에 'Quest: ' 를 붙인다 (게임 이름에는 없음)
+        out[norm_name(re.sub(r"^Quest:\s*", "", name))] = {
+            "disabled": "currently disabled" in (v.get("description") or ""),
+            "eligible": champs if len(champs) >= 3 else None, "wikiName": name}
+    return out
+
+
 # ---------------------------------------------------------------- 증강 능력치 (rules.json stats)
 def resolve_rule_stats(rules, aug_spells):
     """rules.json 의 stats 값을 숫자로 바꾼다.
@@ -364,6 +417,17 @@ def main():
     print("문자열 테이블 받는 중 (약 35MB, 첫 실행만)...")
     strings = fetch_json(f"{CDRAGON}/game/ko_kr/data/menu/en_us/lol.stringtable.json",
                          "lol.stringtable.json")["entries"]
+    # 위키 증강 이름(영어)과 짝짓기용 영어 문자열
+    strings_en = fetch_json(f"{CDRAGON}/game/en_us/data/menu/en_us/lol.stringtable.json",
+                            "lol.stringtable.en.json")["entries"]
+    wiki_aug_text = fetch(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua").decode("utf-8")
+    wiki_items = parse_lua_table(fetch(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua").decode("utf-8"))
+    wiki_mayhem_page = fetch(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt").decode("utf-8")
+    wiki = parse_lua_table(fetch(f"{WIKI}/Module:ChampionData/data?action=raw",
+                                 "wiki_championdata.lua").decode("utf-8"))
+    wiki_augs = wiki_mayhem_augments(wiki_aug_text, wiki)
+    item_limit = {str(v.get("id")): v["itemlimit"] for v in wiki_items.values()
+                  if isinstance(v, dict) and v.get("itemlimit") and v.get("id")}
 
     # --- 아이템: 칼바람 증강 모드가 실제로 쓰는 목록만
     mode = map12[MODE_PATH]
@@ -410,6 +474,7 @@ def main():
         out_items.append({
             "id": iid, "name": it["name"], "kind": kind, "gold": it["gold"]["total"],
             "tags": tags, "stats": stats, "desc": html, "effects": effects,
+            "limit": item_limit.get(iid),  # 같은 계열 고유 효과(주문 검·히드라 …)는 하나만
             "passiveHtml": passive_html, "modeValues": mode_used,
         })
 
@@ -420,13 +485,20 @@ def main():
                 if isinstance(v, dict) and v.get("__type") == "AugmentData"}
     rarity_name = {0: "실버", 1: "골드", 2: "프리즘"}
     out_augs, unresolved_total, disabled, disabled_ids, aug_spells = [], 0, [], set(), {}
+    wiki_matched = 0
     for name in kiwi_names:
         a = aug_data.get(name)
         if not a:
             missing.append(name)
             continue
-        if a.get("Enabled") is False:  # 모드 목록에는 있지만 이번 패치에서 꺼진 증강
-            disabled.append(strings.get((a.get("NameTra") or "").lower(), name))
+        en_name = strings_en.get((a.get("NameTra") or "").lower(), "")
+        wa = wiki_augs.get(norm_name(en_name)) or {}
+        if wa:
+            wiki_matched += 1
+        # 비활성: 게임 파일(Enabled=False) + 위키 '현재 비활성' 표시 (패치 없이 서버에서 끈 것까지)
+        if a.get("Enabled") is False or wa.get("disabled"):
+            label = strings.get((a.get("NameTra") or "").lower(), name)
+            disabled.append(label + ("" if a.get("Enabled") is False else " (위키 기준)"))
             disabled_ids.add(name)
             continue
         spell = kiwi.get(a.get("RootSpell", ""), {}).get("mSpell", {})
@@ -442,6 +514,8 @@ def main():
         out_augs.append({
             "id": name,
             "effects": effects,
+            "enName": en_name,
+            "eligible": wa.get("eligible"),  # 위키에 적용 스킬 목록이 있으면 그 챔피언들만 발동
             "name": strings.get((a.get("NameTra") or "").lower(), name),
             "rarity": a.get("rarity", 0),
             "rarityName": rarity_name.get(a.get("rarity", 0), "?"),
@@ -474,9 +548,8 @@ def main():
     with ThreadPoolExecutor(8) as ex:
         details = dict(zip(champs, ex.map(detail, champs)))
         bins = dict(zip(champs, ex.map(champ_bin, champs)))
-    wiki = parse_lua_table(fetch(f"{WIKI}/Module:ChampionData/data?action=raw",
-                                 "wiki_championdata.lua").decode("utf-8"))
     out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
+    mayhem_mods = mayhem_champion_overrides(wiki_mayhem_page, wiki)
     for cid, c in champs.items():
         d = details[cid]
         traits, magic_share, features = champion_traits(d)
@@ -493,6 +566,11 @@ def main():
         for sp in spells:
             sp["tooltip"], _, _ = to_html(sp["tooltip"])
         aram, as_ratio = wiki_extras(wiki, c["name"], cid)
+        # 칼바람 증강 모드: 일반 칼바람 보정 위에 모드 전용 보정을 덮어쓴다 (위키)
+        aram_source = "칼바람" if aram else None
+        if cid in mayhem_mods:
+            aram = {**(aram or {}), **mayhem_mods[cid]}
+            aram_source = "칼바람 + 증강 모드"
         if as_ratio is None:
             no_wiki.append(cid)
         out_champs.append({
@@ -502,6 +580,7 @@ def main():
             "traits": traits, "magicShare": magic_share,
             "features": features + (["melee"] if c["stats"]["attackrange"] <= 250 else ["ranged"]),
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
+            "aramSource": aram_source,
             "passive": {"name": d["passive"]["name"], "desc": p_html or to_html(d["passive"]["description"])[0],
                         "effects": p_effects},
             "spells": spells,
@@ -566,6 +645,9 @@ def main():
     print(f"  비활성(Enabled=False)이라 제외한 증강 {len(disabled)}개: {', '.join(disabled)}")
     print(f"  스킬 수치 못 채운 자리 {spell_unresolved}개 (스킬 {sum(len(c['spells']) for c in out_champs)}개 중)")
     print(f"  위키 데이터 없는 챔피언 {len(no_wiki)}명: {', '.join(no_wiki)}")
+    print(f"  위키 증강 짝짓기 {wiki_matched}/{len(kiwi_names)}, 적용 스킬 목록 있는 증강 "
+          f"{sum(1 for a in out_augs if a.get('eligible'))}개, 증강 모드 전용 보정 챔피언 {len(mayhem_mods)}명, "
+          f"같은 계열 표시 아이템 {sum(1 for i in out_items if i.get('limit'))}개")
     print(f"  패시브 수치 설명 찾음 {passive_found}명, 패시브 효과(피해·보호막·회복) 있는 챔피언 "
           f"{sum(1 for c in out_champs if c['passive']['effects'])}명")
     print(f"  고유 효과 수치 뽑은 아이템 {sum(1 for i in out_items if i['effects'])}개 / {len(out_items)}개, "

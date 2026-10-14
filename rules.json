@@ -11,7 +11,8 @@
     "immobilize": "이동 불가 CC",
     "allysupport": "아군 회복·보호막 스킬",
     "melee": "근접 챔피언",
-    "ranged": "원거리 챔피언"
+    "ranged": "원거리 챔피언",
+    "eligible": "이 증강이 적용되는 스킬"
   },
   "augments": {
     "ARAM_ADAPt": {

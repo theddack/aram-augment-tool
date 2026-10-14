@@ -130,9 +130,10 @@
       p.value *= BREADTH_DECAY[Math.min(i, BREADTH_DECAY.length - 1)];
       score += p.value;
     });
-    if (rule.requires && champ) {
-      const met = (champ.features || []).includes(rule.requires);
-      info.req = { feature: rule.requires, met };
+    // 조건: 위키에 적용 스킬 목록(eligible)이 있으면 그 챔피언만, 없으면 rules.json 의 스킬 특징
+    if (champ && (aug.eligible || rule.requires)) {
+      const met = aug.eligible ? aug.eligible.includes(champ.id) : (champ.features || []).includes(rule.requires);
+      info.req = { feature: aug.eligible ? "eligible" : rule.requires, met };
       score = met ? score + REQ_BONUS : score * REQ_PENALTY;
     }
     if (rule.items && chosenItems.some((i) => rule.items.includes(i.name))) {
@@ -298,7 +299,9 @@
       const seen = new Set();
       for (const st of beams) {
         const names = new Set(st.items.map((i) => i.name));
-        pool.filter((i) => !names.has(i.name))
+        const limits = new Set(st.items.map((i) => i.limit).filter(Boolean));
+        // 같은 계열 고유 효과(주문 검·히드라·치명 …)는 하나만 적용되니 같이 고르지 않는다
+        pool.filter((i) => !names.has(i.name) && !(i.limit && limits.has(i.limit)))
           .map((i) => step(st, i, false))
           .sort((a, b) => b.picks[b.picks.length - 1].score - a.picks[a.picks.length - 1].score)
           .slice(0, perBeam)
@@ -327,7 +330,7 @@
     champ = withChosenFeatures(champ, chosen, rules);
     return chosen.map((a) => {
       const rule = ruleOf(rules, a);
-      const unmet = champ && rule.requires && !(champ.features || []).includes(rule.requires);
+      const unmet = champ && (a.eligible ? !a.eligible.includes(champ.id) : rule.requires && !(champ.features || []).includes(rule.requires));
       return { ...(rule.statsResolved || {}), _effects: unmet ? [] : (a.effects || []).map((e) => ({ ...e, src: a.name })) };
     });
   }
