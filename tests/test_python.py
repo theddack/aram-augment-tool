@@ -136,6 +136,10 @@ class Logs(unittest.TestCase):
 class Lcu(unittest.TestCase):
     def test_clean_item_set(self):
         self.assertEqual(lcu.clean_item_set("222", "x" * 99, [{"type": "a", "items": ["3031"]}])[1], "x" * 60)
+        # 롤 상점은 이모지를 '?' 로 그린다 → 빼고 보낸다
+        _, _, out = lcu.clean_item_set("222", "t", [{"type": "🎯 기본 빌드 (탱커형)", "items": [1]},
+                                                    {"type": "🔥 강철 같은 심장 고르면", "items": [1]}, {"type": "❤️ 변칙", "items": [1]}])
+        self.assertEqual([b["type"] for b in out], ["기본 빌드 (탱커형)", "강철 같은 심장 고르면", "변칙"])
         for bad in (("abc", "t", [{"items": [1]}]), ("222", "t", [{"items": ["1;x"]}]), ("222", "t", []),
                     (None, "t", [{"items": [1]}]), ("222", "t", ["x"]), ("222", "t", [{"items": "12"}])):
             with self.assertRaises(ValueError):

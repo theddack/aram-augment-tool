@@ -261,7 +261,10 @@ class LiveWatcher(threading.Thread):
         t = st.get("gameTime") or 0
         key = (st.get("champion"), st.get("gameMode"))
         now = time.time()
-        if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY:
+        # 증강 칸이 새로 보이면 바로 저장 (게임 데이터에 고른 증강이 들어오는지 확인용, 5분을 기다리지 않게)
+        aug = tuple(st.get("augmentFields") or ())
+        if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY or aug != getattr(self, "_last_aug", ()):
+            self._last_aug = aug
             self.log_dir.mkdir(parents=True, exist_ok=True)
             name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
             (self.log_dir / name).write_text(json.dumps(redact_names(raw), ensure_ascii=False, indent=1), encoding="utf-8")

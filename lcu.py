@@ -136,11 +136,19 @@ def clean_item_set(champion_key, title, blocks):
         raise ValueError(f"형식: {e}") from None
 
 
+# 롤 상점은 이모지를 못 그리고 '?' 로 보여 준다 (2026-10-14 실제 화면 확인) → 글자 판 밖(이모지)·변형 선택자는 뺀다
+_NO_GLYPH = re.compile("[\U00010000-\U0010FFFF\u2600-\u27BF\uFE0E\uFE0F\u200D]")
+
+
+def shop_text(s, limit=60):
+    return re.sub(r"\s+", " ", _NO_GLYPH.sub("", str(s))).strip()[:limit]
+
+
 def _clean_item_set(champion_key, title, blocks):
     key = int(champion_key)
     if not 0 < key < 100000:
         raise ValueError("챔피언 번호")
-    title = str(title)[:60]
+    title = shop_text(title)
     if not isinstance(blocks, list) or not 0 < len(blocks) <= 10:
         raise ValueError("블록 수")
     out = []
@@ -151,5 +159,5 @@ def _clean_item_set(champion_key, title, blocks):
         items = [int(i) for i in raw][:12]
         if not all(0 < i < 10_000_000 for i in items):
             raise ValueError("아이템 ID")
-        out.append({"type": str(b.get("type", ""))[:60], "items": items})
+        out.append({"type": shop_text(b.get("type", "")), "items": items})
     return key, title, out

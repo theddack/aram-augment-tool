@@ -830,7 +830,7 @@ function itemSetBlocks(champ) {
   // 첫 증강 후보(🔥·👍) 중 빌드가 확실히 달라지는 것만 블록으로: 기존 블록과 아이템이 2개 이상 달라야 넣는다
   const cands = d.augments.filter((a) => tiers[a.id] && ["S", "A"].includes(tiers[a.id].tier) && !(d.rules.augments[a.id] || {}).generic)
     .sort((x, y) => (tiers[y.id].gain ?? -1) - (tiers[x.id].gain ?? -1)).slice(0, 15);
-  const blocks = [{ type: `🎯 기본 빌드${buildStyle(ids(bal)) ? ` (${STYLE_LABEL[buildStyle(ids(bal))]})` : ""}`, items: ids(bal) }];
+  const blocks = [{ type: `기본 빌드${buildStyle(ids(bal)) ? ` (${STYLE_LABEL[buildStyle(ids(bal))]})` : ""}`, items: ids(bal) }];
   const differs = (items) => blocks.every((b) => items.filter((i) => !b.items.includes(i)).length >= 2);
   const twistIds = ids(twist);
   for (const a of cands) {
@@ -838,9 +838,9 @@ function itemSetBlocks(champ) {
     const items = ids(S.buildConcepts(d.items, w, [a], [], d.rules, champ, statOpts(), ["augment"])[0]);
     if (!differs(items) || items.filter((i) => !twistIds.includes(i)).length < 2) continue;
     const st = buildStyle(items);
-    blocks.push({ type: `🔥 ${a.name} 고르면${st ? ` (${STYLE_LABEL[st]})` : ""}`, items });
+    blocks.push({ type: `${a.name} 고르면${st ? ` (${STYLE_LABEL[st]})` : ""}`, items });
   }
-  if (differs(twistIds)) blocks.push({ type: `🎲 변칙${buildStyle(twistIds) ? ` (${STYLE_LABEL[buildStyle(twistIds)]})` : ""}`, items: twistIds });
+  if (differs(twistIds)) blocks.push({ type: `변칙${buildStyle(twistIds) ? ` (${STYLE_LABEL[buildStyle(twistIds)]})` : ""}`, items: twistIds });
   return blocks;
 }
 async function applyLcu(api, L) {
@@ -858,7 +858,7 @@ async function applyLcu(api, L) {
     if (prev) St.setTarget(null);
     let blocks;
     try { blocks = itemSetBlocks(champ); } finally { if (prev) setTargetChamp(prev); }
-    const r = await api.write_item_set(champ.key, `칼바람 증강 계산기 · ${champ.name}`, blocks);
+    const r = await api.write_item_set(champ.key, `칼바람 증강 Addon · ${champ.name}`, blocks);
     el.textContent = r && r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
     if (!r || !r.ok) itemSetDone = null;
   } catch (e) {
