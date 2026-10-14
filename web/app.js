@@ -524,7 +524,7 @@ function pushOverlay(rows) {
   for (const x of rows || []) {
     const t = x.t;
     const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["", ""];
-    const tag = x.best ? " · 추천" : x.reroll ? " · 새로고침?" : "";
+    const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
