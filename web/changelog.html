@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>업데이트 내역 · 칼바람 증강 Addon</title>
 <style>
 :root { --bg:#0f1419; --panel:#171e26; --line:#26313d; --text:#e6e9ec; --muted:#8b96a3; --accent:#c8aa6e; }
@@ -13,6 +13,21 @@ code { background:var(--panel); padding:0 4px; border-radius:4px; } hr { border:
 <a class="back" href="index.html">← 칼바람 증강 Addon으로 돌아가기</a>
 <h1>업데이트 내역</h1>
 <p>칼바람 증강 Addon이 버전마다 무엇이 바뀌었는지 정리한 곳이에요. 처음 쓰는 분도 알 수 있게 쉬운 말로 적어요.</p>
+<hr>
+<h2>v0.1.5 — 보안 점검 대응 · 새 버전 알림</h2>
+<h3>🔒 보안</h3>
+<ul>
+<li><b>화면에서 부를 수 있는 프로그램 기능을 15개로 줄였어요.</b> 예전에는 내부 기능까지 530개가 화면 코드에 열려 있었어요 (파일 쓰기·롤 클라이언트 요청 포함). 화면에 악성 코드가 들어올 경로는 찾지 못했지만, 만약을 대비해 막았어요.</li>
+<li>화면에 <b>CSP</b>를 넣어 끼워 넣은 스크립트가 실행되지 않게 했어요. 외부 데이터의 이름표(id)와 링크도 검사해요.</li>
+<li><b>상점 추천 등록</b>: 내 아이템 세트 목록을 못 읽으면 저장하지 않아요. 예전에는 이 경우 내가 만든 세트가 지워질 수 있었어요. 저장 직전 목록을 <code>itemset_backup</code> 폴더에 남겨요.</li>
+<li><b>게임 기록 파일</b>: 소환사 이름을 &#x27;플레이어0·1…&#x27;로 바꿔 저장하고, 최근 30개만 남겨요.</li>
+<li><b>받은 파일 확인</b>: 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명을 붙여요. 사용 설명서에 &quot;공식 릴리스에서 받은 파일만 경고를 넘기세요&quot;를 적었어요.</li>
+<li>빌드 도구·GitHub Actions 버전을 고정했어요 (오염된 새 버전이 자동으로 들어오지 않게).</li>
+</ul>
+<h3>✨ 새로 생긴 것</h3>
+<ul>
+<li><b>새 버전 알림</b>: 프로그램을 켜면 새 버전이 있는지 알려 줘요. 받기는 공식 릴리스 페이지에서 직접 해요 (보안 때문에 자동으로 바꾸지 않아요).</li>
+</ul>
 <hr>
 <h2>v0.1.4 — 쉽게 보기 · 숫자마다 근거 · 패치 노트 대조 · 맥 실행 오류 수정</h2>
 <h3>🐛 고친 것</h3>

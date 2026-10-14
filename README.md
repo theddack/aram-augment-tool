@@ -56,6 +56,10 @@
 
 미검증: 윈도우 실제 PC에서의 게임 화면 표시(창 찾기·클릭 통과·화면 배율), 게임 연동 실데이터, 상점 추천 등록.
 
+## 보안
+
+공식 [릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만 쓰세요. 코드 서명이 없어서 경고가 뜨는데, 다른 곳에서 받은 파일은 경고를 넘기지 마세요. 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명이 있어요. 프로그램이 하는 일과 막아 둔 것은 [SECURITY.md](SECURITY.md)에 있어요.
+
 ## 데이터와 수집 원칙
 
 - 라이엇 Data Dragon · CommunityDragon(게임 파일) · [리그 오브 레전드 위키](https://wiki.leagueoflegends.com/) (CC BY-SA 4.0) · 라이엇 공식 패치 노트
