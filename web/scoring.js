@@ -190,6 +190,33 @@
     return out;
   }
 
+  // 주 피해 유형 (라이엇 게임 데이터 tacticalInfo.damageType): 물리 챔피언 기본 빌드에 AP 아이템, 마법 챔피언에 AD·치명타를 넣지 않는다.
+  // 스킬 계수만으로 계산하면 이렐리아(E·R 이 주문력 계수)가 라바돈·리치베인으로 쏠렸다 (2026-10-14 실제 게임에선 징수의 총).
+  // 막지 않는 경우: 변칙(일부러 반대로), 환산 증강(공격력→주문력 등), 고른 증강이 반대 유형을 키울 때 (증강 따라 변신이 재미)
+  const OFF_TYPE = {
+    physical: { off: ["AP", "MPEN"], own: ["AD", "CRIT", "LETHAL"] },
+    magic: { off: ["AD", "CRIT", "LETHAL"], own: ["AP", "MPEN"] },
+  };
+  // 치명타 아이템은 원거리 딜러·원거리 물리 챔피언·치명타 특성이 있는 챔피언(야스오·요네·트린다미어)만.
+  // 다리우스·트런들·볼리베어 같은 전사 기본 빌드에 윤 탈 야생화살이 들어가던 것을 막는다
+  const critUser = (champ) => champ.tags.includes("Marksman") || !champ.melee || ((champ.traits || {}).CRIT || 0) > 0;
+  function offTypeFilter(champ, ctx, concept) {
+    const rule = champ && OFF_TYPE[champ.damageType];
+    if (!rule || (concept && concept.flip)) return null;
+    // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 챔피언)
+    const noCrit = champ.damageType === "physical" && !critUser(champ) && !((ctx.tags.CRIT || 0) >= 0.5);
+    if (Object.keys(ctx.convert || {}).some((t) => rule.off.includes(ctx.convert[t]) || rule.off.includes(t))) return null;
+    if (rule.off.some((t) => (ctx.tags[t] || 0) >= 0.5)) return null;
+    return (item) => {
+      const t = convertTags(item.tags || {}, ctx.convert || {});
+      // 치명타가 능력치 줄에만 있고 태그엔 없는 아이템이 있다 (윤 탈 야생화살: 치명타 0 에서 기본 지속 효과로 쌓임)
+      const st = item.stats || {};
+      if (Array.isArray(st) ? st.includes("CRIT") : "CRIT" in st) t.CRIT = Math.max(t.CRIT || 0, 1);
+      if (noCrit && (t.CRIT || 0) >= 0.5) return true;
+      return rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
+    };
+  }
+
   // 환산 증강(공격력→주문력 등)이 있으면 아이템 태그를 바꿔서 본다
   function convertTags(tags, convert) {
     const out = { ...tags };
@@ -322,6 +349,7 @@
       if (next.length) beams = next.sort((a, b) => b.total - a.total).slice(0, BEAM);
       return next.length > 0;
     };
+    if (opts.off) items = items.filter((i) => !opts.off(i));
     if (!fixed.some((i) => i.kind === "boots") && fixed.length < SLOTS) {
       expand(items.filter((i) => i.kind === "boots"), 2);
     }
@@ -384,7 +412,7 @@
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
       const mw = c.flip ? inv : null;
-      return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw }) };
+      return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, off: offTypeFilter(champ, ctx, c) }) };
     });
   }
 
@@ -393,7 +421,9 @@
   function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced") {
     champ = champ && withChosenFeatures(champ, chosen, rules);
     const ctx = augContext(chosen, rules);
-    const iw = conceptWeights(w, ctx, CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1]);
+    const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
+    const iw = conceptWeights(w, ctx, concept);
+    const off = offTypeFilter(champ, ctx, concept);
     const covered = {};
     for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts, mw: metricWeights(iw) } : null;
@@ -413,7 +443,9 @@
         const score = (valueOf(m1, num) - valueOf(m0, num)) * NUM_K + tag.score * TAG_K;
         return { item: i, ...tag, tagScore: tag.score, score, gain: gainParts(m0, m1) };
       })
-      .sort((a, b) => b.score - a.score);
+      .map((r) => (off && off(r.item) ? { ...r, offType: true } : r))
+      // 주 피해 유형과 반대인 아이템은 목록 맨 뒤로 (지우지는 않는다: 직접 골라 보는 건 자유)
+      .sort((a, b) => (a.offType ? 1 : 0) - (b.offType ? 1 : 0) || b.score - a.score);
   }
 
   // 연계 티어: 지금까지 고른 증강 기준으로 같은 등급 증강을 S/A/B/C/D 로 나눈다.

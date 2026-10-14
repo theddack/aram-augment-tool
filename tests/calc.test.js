@@ -146,3 +146,18 @@ test("새로 숫자로 계산되는 증강: 흡수(스킬 피해 회복), 죽음
   const combo = (augs) => St.evaluate(sor, 18, [], S.augStatsOf(augs, d.rules, sor)).m.combo;
   assert.ok(combo([aug("ARAM_CircleofDeath")]) > combo([]));
 });
+
+test("기본 빌드는 라이엇 주 피해 유형을 따른다 (이렐리아 AP·전사 치명타 쏠림 막기)", async () => {
+  const { loadPage } = require("./page");
+  const p = await loadPage({ simple: true });
+  const by = (id) => p.data.champions.find((c) => c.id === id);
+  const items = (id) => p.w.itemSetBlocks(by(id))[0].items.map((i) => p.data.items.find((x) => x.id === i));
+  const isAP = (it) => (it.tags.AP || 0) >= 0.5 && !((it.tags.AD || 0) >= 0.5);
+  const isCrit = (it) => (it.tags.CRIT || 0) >= 0.5 || "CRIT" in (Array.isArray(it.stats) ? {} : it.stats || {});
+  assert.equal(by("Irelia").damageType, "physical");
+  assert.ok(!items("Irelia").some(isAP), "이렐리아(물리)에 AP 아이템 없음");
+  for (const id of ["Azir", "Teemo", "Kayle"]) assert.ok(!items(id).some((it) => (it.tags.AD || 0) >= 0.5 && !(it.tags.AP >= 0.5)), `${id}(마법)에 AD 아이템 없음`);
+  for (const id of ["Darius", "Trundle", "Jax"]) assert.ok(!items(id).some(isCrit), `${id}(치명타 못 살리는 근접)에 치명타 없음`);
+  assert.ok(items("Jinx").some(isCrit), "원거리 딜러는 치명타 그대로");
+  assert.ok(items("Yasuo").some(isCrit), "치명타 특성(야스오)은 그대로");
+});
