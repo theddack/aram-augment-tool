@@ -59,8 +59,17 @@ jobs:
           if [ ! -s web/review.md ]; then echo "확인할 것 없음"; exit 0; fi
           gh label create "데이터 확인" --color c8aa6e --description "매일 갱신이 찾은 확인 필요 항목" --force
           title="$(head -1 web/review.md | sed 's/^# //')"
-          num=$(gh issue list --label "데이터 확인" --state open --json number,title -q ".[] | select(.title==\"$title\") | .number" | head -1)
-          if [ -n "$num" ]; then gh issue edit "$num" --body-file web/review.md; else gh issue create --title "$title" --label "데이터 확인" --body-file web/review.md; fi
+          # 같은 제목(같은 패치)의 이슈를 열린·닫힌 것 모두에서 찾는다
+          num=$(gh issue list --label "데이터 확인" --state all --json number,title -q ".[] | select(.title==\"$title\") | .number" | head -1)
+          if [ -z "$num" ]; then
+            gh issue create --title "$title" --label "데이터 확인" --body-file web/review.md
+          elif [ "$(gh issue view "$num" --json body -q .body | tr -d '\r' | sed -e 's/[[:space:]]*$//')" = "$(sed -e 's/[[:space:]]*$//' web/review.md)" ]; then
+            echo "#$num 와 내용이 같음 (이미 확인했거나 확인 중) → 그대로"
+          else
+            gh issue edit "$num" --body-file web/review.md
+            gh issue reopen "$num" 2>/dev/null || true  # 닫았는데 새 항목이 생기면 다시 연다
+            echo "#$num 내용이 바뀜 → 갱신"
+          fi
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
         if: steps.diff.outputs.changed == '1'
