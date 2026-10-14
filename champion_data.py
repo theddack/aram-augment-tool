@@ -165,9 +165,11 @@ def find_trigger(text):
     for kind, pat in TRIGGERS:
         m = pat.search(text)
         if m:
-            t = {"type": kind}
+            t = {"type": kind, "from": m.group(0)}  # 판정 근거가 된 설명 문구 (화면 '근거'에 표시)
             if kind == "attacks":
                 t["n"] = int(next((g for g in m.groups() if g), 8))
+                if not any(m.groups()):
+                    t["assume"] = "충전 공격은 기본 공격 8번에 1번으로 가정"
             elif kind == "time":
                 t["sec"] = float(m.group(1))
             return t

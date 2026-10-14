@@ -20,6 +20,7 @@ from pathlib import Path
 from champion_data import (augment_effects, item_spell, parse_lua_table, passive_spell, process_champion,
                            spell_cc_seconds, text_effects, wiki_extras)
 from lol_calc import Calc, expr_json, fmt_expr_ranks
+from patch_check import check_augment, check_champion
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / ".cache"
@@ -580,6 +581,77 @@ def auto_stats(desc_html):
     return out, used
 
 
+# 화면 '근거'용 능력치 이름 (rules.json stats 키)
+STAT_LABEL = {
+    "HP": "체력", "AD": "공격력", "AP": "주문력", "ARMOR": "방어력", "MR": "마법 저항력", "AS": "공격 속도",
+    "CRIT": "치명타 확률", "HASTE": "스킬 가속", "MS": "이동 속도", "MSP": "이동 속도", "LS": "생명력 흡수",
+    "OMNIVAMP": "모든 피해 흡혈", "LETHALITY": "물리 관통력", "MPEN": "마법 관통력", "MPENP": "마법 관통력",
+    "HSP": "회복·보호막 효과", "HPmult": "체력", "ADmult": "공격력", "APmult": "주문력", "ASmult": "총 공격 속도",
+    "adaptive": "적응형 능력치", "adaptiveMult": "적응형 능력치", "dmgDealtMult": "가하는 피해",
+    "skillDmgMult": "스킬 피해", "effectDmgMult": "아이템·증강 피해", "goldValue": "골드 가치",
+    "basicHaste": "기본 스킬 가속", "ultHaste": "궁극기 가속 효과", "ultHasteAdd": "궁극기 가속",
+    "slotHaste": "스킬별 가속", "onhitCdr": "적중 시 재사용 대기시간 감소(초)", "refundPct": "재사용 대기시간 반환 비율",
+    "refundChanceRanged": "반환 확률(원거리)", "refundChanceMelee": "반환 확률(근접)", "invulnSec": "무적 시간(초)",
+    "drSec": "피해 감소 → 무적 환산(초)", "controlSec": "제어력(초)", "controlPerCast": "스킬당 제어력(초)",
+    "fearPerCast": "스킬당 공포(초)", "selfHeal": "생명선 회복", "ehpPhysMult": "받는 물리 피해 감소",
+    "ehpMagFlat": "마법 보호막", "bonusMANAtoAP": "추가 마나 → 주문력", "itemHPbonus": "아이템 체력 추가",
+    "bonusResistMult": "추가 방어·마법 저항", "onhitRemainingPct": "남은 재사용 대기시간 감소",
+    "refundAll": "모든 스킬에 반환 적용", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "critToHaste": "치명타 → 스킬 가속",
+    "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
+    "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
+}
+# 0~1 비율로 저장하는 키 → 화면에 % 로
+PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
+            "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
+            "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
+            "bonusMANAtoAP", "ultTriggerMs"}
+
+
+def _fmt_val(v, key=None):
+    if key in PCT_KEYS and isinstance(v, (int, float)) and not isinstance(v, bool):
+        return f"{round(v * 100, 2):g}%"
+    if isinstance(v, dict):
+        return " · ".join(f"{k} {_fmt_val(x)}" for k, x in v.items()) if "base" not in v else "레벨 비례"
+    if isinstance(v, bool):
+        return "예" if v else "아니요"
+    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
+
+
+def rule_basis(rule, resolved, desc_html, warn, who):
+    """규칙 수치마다 근거를 붙인다: 📊 게임 데이터 값 / 📖 설명 수치 / 🧮 계산 / ⚠️ 가정(이유). 근거 없는 가정값은 경고."""
+    spec = rule.get("stats") or {}
+    nums = {round(float(x), 4) for x in re.findall(r"\d+(?:\.\d+)?", re.sub(r"<[^>]+>", "", desc_html or ""))}
+    out, unexplained = [], []
+    if rule.get("auto"):
+        out.append({"t": "auto", "text": rule.get("model", "").replace("자동 추정 (검토 필요): ", "설명 문장에서 자동으로 읽음: ")})
+    for k, v in spec.items():
+        label = STAT_LABEL.get(k, k)
+        val = resolved.get(k, v)
+        if isinstance(v, str):
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 데이터 값 '{v.lstrip('-')}'"})
+        elif isinstance(v, dict) and "calc" in v:
+            out.append({"t": "game", "text": f"{label} — 게임 계산식 '{v['calc']}'"})
+        elif isinstance(v, dict):
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val)} — 게임 데이터 값 {', '.join(v.values())}"})
+        elif isinstance(v, bool):
+            out.append({"t": "desc", "text": f"{label}: 설명 내용"})
+        elif rule.get("basis"):
+            continue  # 계산 근거(basis)가 설명한다. 설명 숫자와 우연히 같아도 '설명 수치'로 표시하지 않는다
+        elif round(v, 4) in nums or round(v * 100, 4) in nums:
+            out.append({"t": "desc", "text": f"{label} {_fmt_val(v, k)} — 설명에 나온 수치"})
+        else:
+            unexplained.append(f"{label} {_fmt_val(v, k)}")
+    b = rule.get("basis") or {}
+    if b.get("calc"):
+        out.append({"t": "calc", "text": b["calc"]})
+    for a in b.get("assume") or []:
+        out.append({"t": "assume", "text": a["what"], "why": a["why"], "noData": a.get("noData", False)})
+    if unexplained and not b:
+        warn.append(f"{who}: 근거 없는 가정값 {', '.join(unexplained)} → rules.json basis 필요")
+        out.append({"t": "missing", "text": "근거를 아직 적지 않은 값: " + ", ".join(unexplained)})
+    return out
+
+
 def augment_history(prev, out_augs, version):
     """이전 data.json 과 비교해 새 증강·설명 바뀐 증강을 찾는다.
 
@@ -640,7 +712,10 @@ def review_report(version, new, changed, mismatch, rule_warn, auto_rules, no_num
                      for a in new])
     sec("✏️ 설명이 바뀐 증강 (숫자 말고 문장이 바뀜)", [f"**{a['name']}** (`{a['id']}`)" + (" — 직접 만든 규칙 있음, 다시 확인" if a["id"] in hand_rules else "")
                                                 for a in changed])
-    sec("⚠️ 패치 노트 숫자가 게임 데이터 설명에 없음", [f"**{a['name']}**: {line}" for a, line in mismatch])
+    label = {"applied": "📄 패치 노트 값 임시 적용", "stale": "⚠️ 게임 데이터가 아직 이전 값 (자리 못 짚음, 계산은 이전 값)",
+             "differ": "⚠️ 이전·이후 값 모두 데이터에 없음"}
+    sec("패치 노트 대조", [f"{label[r['status']]} — **{x['name']}**: {r['line']}" + (f" ({r['note']})" if r.get("note") else "")
+                       for x, r in mismatch])
     sec("🔧 규칙 수치 경고 (값 이름이 사라짐 등)", rule_warn)
     return "\n".join(out) if len(out) > 4 else ""
 
@@ -779,11 +854,17 @@ def main():
             disabled_ids.add(name)
             continue
         spell = kiwi.get(a.get("RootSpell", ""), {}).get("mSpell", {})
-        aug_spells[name] = spell
         raw = strings.get((a.get("AugmentTooltipTra") or "").lower()) \
             or strings.get((a.get("DescriptionTra") or "").lower()) or ""
         raw = expand_templates(raw, strings)
         text, unresolved = resolve_values(raw, spell)
+        ko_name = strings.get((a.get("NameTra") or "").lower(), "")
+        # 패치 노트 대조: 게임 데이터가 아직 이전 값이고 자리가 확실하면 패치 노트 값으로 다시 계산
+        p_check, patched = check_augment(spell, text, patch_lines.get(ko_name))
+        if patched:
+            spell = patched
+            text, unresolved = resolve_values(raw, spell)
+        aug_spells[name] = spell
         unresolved_total += len(unresolved)
         html, plain, names = to_html(text)
         icon = (a.get("AugmentLargeIconPath") or "").replace(".tex", ".png").lower()
@@ -792,7 +873,8 @@ def main():
             "id": name,
             "effects": effects,
             "enName": en_name,
-            "patch": patch_lines.get(strings.get((a.get("NameTra") or "").lower(), "")),  # 이번 패치 변경
+            "patch": patch_lines.get(ko_name),  # 이번 패치 변경
+            "patchCheck": p_check or None,  # 줄마다 게임 데이터 대조 결과
             "refs": aug_refs(en_name, wa, pn_url if strings.get((a.get("NameTra") or "").lower(), "") in patch_lines else None),
             "eligible": wa.get("eligible"),  # 위키에 적용 스킬 목록이 있으면 그 챔피언들만 발동
             "name": strings.get((a.get("NameTra") or "").lower(), name),
@@ -880,6 +962,8 @@ def main():
                         "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", p_html or d["passive"]["description"]))},
             "spells": spells,
         })
+    for c in out_champs:  # 패치 노트 대조 (모드 보정·재사용 대기시간은 확실하면 패치 노트 값으로)
+        c["patchCheck"] = check_champion(c, c["patch"]) if c["patch"] else None
     out_champs.sort(key=lambda c: c["name"])
 
     # --- 아이콘
@@ -927,6 +1011,10 @@ def main():
             r = rules["augments"].setdefault(a["id"], {})
             r.update({"statsResolved": st, "auto": True, "model": "자동 추정 (검토 필요): " + " / ".join(used)})
             auto_rules[a["id"]] = st
+    aug_by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():  # 규칙 수치 근거 (화면 '근거')
+        if aid in aug_by_id and (r.get("stats") or r.get("statsResolved")):
+            r["basisView"] = rule_basis(r, r.get("statsResolved") or {}, aug_by_id[aid]["desc"], rule_warn, aug_by_id[aid]["name"])
     for item in out_items:  # 아이템 고유 효과 능력치
         ir = rules.get("items", {}).get(item["name"])
         if not ir:
@@ -936,12 +1024,14 @@ def main():
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")
             continue
         item["passiveStats"] = ir["stats"]
+        item["basisView"] = rule_basis(ir, ir["stats"], (item.get("passiveHtml") or "") + item["desc"], rule_warn, item["name"])
     try:
         prev = json.loads((WEB / "data.json").read_text(encoding="utf-8"))
     except Exception:
         prev = None
     new_augs, changed_augs = augment_history(prev, out_augs, version)
-    mismatch = patch_mismatches(out_augs, aug_spells)
+    mismatch = [(x, r) for x in out_augs + out_champs for r in (x.get("patchCheck") or [])
+                if r["status"] in ("applied", "stale", "differ")]
     no_number = {a["id"] for a in out_augs
                  if not a["effects"] and not (rules["augments"].get(a["id"]) or {}).get("statsResolved")}
     report = review_report(version, new_augs, changed_augs, mismatch, rule_warn, auto_rules, no_number,
@@ -976,6 +1066,9 @@ def main():
     print(f"  자동 추정 능력치 {len(auto_rules)}개: {', '.join(a['name'] for a in out_augs if a['id'] in auto_rules)}")
     print(f"  새 증강 {len(new_augs)}개, 설명 바뀐 증강 {len(changed_augs)}개, 패치 노트 숫자 불일치 {len(mismatch)}건"
           + (" → web/review.md" if report else ""))
+    from collections import Counter
+    pc = Counter(r["status"] for x in out_augs + out_champs for r in (x.get("patchCheck") or []))
+    print(f"  패치 노트 대조: {dict(pc)}")
     print(f"  증강 중 수치 일부 못 채움(?) {with_q}개, 효과 태그 분류 안 됨 {no_tag}개")
     print(f"  모드 목록에 있지만 데이터 없음 {len(missing)}개, 아이콘 실패 {len(failed)}개")
     for u in failed[:5]:
