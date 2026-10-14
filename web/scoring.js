@@ -510,7 +510,7 @@
   // ---- 계산 결과 기억 (같은 챔피언·증강·아이템·가중치·상대면 다시 계산하지 않는다)
   // 증강 목록·선택지·추천 빌드·게임 화면 표시가 같은 계산을 여러 번 부르고, 게임 연동은 3초마다 다시 그린다.
   // 결과는 읽기 전용으로 쓴다 (부르는 쪽에서 고치면 다음 호출에 그대로 나온다).
-  const MEMO_MAX = 40;
+  let MEMO_MAX = 40;  // 가벼운 모드(저사양 PC)에선 setMemoMax 로 줄인다
   const memo = new Map();
   const ids = (list) => (list || []).map((x) => x.id);
   function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra) {
@@ -538,11 +538,12 @@
       () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, keys));
   }
   const clearMemo = () => memo.clear();
+  const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, withChosenFeatures,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

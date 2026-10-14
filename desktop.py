@@ -493,6 +493,7 @@ class Diag(threading.Thread):
     def __init__(self, path, beats, status=None, aug=None):
         super().__init__(daemon=True, name="진단")
         self.aug = aug  # 증강 인식 상태를 돌려주는 함수 (선택지·고른 증강·인식 상태가 바뀌면 남긴다)
+        self.light = False
         self._last_aug = {}
         self.path = path
         self.beats = beats  # {이름: (마지막 시각을 돌려주는 함수, 멈춤으로 볼 초)}
@@ -561,7 +562,9 @@ class Diag(threading.Thread):
     TRIM_EVERY = 120  # 초. 안 쓰는 메모리를 윈도우에 돌려주는 간격 (메모리 최소화)
 
     def run(self):
-        self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}")
+        gb = total_ram_gb()
+        self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}"
+                   + (f" · 메모리 {gb:.0f}GB" if gb else "") + (" · 가벼운 모드" if self.light else ""))
         # 프로그램 전체가 멈추면(파이썬 잠금 교착) 이 스레드도 못 돌아서 위의 '멈춤' 기록을 못 남긴다 (v0.1.12 실제 PC:
         # 20:21:06 뒤로 한 줄도 없음). faulthandler 는 파이썬 잠금 없이 도는 감시라, 다시 못 맞추면 모든 스레드 위치를 쓴다
         import faulthandler
@@ -734,7 +737,12 @@ class Api:
                 "live": bool(self._settings.get("live", True)),
                 "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
                 "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
-                "itemSets": bool(self._settings.get("item_sets", True))}
+                "itemSets": bool(self._settings.get("item_sets", True)), "light": light_mode(self._settings)}
+
+    def set_light(self, on):
+        """가벼운 모드 켜기/끄기 (증강 칸 아이콘 읽기는 다시 켜면 적용)"""
+        self._settings.set(light=bool(on))
+        return bool(on)
 
     def set_item_sets(self, on):
         self._settings.set(item_sets=bool(on))
@@ -860,7 +868,34 @@ def lower_priority():
 # 게임이 쓰는 GPU 를 나눠 쓰지 않는다. 화면 프로세스도 하나로 (메모리 최소화 요청 2026-10-14)
 WEBVIEW2_ARGS = ("--disable-gpu --disable-gpu-compositing --in-process-gpu --renderer-process-limit=1 "
                  "--enable-low-end-device-mode --disable-background-networking --disable-component-update "
-                 "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter")
+                 "--js-flags=--optimize-for-size --enable-features=NetworkServiceInProcess2 "
+                 "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter,"
+                 "SpareRendererForSitePerProcess,BackForwardCache")
+
+
+def total_ram_gb():
+    """윈도우 전체 메모리 (GB). 모르면 None"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+
+        class MS(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32), ("ullTotalPhys", ctypes.c_uint64),
+                        ("ullAvailPhys", ctypes.c_uint64), ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+                        ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64), ("ullAvailExtendedVirtual", ctypes.c_uint64)]
+        m = MS()
+        m.dwLength = ctypes.sizeof(MS)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+        return m.ullTotalPhys / 1024 ** 3
+    except Exception:
+        return None
+
+
+def light_mode(settings):
+    """가벼운 모드: 기본으로 켜져 있다 (저사양 PC 도 쓰게, 사용자 요청 2026-10-14). 끄면 증강 칸 아이콘 읽기까지 켜진 전체 모드"""
+    v = settings.get("light")
+    return v if isinstance(v, bool) else True
 
 
 def trim_memory():
@@ -904,8 +939,9 @@ def main():
         win = overlay._Win()
         reader = augocr.Reader(win.game_rect, augment_names)
         reader.enabled = watcher.enabled
-        # 증강 칸 아이콘 읽기: 받은 데이터의 증강 아이콘과 비교 (고른 증강의 정답)
-        reader.icon_dir = str(user_dir() / "web" / "icons" / "augment")
+        # 증강 칸 아이콘 읽기: 받은 데이터의 증강 아이콘과 비교 (고른 증강의 정답).
+        # 가벼운 모드(저사양 PC)에선 끈다: numpy·Pillow 를 아예 안 불러와 메모리·CPU 를 아낀다 (고른 증강은 클릭으로)
+        reader.icon_dir = None if light_mode(settings) else str(user_dir() / "web" / "icons" / "augment")
         try:
             reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
         except (OSError, ValueError, KeyError):
@@ -945,13 +981,15 @@ def main():
     api._window = window
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
     # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
-    Diag(user_dir() / "logs" / "diag.log", {
+    diag = Diag(user_dir() / "logs" / "diag.log", {
         "게임 연동": (lambda: watcher.beat, 30),
         "롤 클라이언트": (lambda: lw.beat, 60),
         "게임 화면 표시": (lambda: ov.beat, 15),
         "애드온 화면": (lambda: api._ui_beat, 90),
         "증강 인식": (lambda: reader.beat if reader else None, 30),
-    }, status=lambda: ov.status, aug=lambda: reader.state if reader else None).start()
+    }, status=lambda: ov.status, aug=lambda: reader.state if reader else None)
+    diag.light = light_mode(settings)
+    diag.start()
 
     def on_closing():
         try:

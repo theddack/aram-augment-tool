@@ -1109,6 +1109,19 @@ window.addEventListener("pywebviewready", async () => {
   $("#itemset-toggle").checked = st.itemSets;
   $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });
   setInterval(async () => applyLcu(api, await api.get_lcu()), 3000);
+  // 가벼운 모드 (저사양 PC): 계산 기억을 줄이고 쉽게 보기만. 증강 칸 아이콘 읽기는 프로그램을 다시 켜면 꺼진다
+  const applyLight = (on) => {
+    document.body.classList.toggle("light", on);
+    S.setMemoMax(on ? 8 : 40);
+    if (on && !document.body.classList.contains("simple")) setSimple(true);
+  };
+  $("#light-toggle").checked = !!st.light;
+  applyLight(!!st.light);
+  $("#light-toggle").addEventListener("change", async (e) => {
+    await api.set_light(e.target.checked);
+    applyLight(e.target.checked);
+    $("#live-status").title = "가벼운 모드의 증강 칸 읽기 설정은 프로그램을 다시 켜면 적용돼요";
+  });
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
   // 게임 중엔 1초마다(증강 선택 화면을 읽으면 바로 카드 평가가 떠야 해서), 그 밖엔 3초마다.

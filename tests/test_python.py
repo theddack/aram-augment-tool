@@ -690,3 +690,16 @@ class GameLog(unittest.TestCase):
             rec.finish()
         self.assertEqual(len([p for p in base.iterdir() if p.is_dir()]), 2)
         self.assertEqual(len(list(base.glob("*.zip"))), 2)
+
+
+class LightMode(unittest.TestCase):
+    def test_default_on(self):
+        class S:
+            def __init__(self, v):
+                self.v = v
+
+            def get(self, k, d=None):
+                return self.v.get(k, d)
+        self.assertTrue(desktop.light_mode(S({})), "가벼운 모드가 기본")
+        self.assertFalse(desktop.light_mode(S({"light": False})), "끄면 전체 모드")
+        self.assertIn("--disable-gpu", desktop.WEBVIEW2_ARGS)
