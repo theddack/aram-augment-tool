@@ -36,6 +36,7 @@ MODE_PATH = "Maps/Shipping/Map12/Modes/KIWI"
 REFRESH = "--refresh" in sys.argv
 
 
+SAFE_ID = re.compile(r"[A-Za-z0-9_]{1,80}")  # 외부 데이터의 id 검사 (HTML 속성·파일 이름에 그대로 쓰인다)
 UA = "aram-augment-tool (+https://github.com/theddack/aram-augment-tool)"  # 누가 받는지 밝힌다
 FETCHED = {}  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
 
@@ -784,6 +785,7 @@ def main():
         for ref in map12[list_key]["mItems"]:
             mode_ids.add(ref.split("/")[-1])
     out_items, missing, unknown_stats = [], [], []
+    mode_ids = {i for i in mode_ids if i.isdigit()}  # 아이템 id 는 숫자만 (화면 속성·파일 이름에 쓰임)
     for iid in sorted(mode_ids, key=int):
         it = items.get(iid)
         if not it:
@@ -839,6 +841,9 @@ def main():
     out_augs, unresolved_total, disabled, disabled_ids, aug_spells = [], 0, [], set(), {}
     wiki_matched = 0
     for name in kiwi_names:
+        if not SAFE_ID.fullmatch(name):  # 화면 속성·아이콘 파일 이름에 쓰이므로 영문·숫자·밑줄만
+            print("  [건너뜀] 이상한 증강 id:", repr(name)[:60])
+            continue
         a = aug_data.get(name)
         if not a:
             missing.append(name)
@@ -915,6 +920,9 @@ def main():
     mayhem_cd = mayhem_cooldowns(wiki_mayhem_page, wiki)
     cd_applied = []
     for cid, c in champs.items():
+        if not SAFE_ID.fullmatch(cid) or not str(c.get("key", "")).isdigit():
+            print("  [건너뜀] 이상한 챔피언 id:", repr(cid)[:60])
+            continue
         d = details[cid]
         traits, magic_share, features = champion_traits(d)
         spells, unresolved = process_champion(cid, d, bins[cid])
