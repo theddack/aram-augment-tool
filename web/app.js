@@ -3,7 +3,7 @@ const St = window.Stats;
 const state = {
   data: null, champ: null, weights: null, chosen: [], rarity: "all", augQuery: "",
   items: [], kind: "all", itemQuery: "", concept: "augment", level: 18, aram: true,
-  offers: [null, null, null], rerolled: [false, false, false], tierMode: "auto",
+  offers: [null, null, null], rerolled: [false, false, false], tierMode: "auto", target: "",
 };
 const REROLL_PCT = 0.4; // 같은 등급 안에서 하위 40% 이하면 새로고침 권장
 const statOpts = () => ({ aram: state.aram });
@@ -66,6 +66,9 @@ async function init() {
   });
   $("#level").addEventListener("input", (e) => { state.level = Number(e.target.value); $("#level-val").textContent = state.level; renderStats(); });
   $("#aram-toggle").addEventListener("change", (e) => { state.aram = e.target.checked; renderAll(); });
+  $("#target-champ").innerHTML += d.champions.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  $("#target-champ").addEventListener("change", (e) => { setTargetChamp(e.target.value); renderAll(); });
+  setTargetChamp("");
   $("#stat-panel").querySelector("p").innerHTML = $("#stat-panel").querySelector("p").innerHTML
     .replace("${TARGET_ARMOR}", St.TARGET.ARMOR).replace("${TARGET_MR}", St.TARGET.MR);
   $("#reset-weights").addEventListener("click", () => {
@@ -73,6 +76,23 @@ async function init() {
   });
   renderChamps();
   renderAll();
+}
+
+// 기준 상대: 고정값 또는 실제 챔피언의 18레벨 균형 빌드 능력치 (체력·방어력·마법 저항력)
+function setTargetChamp(id) {
+  const d = state.data;
+  const enemy = d.champions.find((c) => c.id === id);
+  state.target = enemy ? id : "";
+  if (!enemy) {
+    St.setTarget(null);
+  } else {
+    const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
+    const t = St.computeStats(enemy, 18, b.pick.map((p) => p.item), [], statOpts()).total;
+    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
+  }
+  const T = St.TARGET;
+  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : "고정값"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
+  if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
 }
 
 function renderChamps() {
@@ -205,7 +225,7 @@ let tierCache = { key: null, value: null };
 // 첫 증강은 챔피언 기준(종합), 고른 뒤에는 고른 증강과의 연계 기준. 버튼으로 바꿀 수 있다
 const tierMode = () => (state.tierMode === "auto" ? (state.chosen.length ? "synergy" : "total") : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode()]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -265,6 +285,14 @@ function refLinks(refs) {
   if (!refs || !refs.length) return "";
   return `<div class="refs">🔗 ${refs.map((r) => `<a href="${esc(r.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"${r.external ? ' class="ext"' : ""}>${esc(r.label)}</a>`).join(" · ")}</div>`;
 }
+const majorMinor = (v) => String(v || "").split(".").slice(0, 2).join(".");
+// 새 증강(이번 패치에 처음 본 것)·자동 추정 규칙 표시
+function newChips(a) {
+  const r = state.data.rules.augments[a.id] || {};
+  return (a.firstSeen && majorMinor(a.firstSeen) === majorMinor(state.data.version) ? `<span class="chip on" title="패치 ${esc(a.firstSeen)}에 처음 나온 증강">✨ 새 증강</span>` : "")
+    + (r.auto ? `<span class="chip" title="사람이 확인하기 전, 설명 문장에서 자동으로 읽은 능력치예요">🤖 자동 추정</span>` : "");
+}
+
 function patchChip(lines) {
   return lines && lines.length ? `<div class="patch">🆕 이번 패치: ${esc(lines.slice(0, 3).join(" · "))}${lines.length > 3 ? " …" : ""}</div>` : "";
 }
@@ -380,7 +408,7 @@ function renderOfferResult() {
       const f = r.aug.final;
       return `<tr class="${r === best ? "best" : ""}">
         <td><img src="icons/augment/${r.a.id}.png" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-          ${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+          ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
           ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
           <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div></td>
         <td>${tierBadge(tiers[r.a.id])}</td>
@@ -393,7 +421,7 @@ function renderOfferResult() {
         <td><button data-pick="${r.i}">이걸로 선택</button></td></tr>`;
     }).join("")}</table>
     <p class="muted small">강해지는 정도(빌드 가치) = 지금 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 스킬 피해·초당 피해·버티는 힘·회복/보호막이 오르는 정도(가중합 ×100).
-      등급 내 위치는 같은 등급에서 숫자로 평가되는 증강끼리 비교한 순위예요. "숫자 없음"은 무적·CC·재사용 대기시간 반환처럼 고정 수치가 없는 증강이라 직접 판단이 필요해요.
+      등급 내 위치는 같은 등급에서 숫자로 평가되는 증강끼리 비교한 순위예요. "숫자 없음"은 소환사 주문 변경·증강 변환·퀘스트처럼 고정 수치가 없는 증강이라 직접 판단이 필요해요.
       콤보·DPS·유효 체력 칸은 그 증강에 맞춰 빌드를 다시 짰을 때(몰빵) 지금 대비 변화예요.
       새로고침 권장 = 새로고침을 안 쓴 칸 중 같은 등급 하위 ${REROLL_PCT * 100}% 안에 드는 가장 낮은 칸.
       추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
@@ -455,10 +483,10 @@ function renderAugs() {
     <div class="aug" data-id="${r.aug.id}">
       <img src="icons/augment/${r.aug.id}.png" alt="" loading="lazy">
       <div>
-        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>
+        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>${newChips(r.aug)}
           ${gains[r.aug.id] ? `<span class="chip ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
-        ${(state.data.rules.augments[r.aug.id] || {}).model ? `<div class="muted small">📐 계산 기준: ${esc(state.data.rules.augments[r.aug.id].model)}</div>` : ""}
+        ${(state.data.rules.augments[r.aug.id] || {}).model ? `<div class="muted small">${state.data.rules.augments[r.aug.id].auto ? "🤖" : "📐"} 계산 기준: ${esc(state.data.rules.augments[r.aug.id].model)}</div>` : ""}
         ${patchChip(r.aug.patch)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${r.unclassified ? `<span class="chip">효과 분류 안 됨</span>` : ""}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req

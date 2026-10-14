@@ -7,6 +7,7 @@ web/data.json 과 web/icons/ 를 만든다. 원본 응답은 .cache/ 에 저장�
   python3 build_data.py            # 캐시 있으면 재사용
   python3 build_data.py --refresh  # 패치 후 전부 다시 받기
 """
+import hashlib
 import json
 import re
 import sys
@@ -220,7 +221,7 @@ FEATURES = {
     "knockback": r"밀어내|밀쳐|밀려|뒤로 밀|넉백|날려 ?보내",
     "terrain": r"지형을 생성|벽을 세|장벽을|지형을 만",
     "spin": r"회전|회오리|휘둘러",
-    "summon": r"티버|포탑을 (설치|배치|세)|분신|환각|식물|데이지|소환물|구울|안개 수행자|깜짝 상자|소환한 ",
+    "summon": r"티버|포탑을 (설치|배치|세)|분신|환각|식물|데이지|소환물|구울|안개 수행자|깜짝 상자|소환한 |새끼 거미|모래 병사|촉수를 소환|무리를 소환|묘목",
     "channel": r"정신 집중",
     "stealth": r"투명|은신|위장",
     "immobilize": r"기절|속박|에어본|공중으로|도발|매혹|공포|제압|변이|끌어당",
@@ -534,6 +535,116 @@ def resolve_rule_stats(rules, aug_spells):
     return warn
 
 
+# 자동 규칙: rules.json 에 없는 증강(새 증강 등)은 설명의 '조건 없는 능력치 문장'만 능력치로 읽는다.
+# 설명은 매번 게임 데이터 수치로 다시 채우므로 패치로 숫자가 바뀌어도 따라간다. 화면에 '자동 추정'으로 표시.
+AUTO_STAT = [  # (설명 속 능력치 이름, 키, % 일 때 키, 나눌 값). 긴 이름부터 (체력 회복 및 보호막 효과 > 체력)
+    ("회복 및 보호막 효과", "HSP", "HSP", 100), ("모든 피해 흡혈", "OMNIVAMP", "OMNIVAMP", 100),
+    ("생명력 흡수", "LS", "LS", 100), ("치명타 확률", "CRIT", "CRIT", 100), ("공격 속도", "AS", "AS", 100),
+    ("스킬 가속", "HASTE", None, 1), ("적응형 능력치", "adaptive", "adaptiveMult", 100),
+    ("물리 관통력", "LETHALITY", None, 1), ("마법 관통력", "MPEN", "MPENP", 100),
+    ("이동 속도", "MS", "MSP", 100), ("마법 저항력", "MR", None, 1), ("방어력", "ARMOR", None, 1),
+    ("주문력", "AP", "APmult", 100), ("공격력", "AD", "ADmult", 100), ("체력", "HP", "HPmult", 100),
+]
+AUTO_COND = re.compile(r"시 |마다|동안|하면|면 |할 때|경우|중첩|퀘스트|보상|보유|이상|이하|처치|사망|적중|타격|"
+                       r"사용하|대상|아군|주변|감소|잃|레벨 비례|당 |초 후|전투")
+AUTO_SKIP = re.compile(r"멈춥|에만|만 적용|대신|바뀝|변경")  # 설명 어딘가에 이런 말이 있으면 통째로 사람 판단
+AUTO_QUAL = re.compile(r"(궁극기|눈덩이|기본|총|소환사 주문|아이템|[QWER]|의)\s*$")  # 특정 대상 한정 수식어
+
+
+def auto_stats(desc_html):
+    """설명에서 조건 없는 '능력치가 N(%) 증가/획득' 문장을 능력치로. → ({키: 값}, [근거 문장])"""
+    text = re.sub(r"<br\s*/?>", "\n", desc_html)
+    text = re.sub(r"<[^>]+>", "", text)
+    if AUTO_SKIP.search(text):
+        return {}, []
+    out, used = {}, []
+    for i, sent in enumerate(re.split(r"(?<=다\.)|\n", text)):
+        if (sent if i == 0 else sent[1:]).startswith(" "):  # 앞의 아이콘·스킬 이름이 빠진 문장 (Q 스킬 가속 등)
+            continue
+        s = sent.strip()
+        if not s or AUTO_COND.search(s):
+            continue
+        hit = False
+        for name, key, pkey, div in AUTO_STAT:
+            m = re.search(re.escape(name) + r"(?:이|가|을|를)\s*([\d.]+)(%?)\s*(?:증가|획득|얻)", s)
+            if not m or AUTO_QUAL.search(s[:m.start()]):
+                continue
+            k = pkey if m.group(2) else key
+            if not k or k in out:
+                continue
+            out[k] = float(m.group(1)) / (div if m.group(2) else 1)
+            s = s.replace(m.group(0), "")
+            hit = True
+        if hit:
+            used.append(sent.strip())
+    return out, used
+
+
+def augment_history(prev, out_augs, version):
+    """이전 data.json 과 비교해 새 증강·설명 바뀐 증강을 찾는다.
+
+    처음 본 패치(firstSeen)·설명이 바뀐 패치(descChanged)는 다음 갱신에도 이어 가서,
+    같은 패치 동안은 매일 같은 목록이 나온다 (확인 이슈 내용이 하루 만에 사라지지 않게).
+    """
+    mm = lambda v: ".".join(str(v or "").split(".")[:2])
+    old = {a["id"]: a for a in (prev or {}).get("augments", [])}
+    for a in out_augs:
+        # 게임 원문(자리표시자 채우기 전) 기준: 우리 해석 코드를 고쳐도 '바뀜'으로 잡히지 않게. 숫자는 빼고 문장만
+        h = hashlib.sha1(re.sub(r"[\d.]+", "#", a.pop("_raw", "")).encode()).hexdigest()[:12]
+        a["srcHash"] = h
+        o = old.get(a["id"])
+        if not prev:
+            a["firstSeen"] = None  # 비교할 이전 데이터가 없으면 모름 (신규 표시 안 함)
+        elif not o:
+            a["firstSeen"] = version
+        else:
+            a["firstSeen"] = o.get("firstSeen")
+            a["descChanged"] = version if o.get("srcHash") and o["srcHash"] != h else o.get("descChanged")
+    new = [a for a in out_augs if a.get("firstSeen") and mm(a["firstSeen"]) == mm(version)]
+    changed = [a for a in out_augs if a.get("descChanged") and mm(a["descChanged"]) == mm(version) and a not in new]
+    return new, changed
+
+
+PATCH_ARROW = re.compile(r"([\d.]+)\s*(?:%|초)?\s*(?:⇒|→|->)\s*([\d.]+)")
+
+
+def patch_mismatches(out_augs, aug_spells):
+    """패치 노트의 '이전 ⇒ 이후' 숫자가 게임 데이터(설명 또는 값 목록)에 있는지 확인. 없으면 게임 파일 반영 전이거나 다른 수치."""
+    bad = []
+    for a in out_augs:
+        plain = re.sub(r"<[^>]+>", "", a["desc"])
+        nums = {float(x) for x in re.findall(r"\d+(?:\.\d+)?", plain)}
+        for dv in (aug_spells.get(a["id"]) or {}).get("DataValues") or []:
+            for x in dv.get("values") or []:
+                nums.update({round(x, 4), round(x * 100, 4)})
+        for line in a.get("patch") or []:
+            for _, after in PATCH_ARROW.findall(line):
+                try:
+                    v = float(after)
+                except ValueError:
+                    continue
+                if v not in nums:
+                    bad.append((a, line))
+    return bad
+
+
+def review_report(version, new, changed, mismatch, rule_warn, auto_rules, no_number, hand_rules=()):
+    """사람이 확인할 것 목록 (Markdown). 갱신 워크플로가 GitHub 이슈로 올린다."""
+    out = [f"# 확인 필요 — 패치 {version}", "",
+           "매일 갱신 때 자동으로 만든 목록이에요. 확인 후 rules.json 을 고치거나 이 이슈를 닫아 주세요.", ""]
+    def sec(title, rows):
+        if rows:
+            out.extend([f"## {title} ({len(rows)})", *[f"- {r}" for r in rows], ""])
+    sec("✨ 새 증강", [f"**{a['name']}** (`{a['id']}`) — "
+                     + ("자동 추정 능력치 있음" if a["id"] in auto_rules else "숫자 없음: 규칙 필요" if a["id"] in no_number else "효과 자동 추출됨")
+                     for a in new])
+    sec("✏️ 설명이 바뀐 증강 (숫자 말고 문장이 바뀜)", [f"**{a['name']}** (`{a['id']}`)" + (" — 직접 만든 규칙 있음, 다시 확인" if a["id"] in hand_rules else "")
+                                                for a in changed])
+    sec("⚠️ 패치 노트 숫자가 게임 데이터 설명에 없음", [f"**{a['name']}**: {line}" for a, line in mismatch])
+    sec("🔧 규칙 수치 경고 (값 이름이 사라짐 등)", rule_warn)
+    return "\n".join(out) if len(out) > 4 else ""
+
+
 # ---------------------------------------------------------------- 수집
 def configure(out=None, cache=None, refresh=None):
     """저장 위치를 바꾼다. 데스크톱 프로그램은 사용자 폴더에 받는다 (앱 번들 안은 쓰기 불가)."""
@@ -691,6 +802,7 @@ def main():
             "tags": tag_text(plain, names),
             "unresolved": len(unresolved),
             "_icon": icon,
+            "_raw": raw,
         })
 
     # --- 챔피언 (상세 데이터에서 스킬 특성 추출)
@@ -806,6 +918,15 @@ def main():
             if n not in item_names:
                 print("  [규칙] 없는 아이템:", aid, n)
     rule_warn = resolve_rule_stats(rules, aug_spells)
+    auto_rules = {}  # rules.json 에 능력치 규칙이 없는 증강 → 설명에서 자동 추정
+    for a in out_augs:
+        if (rules["augments"].get(a["id"]) or {}).get("stats"):
+            continue
+        st, used = auto_stats(a["desc"])
+        if st:
+            r = rules["augments"].setdefault(a["id"], {})
+            r.update({"statsResolved": st, "auto": True, "model": "자동 추정 (검토 필요): " + " / ".join(used)})
+            auto_rules[a["id"]] = st
     for item in out_items:  # 아이템 고유 효과 능력치
         ir = rules.get("items", {}).get(item["name"])
         if not ir:
@@ -815,6 +936,17 @@ def main():
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")
             continue
         item["passiveStats"] = ir["stats"]
+    try:
+        prev = json.loads((WEB / "data.json").read_text(encoding="utf-8"))
+    except Exception:
+        prev = None
+    new_augs, changed_augs = augment_history(prev, out_augs, version)
+    mismatch = patch_mismatches(out_augs, aug_spells)
+    no_number = {a["id"] for a in out_augs
+                 if not a["effects"] and not (rules["augments"].get(a["id"]) or {}).get("statsResolved")}
+    report = review_report(version, new_augs, changed_augs, mismatch, rule_warn, auto_rules, no_number,
+                           {k for k, v in rules["augments"].items() if not v.get("auto")})
+    (WEB / "review.md").write_text(report, encoding="utf-8")
     sources = build_sources(FETCHED, pn_url if patch else None)
     data = {"version": version, "dataVersion": cd_version, "sources": sources, "patchNotes": patch,
             "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "tags": TAGS, "rules": rules,
@@ -841,6 +973,9 @@ def main():
     print(f"  아이템 능력치 줄 해석 실패 {len(unknown_stats)}개: {unknown_stats[:5]}")
     for w in rule_warn:
         print("  [규칙 수치]", w)
+    print(f"  자동 추정 능력치 {len(auto_rules)}개: {', '.join(a['name'] for a in out_augs if a['id'] in auto_rules)}")
+    print(f"  새 증강 {len(new_augs)}개, 설명 바뀐 증강 {len(changed_augs)}개, 패치 노트 숫자 불일치 {len(mismatch)}건"
+          + (" → web/review.md" if report else ""))
     print(f"  증강 중 수치 일부 못 채움(?) {with_q}개, 효과 태그 분류 안 됨 {no_tag}개")
     print(f"  모드 목록에 있지만 데이터 없음 {len(missing)}개, 아이콘 실패 {len(failed)}개")
     for u in failed[:5]:

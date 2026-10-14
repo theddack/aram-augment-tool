@@ -176,6 +176,11 @@
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
+  const DEFAULT_TARGET = { ...TARGET };
+  // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
+  function setTarget(t) {
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP } : {});
+  }
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
 
   function metrics(champ, L, stats, opts = {}) {
@@ -299,7 +304,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { ROWS, TARGET, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { ROWS, TARGET, DEFAULT_TARGET, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

@@ -38,11 +38,14 @@
       <div class="row controls">
         <label>레벨 <input id="level" type="range" min="1" max="18" value="18"> <b id="level-val">18</b></label>
         <label><input id="aram-toggle" type="checkbox" checked> 칼바람 밸런스 보정</label>
+        <label title="피해 계산에 쓰는 상대. 챔피언을 고르면 그 챔피언의 18레벨 추천 빌드(균형) 능력치를 써요">상대
+          <select id="target-champ"><option value="">기준 상대 (고정값)</option></select></label>
+        <span id="target-info" class="muted small"></span>
       </div>
       <div id="metrics"></div>
       <table id="stat-table"></table>
       <div id="skills"></div>
-      <p class="muted small">스킬 콤보 = Q·W·E·R 각 1회 피해 합 (방어력 ${TARGET_ARMOR}·마법 저항력 ${TARGET_MR}인 대상 기준, 관통력 적용).
+      <p class="muted small">스킬 콤보 = Q·W·E·R 각 1회 피해 합 (위 '상대' 기준, 관통력 적용).
         평타 DPS = 공격력 × 공격 속도 × 치명타 기대값. 유효 체력 = 체력 × (1 + 방어력/100), 마법은 마법 저항력 기준.
         아이템 고유 효과·챔피언 패시브·증강 효과는 게임 데이터 수치로 계산해요(칼바람 증강 모드 전용 수치 우선).
         쿨 반환·초기화는 스킬 가속으로, 무적·피해 감소는 그동안 받을 피해(초당 600 가정)만큼 버티는 힘으로, 골드는 위키 골드 효율 기준 능력치(주 공격·체력·저항)로 바꿔서 계산해요.
