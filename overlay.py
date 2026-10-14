@@ -24,6 +24,7 @@ DEFAULT_POS = {"y": 0.70, "spread": 0.246}
 # 증강 인식으로 카드 이름 줄 위치를 알면: 이름 줄 + 이만큼 (게임 창 높이 비율) 밑에 붙인다.
 # 실제 화면(2026-10-14): 이름 0.46 · 설명 0.53~0.57 · 빈 곳 0.59~0.69 · 블리츠 배지 0.70~ → 설명 밑 빈 곳 위쪽
 BELOW_NAME = 0.15
+BOX_X, BOX_Y = 16, 0.08  # 상점 옆 상자 자리: 게임 창 왼쪽 위 (픽셀, 높이 비율)
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -160,14 +161,10 @@ def layout(payload, w, h):
         cx = round(w * xs[i]) if xs and i < len(xs) and xs[i] is not None else int(w * (0.5 + (i - 1) * pos["spread"]))
         items.append(("card", cx, cy, card))
     hud = payload.get("hud") or []
-    shop = payload.get("shop")
-    # 상자는 상점 창이 열려 있을 때만, 상점 창 왼쪽 바깥에 (오른쪽 위에 늘 띄우면 게임을 가렸다. 2026-10-14 지적)
-    # 상점이 화면 왼쪽에 붙어 있으면 오른쪽 바깥에
-    if hud and shop:
-        if shop["left"] > 0.22:
-            items.append(("hud", int(w * shop["left"]) - 28, int(h * shop["top"]), (hud, "ne")))
-        else:
-            items.append(("hud", int(w * shop["right"]) + 28, int(h * shop["top"]), (hud, "nw")))
+    # 상자는 상점 창이 열려 있을 때만, 게임 창 왼쪽 위 고정 자리에.
+    # 오른쪽 위에 늘 띄우면 게임을 가렸고, 상점 위치를 따라가면 읽을 때마다 위치가 달라 너무 움직였다 (2026-10-14 지적)
+    if hud and payload.get("shop"):
+        items.append(("hud", BOX_X, int(h * BOX_Y), (hud, "nw")))
     return items
 
 
