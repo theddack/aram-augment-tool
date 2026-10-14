@@ -326,6 +326,52 @@ def mayhem_champion_overrides(page_text, wiki_champs):
     return out
 
 
+def _wiki_ranks(text, ranks):
+    """'{{ap|18 to 12}}' / '10 seconds at all ranks' / '60' → 랭크별 값 목록"""
+    m = re.search(r"\{\{ap\|([\d.]+) to ([\d.]+)\}\}", text)
+    if m:
+        a, b = float(m.group(1)), float(m.group(2))
+        return [round(a + (b - a) * i / max(1, ranks - 1), 2) for i in range(ranks)]
+    m = re.search(r"\{\{ap\|([\d.]+(?:\|[\d.]+)+)\}\}", text)
+    if m:
+        vals = [float(x) for x in m.group(1).split("|")]
+        return vals if len(vals) == ranks else None
+    m = re.search(r"([\d.]+)\s*seconds?", text)
+    return [float(m.group(1))] * ranks if m else None
+
+
+def mayhem_cooldowns(page_text, wiki_champs):
+    """위키 증강 모드 표의 스킬 조정 중 재사용 대기시간 → {DDragon id: {슬롯: '문구'}}
+    정적 게임 데이터에는 모드별 쿨다운이 없어서(서버 적용) 위키에서 가져온다."""
+    m = re.search(r"Champions=(.*?)(?:\|-\||</tabber>)", page_text, re.S)
+    if not m:
+        return {}
+    api = {k: v.get("apiname") for k, v in wiki_champs.items() if isinstance(v, dict)}
+    names = {}  # 위키 스킬 이름 → 슬롯
+    for k, v in wiki_champs.items():
+        if isinstance(v, dict):
+            for slot in "qwer":
+                for nm in (v.get(f"skill_{slot}") or {}).values() if isinstance(v.get(f"skill_{slot}"), dict) else (v.get(f"skill_{slot}") or []):
+                    names[(k, nm)] = slot.upper()
+    out = {}
+    for row in m.group(1).split("\n|-")[1:]:
+        cm = re.search(r"\{\{ci\|([^}|]+)", row)
+        if not cm:
+            continue
+        champ = cm.group(1).strip()
+        cid = api.get(champ)
+        cur = None
+        for line in row.split("\n"):
+            am = re.search(r"\{\{c?ai\|([^|}]+)\|" + re.escape(champ), line)
+            if am:
+                ab = am.group(1).strip()
+                cur = ab if ab in "QWER" else names.get((champ, ab))
+                continue
+            if cur and cid and re.search(r"^\*\s*Cooldown changed to", line.strip()):
+                out.setdefault(cid, {})[cur] = line.strip()
+    return out
+
+
 def wiki_mayhem_augments(module_text, wiki_champs):
     """위키 증강 모듈 → {정규화 영어 이름: {"disabled": bool, "eligible": [DDragon id …]}}"""
     data = parse_lua_table(module_text)
@@ -550,6 +596,8 @@ def main():
         bins = dict(zip(champs, ex.map(champ_bin, champs)))
     out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
     mayhem_mods = mayhem_champion_overrides(wiki_mayhem_page, wiki)
+    mayhem_cd = mayhem_cooldowns(wiki_mayhem_page, wiki)
+    cd_applied = []
     for cid, c in champs.items():
         d = details[cid]
         traits, magic_share, features = champion_traits(d)
@@ -565,6 +613,11 @@ def main():
         spell_unresolved += unresolved
         for sp in spells:
             sp["tooltip"], _, _ = to_html(sp["tooltip"])
+            line = mayhem_cd.get(cid, {}).get(sp["slot"])
+            vals = _wiki_ranks(line, sp["ranks"]) if line else None
+            if vals:  # 증강 모드 전용 재사용 대기시간 (위키)
+                sp["cooldownBase"], sp["cooldown"] = sp["cooldown"], vals
+                cd_applied.append(f"{c['name']} {sp['slot']} {sp['cooldownBase'][0]:g}→{vals[0]:g}")
         aram, as_ratio = wiki_extras(wiki, c["name"], cid)
         # 칼바람 증강 모드: 일반 칼바람 보정 위에 모드 전용 보정을 덮어쓴다 (위키)
         aram_source = "칼바람" if aram else None
@@ -648,6 +701,7 @@ def main():
     print(f"  위키 증강 짝짓기 {wiki_matched}/{len(kiwi_names)}, 적용 스킬 목록 있는 증강 "
           f"{sum(1 for a in out_augs if a.get('eligible'))}개, 증강 모드 전용 보정 챔피언 {len(mayhem_mods)}명, "
           f"같은 계열 표시 아이템 {sum(1 for i in out_items if i.get('limit'))}개")
+    print(f"  증강 모드 재사용 대기시간 조정 {len(cd_applied)}개: {', '.join(cd_applied)}")
     print(f"  패시브 수치 설명 찾음 {passive_found}명, 패시브 효과(피해·보호막·회복) 있는 챔피언 "
           f"{sum(1 for c in out_champs if c['passive']['effects'])}명")
     print(f"  고유 효과 수치 뽑은 아이템 {sum(1 for i in out_items if i['effects'])}개 / {len(out_items)}개, "
