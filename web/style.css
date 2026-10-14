@@ -25,7 +25,7 @@ main { display: grid; grid-template-columns: 280px 1fr 340px; gap: 12px; padding
 input[type=search] { width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; }
 button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 header #reset-all { margin-left: auto; }
-#changelog-link, #sources-link { color: var(--muted); margin-left: 8px; }
+#changelog-link, #sources-link, #verify-link { color: var(--muted); margin-left: 8px; }
 body.mini #changelog-link, body.mini #sources-link, body.mini #verify-link { display: none; }
 #desktop-tools { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
 #desktop-tools[hidden] { display: none; }
@@ -213,7 +213,13 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 .basis ul { margin: 4px 0; padding-left: 4px; list-style: none; }
 .basis li { margin: 2px 0; }
 .basis .bwhy { color: var(--muted); font-size: 12px; }
-#app-update { background: #2a2210; color: #ffd166; padding: 6px 16px; font-size: 13px; border-bottom: 1px solid var(--line); }
+/* 새 버전 알림: 어두운 바탕에 기본 파란 링크는 안 읽혀서(2026-10-14 지적) 링크를 버튼 모양으로, 안내는 한 줄 따로 */
+#app-update { background: var(--panel); color: var(--text); padding: 8px 16px; font-size: 13px; border-bottom: 2px solid var(--accent);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+#app-update b { color: var(--accent); }
+#app-update a { color: var(--bg); background: var(--accent); padding: 3px 10px; border-radius: 6px; text-decoration: none; font-weight: 600; }
+#app-update a.sub { color: var(--accent); background: transparent; border: 1px solid var(--accent); font-weight: 500; }
+#app-update .tip { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 #buy-now { margin: 6px 0 2px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 #buy-now:empty { display: none; }
 #buy-now img { width: 20px; height: 20px; vertical-align: middle; border-radius: 3px; }
