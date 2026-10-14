@@ -8,12 +8,12 @@ web/ 화면을 pywebview 창으로 띄운다. 데이터(data.json, 아이콘)는
               윈도우 %APPDATA%\\AramAugment
 """
 import contextlib
-import io
 import json
 import os
 import re
 import shutil
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -665,27 +665,68 @@ class Api:
         return {"current": cur, "latest": latest, "outdated": cur != latest}
 
     def update_data(self):
-        """최신 데이터를 사용자 폴더로 다시 받는다 (수 분 걸림). 끝나면 화면을 새로 고친다."""
-        if not self._lock.acquire(blocking=False):
-            return {"ok": False, "log": "이미 갱신 중이에요."}
-        buf = io.StringIO()
-        try:
-            import build_data
-            build_data.configure(out=user_dir() / "web", cache=user_dir() / "cache", refresh=True)
-            with contextlib.redirect_stdout(buf):
-                build_data.main()
-            ok = True
-        except Exception as e:
-            buf.write(f"\n실패: {e}")
-            ok = False
-        finally:
-            self._lock.release()
-        if ok:
-            self._window.evaluate_js("location.reload()")
-        return {"ok": ok, "log": buf.getvalue()[-2000:]}
+        """최신 데이터를 사용자 폴더로 다시 받기 시작한다 (수 분 걸림). 진행은 update_status 로 본다.
 
+        별도 프로그램(같은 exe 를 --update-data 로)에서 받는다: 이 프로그램 안에서 받으면 35MB 파일 해석·대량 계산이
+        파이썬을 몇 분 동안 붙잡아 창이 '응답 없음'이 된다 (창의 모든 동작이 파이썬을 거친다).
+        """
+        with self._lock:
+            if self._update and self._update.poll() is None:
+                return {"ok": True, "running": True}
+            log = user_dir() / "logs" / "update.log"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("", encoding="utf-8")
+            cmd = [sys.executable, "--update-data"] if getattr(sys, "frozen", False) \
+                else [sys.executable, os.path.abspath(__file__), "--update-data"]
+            flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW (검은 창 안 뜨게)
+            try:
+                self._update = subprocess.Popen(cmd, creationflags=flags, stdin=subprocess.DEVNULL,
+                                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as e:
+                return {"ok": False, "log": f"시작 실패: {e}"}
+            self._update_t0 = time.time()
+            return {"ok": True, "running": True}
+
+    def update_status(self):
+        """데이터 받기 진행: 지금 단계 한 줄, 걸린 시간. 끝나면 성공 여부와 기록 끝부분"""
+        p = self._update
+        if not p:
+            return {"running": False}
+        try:
+            text = (user_dir() / "logs" / "update.log").read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            text = ""
+        steps = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith(" ")]
+        out = {"running": p.poll() is None, "step": update_step(steps[-1] if steps else "시작하는 중"),
+               "seconds": int(time.time() - getattr(self, "_update_t0", time.time()))}
+        if not out["running"]:
+            out.update(ok=p.returncode == 0, log=text[-2000:])
+        return out
+
+
+def update_step(line):
+    """받기 기록 한 줄 → 버튼에 보일 짧은 글 ('… 받는 중...' → '… 받는 중')"""
+    return re.sub(r"\s*\(.*?\)|\.{2,}|…", "", line).strip()[:40]
+
+
+def run_update_data():
+    """--update-data: 데이터만 받고 끝나는 별도 실행. 진행 기록은 logs/update.log (화면이 읽어 간다)"""
+    import build_data
+    log = user_dir() / "logs" / "update.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a", encoding="utf-8", buffering=1) as f, contextlib.redirect_stdout(f):
+        try:
+            build_data.configure(out=user_dir() / "web", cache=user_dir() / "cache", refresh=True)
+            build_data.main()
+            print("완료")
+            return 0
+        except Exception as e:
+            print(f"실패: {e}")
+            return 1
 
 def main():
+    if "--update-data" in sys.argv:
+        sys.exit(run_update_data())
     overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
     settings = Settings()
     web = prepare_web()

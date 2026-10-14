@@ -198,7 +198,7 @@ class Desktop(unittest.TestCase):
         api = desktop.Api(desktop.Settings())
         public = [n for n in dir(api) if not n.startswith("_")]
         self.assertTrue(all(callable(getattr(api, n)) for n in public), public)
-        self.assertLessEqual(len(public), 17)
+        self.assertLessEqual(len(public), 18)  # update_status 추가 (데이터 받기 진행 표시)
 
     def test_version_compare(self):
         self.assertGreater(desktop.version_tuple("0.1.10"), desktop.version_tuple("0.1.9"))
@@ -445,3 +445,34 @@ class AugOcr(unittest.TestCase):
         self.assertIsNone(t.state["picked"])  # 금색이 안 보였으면 정하지 않는다
         self.assertEqual(t.state["pickedFrom"], ["눈 폭발", "탱크 엔진", "정신 변환"])
 
+
+class UpdateData(unittest.TestCase):
+    """데이터 받기는 별도 프로그램에서 (창이 '응답 없음'이 되지 않게), 진행은 기록 파일로 본다"""
+
+    def test_runs_in_child_and_reports_progress(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        orig_user_dir, orig_popen = desktop.user_dir, desktop.subprocess.Popen
+        started = []
+
+        class FakeProc:
+            returncode = None
+
+            def poll(self):
+                return self.returncode
+
+        proc = FakeProc()
+        desktop.user_dir = lambda: d
+        desktop.subprocess.Popen = lambda cmd, **kw: started.append(cmd) or proc
+        try:
+            api = desktop.Api(desktop.Settings())
+            self.assertTrue(api.update_data()["running"])
+            self.assertIn("--update-data", started[0])
+            self.assertTrue(api.update_data()["running"])
+            self.assertEqual(len(started), 1, "받는 중에 다시 눌러도 한 번만")
+            (d / "logs" / "update.log").write_text("패치 버전: 16.20\n  [건너뜀] x\n아이콘 512개 받는 중...\n", encoding="utf-8")
+            st = api.update_status()
+            self.assertEqual((st["running"], st["step"]), (True, "아이콘 512개 받는 중"))
+            proc.returncode = 0
+            self.assertEqual(api.update_status()["ok"], True)
+        finally:
+            desktop.user_dir, desktop.subprocess.Popen = orig_user_dir, orig_popen

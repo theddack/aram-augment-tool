@@ -1009,9 +1009,20 @@ window.addEventListener("pywebviewready", async () => {
     const v = await api.check_update();
     if (v.error) { alert("최신 버전 확인 실패: " + v.error); btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
     if (!v.outdated && !confirm(`이미 최신 데이터예요 (${v.current}).\n그래도 다시 받을까요?`)) { btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
-    btn.textContent = "받는 중… (몇 분)";
+    btn.textContent = "받는 중…";
     const r = await api.update_data();
-    if (!r.ok) { alert("갱신 실패\n" + r.log); btn.disabled = false; btn.textContent = "데이터 갱신"; }
+    if (!r.ok) { alert("갱신 실패\n" + r.log); btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
+    // 진행 상황: 지금 단계와 걸린 시간 (보통 2~5분)
+    const timer = setInterval(async () => {
+      const u = await api.update_status();
+      const t = `${Math.floor(u.seconds / 60)}분 ${u.seconds % 60}초`;
+      btn.textContent = `받는 중… ${u.step || ""} · ${t}`;
+      btn.title = "다 받으면 화면이 새로 고쳐져요. 그동안 다른 기능은 그대로 써도 돼요.";
+      if (u.running) return;
+      clearInterval(timer);
+      if (u.ok) location.reload();
+      else { alert("갱신 실패\n" + u.log); btn.disabled = false; btn.textContent = "데이터 갱신"; }
+    }, 1000);
   });
 });
 
