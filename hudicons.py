@@ -18,6 +18,7 @@ except ImportError:  # numpy 가 없으면 이 기능만 꺼진다 (Templates �
 GRID = 12  # 위치 찾기 크기 (흑백 12x12: 빠르게 후보 자리만)
 FINE = 24  # 어떤 증강인지 가리기 크기 (흑백 24x24 가운데: 12x12 는 비슷한 아이콘끼리 헷갈렸다)
 INNER = 0.12  # 가리기는 가장자리를 이만큼씩 빼고 가운데 그림만 (공통 어두운 테두리 때문에 '미친 과학자'가 모든 아이콘과 닮아 보였다)
+CHUNK = 4096  # 한 번에 비교하는 창 수 (메모리 상한: 4096 x 아이콘 174 x 4바이트 ≈ 3MB)
 FIND_SCORE = 0.55  # 위치 후보로 볼 닮은 정도 (느슨하게)
 REGION = (0.20, 0.62, 0.80, 1.0)  # 찾는 범위 (게임 창 비율: 왼쪽, 위, 오른쪽, 아래)
 # 아이콘 크기 후보 (게임 창 높이 비율, 8%씩). 간격이 넓으면 크기가 엇나가 다른 증강으로 읽었다 (맥 실험)
@@ -122,11 +123,18 @@ def find_icons(tpl, rgb, size_px):
     img = Image.fromarray(rgb.astype(np.uint8))
     small = img.resize((max(GRID, int(W * f)), max(GRID, int(H * f))), Image.BILINEAR)
     lum = np.asarray(small, dtype=np.float32) @ LUM / 255.0
-    X, shape = _windows(np, lum)
-    if not len(X):
+    # 창들을 한꺼번에 펼치면 큰 화면에서 수백 MB 를 잡았다 놓아 PC 가 순간 멈췄다 (측정: 순간 900MB).
+    # 줄 단위로 나눠서 각 창의 '가장 닮은 점수'만 남긴다 (결과는 같다)
+    h, w = lum.shape
+    if h < GRID or w < GRID:
         return []
-    top = tpl.scores(X).max(1)
-    ys, xs = shape
+    v = np.lib.stride_tricks.sliding_window_view(lum, (GRID, GRID))
+    ys, xs = v.shape[:2]
+    top = np.empty(ys * xs, np.float32)
+    rows_per = max(1, CHUNK // max(1, xs))
+    for y0 in range(0, ys, rows_per):
+        block = v[y0:y0 + rows_per].reshape(-1, GRID * GRID)
+        top[y0 * xs: y0 * xs + len(block)] = tpl.scores(block).max(1)
     cands = []
     for i in np.argsort(-top)[:200]:
         if top[i] < FIND_SCORE:
