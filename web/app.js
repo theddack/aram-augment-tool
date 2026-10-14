@@ -216,7 +216,7 @@ const TIER_LABEL = { S: ["🔥", "강력 추천"], A: ["👍", "추천"], B: ["�
 const noEffect = (t) => t && t.reasons.includes("조건 없음");
 
 // 플레이 방향: 증강 효과 종류로 판정 → 챔피언 원래 방향과 다르면 '변신'
-const STYLE_LABEL = { dps: "원딜형", combo: "폭딜형", ehp: "탱커형", support: "서포터형", fighter: "전사형", melee: "근접" };
+const STYLE_LABEL = { dps: "원딜형", combo: "폭딜형", ehp: "탱커형", support: "서포터형", fighter: "전사형", mage: "마법사형", melee: "근접" };
 const STYLE_TAGS = { dps: ["AS", "CRIT", "ONHIT"], combo: ["AP", "AD", "LETHAL", "MPEN", "ULT", "TRUE"], ehp: ["HP", "ARMOR", "MR"], support: ["HEALSHIELD"] };
 function styleOf(tags) {
   const sum = {};
@@ -227,6 +227,17 @@ function styleOf(tags) {
   for (const [k, v] of Object.entries(sum)) if (v > bestV) { best = k; bestV = v; }
   return best;
 }
+// 완성 빌드의 방향: 아이템 6개의 효과 종류를 합쳐서 판정 (주문력이면 '마법사형', 체력·방어면 '탱커형' …)
+function buildStyle(itemIds) {
+  const sum = {};
+  for (const id of itemIds) {
+    const it = state.data.items.find((i) => i.id === id);
+    for (const [t, v] of Object.entries((it && it.tags) || {})) sum[t] = (sum[t] || 0) + v / itemIds.length;
+  }
+  if ((sum.AP || 0) >= 0.5 && (sum.AP || 0) >= (sum.AD || 0)) return (sum.HP || 0) + (sum.ARMOR || 0) + (sum.MR || 0) >= 0.9 ? "fighter" : "mage";
+  return styleOf(sum);
+}
+
 function champStyle() {
   if ((state.champ.tags || []).includes("Fighter")) return "fighter";
   const mw = S.metricWeights(state.weights);
@@ -297,7 +308,7 @@ function renderOffers() {
   const full = state.chosen.length >= 4;
   box.innerHTML = state.offers.map((a, i) => `
     <div class="offer">
-      <input type="search" list="aug-names" data-i="${i}" placeholder="${i + 1}번 증강 이름" value="${a ? esc(a.name) : ""}" ${full ? "disabled" : ""}>
+      <input type="search" list="aug-names" data-i="${i}" placeholder="${["왼쪽", "가운데", "오른쪽"][i]} 증강 이름" value="${a ? esc(a.name) : ""}" ${full ? "disabled" : ""}>
       <label class="small"><input type="checkbox" data-r="${i}" ${state.rerolled[i] ? "checked" : ""}> 새로고침 씀</label>
     </div>`).join("");
   box.querySelectorAll("input[type=search]").forEach((el) => el.addEventListener("change", () => {
@@ -317,6 +328,7 @@ function renderOfferResult() {
   const out = $("#offer-result");
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
   if (!state.champ || !offers.length) {
+    pushOverlay([]);
     out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
     return;
@@ -373,12 +385,40 @@ function renderOfferResult() {
       콤보·DPS·유효 체력 칸은 그 증강에 맞춰 빌드를 다시 짰을 때(몰빵) 지금 대비 변화예요.
       새로고침 권장 = 새로고침을 안 쓴 칸 중 같은 등급 하위 ${REROLL_PCT * 100}% 안에 드는 가장 낮은 칸.
       추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
+  pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
     const a = state.offers[Number(el.dataset.pick)];
     if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
     clearOffers();
     renderAll();
   }));
+}
+
+// ---- 게임 화면 표시 (윈도우 프로그램): 카드 밑 평가 + 오른쪽 위 상자
+let overlayCards = [null, null, null];
+function pushOverlay(rows) {
+  overlayCards = [null, null, null];
+  for (const x of rows || []) {
+    const t = x.t;
+    const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["", ""];
+    const tag = x.best ? " · 추천" : x.reroll ? " · 새로고침?" : "";
+    const tr = transform(x.r.a);
+    overlayCards[x.r.i] = {
+      name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
+      // 게임 화면은 짧게: '고르면 ○○형으로 가볼 수 있어요'는 변신 표시와 겹쳐서 뺀다
+      reason: (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
+    };
+  }
+  sendOverlay();
+}
+function sendOverlay() {
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || !api.set_overlay || !state.champ) return;
+  const hud = [];
+  if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
+  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
+  if (next.length) hud.push("다음 구매: " + next.join(" > "));
+  api.set_overlay({ cards: overlayCards, hud });
 }
 
 function renderAugs() {
@@ -535,6 +575,7 @@ function renderNextBuy(rows) {
       <b>${i + 1}</b><img src="icons/item/${r.item.id}.png" alt=""><div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
+  sendOverlay();
 }
 
 function renderItemList() {
@@ -564,6 +605,44 @@ function renderWeights() {
     renderBuild();
     renderItemList();
   }));
+}
+
+// ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 / 첫 증강 상위 3개별 / 변칙
+let itemSetDone = null;
+function itemSetBlocks(champ) {
+  const d = state.data;
+  const w = S.profile(champ, d.tags);
+  const ids = (b) => b.pick.map((p) => p.item.id);
+  const [aug, bal, twist] = S.buildConcepts(d.items, w, [], [], d.rules, champ, statOpts());
+  const tiers = S.augmentTiers(d.augments, d.items, w, [], [], d.rules, champ, statOpts(), "total");
+  // 첫 증강 후보(🔥·👍) 중 빌드가 확실히 달라지는 것만 블록으로: 기존 블록과 아이템이 2개 이상 달라야 넣는다
+  const cands = d.augments.filter((a) => tiers[a.id] && ["S", "A"].includes(tiers[a.id].tier) && !(d.rules.augments[a.id] || {}).generic)
+    .sort((x, y) => (tiers[y.id].gain ?? -1) - (tiers[x.id].gain ?? -1)).slice(0, 15);
+  const blocks = [{ type: `🎯 기본 빌드${buildStyle(ids(bal)) ? ` (${STYLE_LABEL[buildStyle(ids(bal))]})` : ""}`, items: ids(bal) }];
+  const differs = (items) => blocks.every((b) => items.filter((i) => !b.items.includes(i)).length >= 2);
+  const twistIds = ids(twist);
+  for (const a of cands) {
+    if (blocks.length >= 4) break;
+    const items = ids(S.buildConcepts(d.items, w, [a], [], d.rules, champ, statOpts(), ["augment"])[0]);
+    if (!differs(items) || items.filter((i) => !twistIds.includes(i)).length < 2) continue;
+    const st = buildStyle(items);
+    blocks.push({ type: `🔥 ${a.name} 고르면${st ? ` (${STYLE_LABEL[st]})` : ""}`, items });
+  }
+  if (differs(twistIds)) blocks.push({ type: `🎲 변칙${buildStyle(twistIds) ? ` (${STYLE_LABEL[buildStyle(twistIds)]})` : ""}`, items: twistIds });
+  return blocks;
+}
+async function applyLcu(api, L) {
+  const el = $("#itemset-status");
+  if (!$("#itemset-toggle").checked) { el.textContent = ""; return; }
+  if (!L || !L.connected) { el.textContent = "· 롤 클라이언트 대기"; return; }
+  const champ = state.data.champions.find((c) => Number(c.key) === Number(L.championKey));
+  if (!champ) { el.textContent = `· ${L.phase === "ChampSelect" ? "챔피언 선택 대기" : "클라이언트 연결됨"}`; return; }
+  if (itemSetDone === champ.id) return;
+  itemSetDone = champ.id;
+  el.textContent = `· ${champ.name} 상점 추천 만드는 중…`;
+  const r = await api.write_item_set(champ.key, `칼바람 증강 계산기 · ${champ.name}`, itemSetBlocks(champ));
+  el.textContent = r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${r.error}`;
+  if (!r.ok) itemSetDone = null;
 }
 
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
@@ -605,6 +684,30 @@ window.addEventListener("pywebviewready", async () => {
   $("#desktop-tools").hidden = false;
   $("#on-top").checked = st.onTop;
   $("#on-top").addEventListener("change", (e) => api.set_on_top(e.target.checked));
+  if (st.overlaySupported) {
+    $("#overlay-wrap").hidden = false;
+    $("#overlay-pos").hidden = false;
+    $("#overlay-toggle").checked = st.overlay;
+    $("#overlay-toggle").addEventListener("change", (e) => api.set_overlay_enabled(e.target.checked));
+    $("#ov-y").value = st.overlayPos.y;
+    $("#ov-spread").value = st.overlayPos.spread;
+    const pos = () => { api.set_overlay_pos(Number($("#ov-y").value), Number($("#ov-spread").value)); sendOverlay(); };
+    $("#ov-y").addEventListener("input", pos);
+    $("#ov-spread").addEventListener("input", pos);
+    $("#ov-preview").addEventListener("change", (e) => {
+      api.set_overlay_preview(e.target.checked);
+      // 미리 보기: 선택지가 비어 있으면 예시 카드로 위치를 맞출 수 있게
+      if (e.target.checked && !overlayCards.some(Boolean)) {
+        overlayCards = ["S", "D", "B"].map((t, i) => ({ name: "예시", icon: TIER_LABEL[t][0], label: TIER_LABEL[t][1] + " (위치 맞추기)", tier: t, reason: ["왼쪽", "가운데", "오른쪽"][i] + " 카드 밑에 오면 맞아요" }));
+      }
+      if (!e.target.checked) renderOfferResult();
+      sendOverlay();
+    });
+    setInterval(async () => { const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
+  }
+  $("#itemset-toggle").checked = st.itemSets;
+  $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });
+  setInterval(async () => applyLcu(api, await api.get_lcu()), 3000);
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
   setInterval(async () => applyLive(await api.get_live()), 3000);

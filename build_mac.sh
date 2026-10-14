@@ -9,6 +9,6 @@ cd "$(dirname "$0")"
 .venv/bin/pyinstaller --noconfirm --windowed --name AramAugment \
   --osx-bundle-identifier kr.juvis.aramaugment \
   --add-data "web:web" --add-data "rules.json:." \
-  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc \
+  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import overlay \
   desktop.py
 echo "완료: dist/AramAugment.app (응용 프로그램 폴더로 옮겨서 쓰면 됩니다)"

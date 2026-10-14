@@ -2,6 +2,8 @@
 
 > 라이엇 게임즈와 무관한 팬 제작 도구입니다. League of Legends 및 관련 이미지·데이터는 Riot Games, Inc.의 자산입니다.
 
+**👉 [사용 설명서](사용설명서.md) · [프로그램 받기 (윈도우·맥)](https://github.com/theddack/aram-augment-tool/releases/latest)**
+
 웹: https://theddack.github.io/aram-augment-tool/ (main 에 올리면 `.github/workflows/pages.yml` 이 web/ 폴더를 자동 배포)
 
 칼바람 증강 모드(내부 이름 `KIWI`)의 증강 223개와 상점 아이템을 게임 데이터에서 뽑아,
@@ -15,9 +17,29 @@
 | OS | 빌드 | 결과 |
 |---|---|---|
 | 맥 | `./build_mac.sh` | `dist/AramAugment.app` |
+| 릴리스 | `git tag v0.x.y && git push origin v0.x.y` | GitHub Actions 가 윈도우·맥을 빌드해 릴리스에 zip 업로드 |
 | 윈도우 | `build_windows.bat` 더블클릭 (Python 3.12 + WebView2 필요) | `dist\AramAugment\AramAugment.exe` |
 
 개발 중 실행: `.venv/bin/python desktop.py` (`--debug` 로 개발자 도구)
+
+### 상점 추천 등록 (아이템 세트, `lcu.py`)
+
+롤 클라이언트 로컬 API(LCU, lockfile 인증)로 챔피언이 정해지면 아이템 세트를 등록한다 → 게임 상점 추천 칸에 표시.
+- 블록: 🎯 기본 빌드 / 🔥 "○○ 고르면" 최대 3개(첫 증강 🔥·👍 후보 중 빌드가 2개 이상 달라지는 것) / 🎲 변칙. 괄호 안 방향(원딜형·마법사형·탱커형…)은 완성 빌드 아이템으로 판정
+- 게임 시작 전에 등록돼야 상점에 반영된다 → 게임 중 고른 증강은 게임 화면 오른쪽 위 '다음 구매'로 안내
+- 우리 세트만 uid `aram-augment-tool-` 로 교체, 사용자가 만든 세트는 유지
+- LCU 는 라이엇이 서드파티 공식 지원 대상이 아니라고 밝힌 API (블리츠·OP.GG 도 같은 방식으로 사용)
+- **미검증**: 실제 롤 클라이언트 (가짜 클라이언트 서버로 등록 흐름·기존 세트 유지만 확인)
+
+### 게임 화면 표시 (윈도우, 창 모드·테두리 없는 창 모드)
+
+`overlay.py`: 롤 게임 창(`League of Legends (TM) Client`) 위치에 투명 창(tkinter)을 겹쳐 그린다.
+게임에 끼어들지 않고(다른 창일 뿐) 클릭은 게임으로 통과한다(WS_EX_TRANSPARENT). 게임 창이 맨 앞일 때만 보인다.
+- 증강 카드 밑: 왼쪽·가운데·오른쪽 칸에 입력한 증강의 평가와 짧은 이유
+- 오른쪽 위: 고른 증강, 다음에 살 아이템
+- 위치 기본값은 위키 선택 화면 스크린샷 기준 추정(세로 70%, 카드 간격 25%). 화면의 '위치 맞추기' 슬라이더 + 미리 보기로 조정
+- 전체 화면(독점) 모드에서는 보이지 않는다 → 필요하면 Overwolf 로 이전(심사)
+- **미검증**: 윈도우 창 찾기·클릭 통과·화면 배율(DPI) 좌표·tkinter 스레드와 pywebview 동시 실행은 윈도우 실제 PC에서 확인 필요
 
 ## 실행 (웹)
 

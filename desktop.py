@@ -22,6 +22,9 @@ from pathlib import Path
 
 import webview
 
+import lcu
+import overlay
+
 APP = "AramAugment"
 TITLE = "칼바람 증강 계산기"
 CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css")
@@ -159,6 +162,35 @@ class LiveWatcher(threading.Thread):
             st["savedSnapshot"] = name
 
 
+class LcuWatcher(threading.Thread):
+    """롤 클라이언트: 챔피언 선택 단계와 내 챔피언을 읽는다 (아이템 세트 등록 시점 판단용)"""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.state = {"connected": False}
+        self.client = None
+
+    def run(self):
+        while True:
+            self.poll()
+            time.sleep(LIVE_INTERVAL)
+
+    def poll(self):
+        try:
+            if not self.client:
+                path = os.environ.get("ARAM_LCU_LOCKFILE") or lcu.find_lockfile(overlay.game_install_dirs())
+                if not path:
+                    self.state = {"connected": False}
+                    return
+                self.client = lcu.Lcu(path)
+            phase = self.client.phase()
+            champ = self.client.current_champion() if phase in ("ChampSelect", "InProgress", "GameStart") else 0
+            self.state = {"connected": True, "phase": phase, "championKey": champ}
+        except Exception as e:
+            self.client = None  # 클라이언트를 껐다 켜면 포트·비밀번호가 바뀐다
+            self.state = {"connected": False, "error": str(e)[:120]}
+
+
 class Settings:
     def __init__(self):
         self.path = user_dir() / "settings.json"
@@ -178,11 +210,53 @@ class Settings:
 class Api:
     """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들"""
 
-    def __init__(self, settings, watcher=None):
+    def __init__(self, settings, watcher=None, ov=None, lcu_watcher=None):
         self.settings = settings
         self.window = None
         self.watcher = watcher
+        self.ov = ov
+        self.lcu = lcu_watcher
         self._lock = threading.Lock()
+
+    # ---- 게임 화면 표시 (윈도우)
+    def set_overlay(self, payload):
+        if self.ov:
+            payload = dict(payload or {})
+            payload["pos"] = self.settings.get("overlay_pos") or overlay.DEFAULT_POS
+            self.ov.update(payload)
+        return True
+
+    def set_overlay_enabled(self, on):
+        if self.ov:
+            self.ov.set_enabled(on)
+        self.settings.set(overlay=bool(on))
+        return bool(on)
+
+    def set_overlay_pos(self, y, spread):
+        self.settings.set(overlay_pos={"y": float(y), "spread": float(spread)})
+        return True
+
+    def set_overlay_preview(self, on):
+        if self.ov:
+            self.ov.set_preview(on)
+        return bool(on)
+
+    def overlay_status(self):
+        return {"supported": overlay.IS_WINDOWS, "status": self.ov.status if self.ov else "꺼짐"}
+
+    # ---- 롤 클라이언트 (아이템 세트)
+    def get_lcu(self):
+        return self.lcu.state if self.lcu else {"connected": False}
+
+    def write_item_set(self, champion_key, title, blocks):
+        """상점 추천 칸에 우리 빌드 등록. 게임 시작 전(챔피언 선택 중)에 해야 상점에 반영된다"""
+        if not self.lcu or not self.lcu.client:
+            return {"ok": False, "error": "롤 클라이언트에 연결되지 않았어요"}
+        try:
+            n = self.lcu.client.write_item_set(champion_key, title, blocks)
+            return {"ok": True, "blocks": n}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
 
     def get_live(self):
         """게임 연동 상태 (화면이 몇 초마다 부른다)"""
@@ -198,7 +272,14 @@ class Api:
 
     def get_state(self):
         return {"onTop": bool(self.settings.get("on_top", False)), "desktop": True,
-                "live": bool(self.settings.get("live", True))}
+                "live": bool(self.settings.get("live", True)),
+                "overlay": bool(self.settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
+                "overlayPos": self.settings.get("overlay_pos") or overlay.DEFAULT_POS,
+                "itemSets": bool(self.settings.get("item_sets", True))}
+
+    def set_item_sets(self, on):
+        self.settings.set(item_sets=bool(on))
+        return bool(on)
 
     def set_on_top(self, on):
         self.window.on_top = bool(on)
@@ -251,12 +332,18 @@ class Api:
 
 
 def main():
+    overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
     settings = Settings()
     web = prepare_web()
     watcher = LiveWatcher(user_dir() / "logs")
     watcher.enabled = bool(settings.get("live", True))
     watcher.start()
-    api = Api(settings, watcher)
+    ov = overlay.Overlay()
+    ov.enabled = bool(settings.get("overlay", True))
+    ov.start()
+    lw = LcuWatcher()
+    lw.start()
+    api = Api(settings, watcher, ov, lw)
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

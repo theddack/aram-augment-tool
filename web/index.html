@@ -13,6 +13,9 @@
   <span id="desktop-tools" hidden>
     <label class="small" title="게임 중 챔피언·레벨·아이템을 자동으로 반영 (롤 공식 게임 중 데이터 API)"><input id="live-toggle" type="checkbox"> 게임 연동</label>
     <span id="live-status" class="small muted"></span>
+    <label class="small" id="overlay-wrap" hidden title="롤 게임 창(창 모드·테두리 없는 창 모드) 위에 평가를 표시. 클릭은 게임으로 통과해요"><input id="overlay-toggle" type="checkbox"> 게임 화면 표시</label>
+    <label class="small" title="챔피언이 정해지면 상점 추천 칸에 우리 빌드(아이템 세트)를 등록해요. 블리츠·OP.GG와 같은 방식"><input id="itemset-toggle" type="checkbox"> 상점 추천 등록</label>
+    <span id="itemset-status" class="small muted"></span>
     <label class="small"><input id="on-top" type="checkbox"> 항상 위</label>
     <button id="update-data" class="reset" title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
   </span>
@@ -49,6 +52,13 @@
     <div class="row"><h2>이번 선택지 <span class="muted">(게임에 뜬 3개를 입력)</span></h2>
       <button id="reset-offers" class="reset">선택지 비우기</button></div>
     <div id="offers"></div>
+    <details id="overlay-pos" hidden>
+      <summary class="small">게임 화면 표시 위치 맞추기 <span class="muted" id="overlay-status"></span></summary>
+      <p class="muted small">증강 카드 밑에 표시가 오도록 맞춰요. "미리 보기"를 켜면 게임이 뒤에 있어도 보여요.</p>
+      <label class="small">세로 위치 <input id="ov-y" type="range" min="0.5" max="0.95" step="0.01"></label>
+      <label class="small">카드 간격 <input id="ov-spread" type="range" min="0.08" max="0.3" step="0.005"></label>
+      <label class="small"><input id="ov-preview" type="checkbox"> 미리 보기</label>
+    </details>
     <div id="offer-result"></div>
     <datalist id="aug-names"></datalist>
 
