@@ -16,7 +16,11 @@ import time
 
 IS_WINDOWS = sys.platform == "win32"
 NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다 (게임 창 높이 비율)
-SHOP_BAND = (0.04, 0.45)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위
+SHOP_BAND = (0.06, 0.32)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위 (실제 기록: 탭 줄 0.10~0.29)
+OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
+SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
+HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
+HUD_EVERY_MISSING = 60.0  # 초. 증강 칸을 아직 한 번도 못 찾았으면 더 드물게 (못 찾는 해상도에서 계속 무겁게 돌던 것)
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
@@ -269,10 +273,14 @@ class _Capture:
         self.g.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
                                      ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
         self.g.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+        self.g.StretchBlt.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                      wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
+        self.g.SetStretchBltMode.argtypes = [wintypes.HDC, ctypes.c_int]
         self.g.DeleteDC.argtypes = [wintypes.HDC]
 
-    def grab(self, x, y, w, h):
-        """화면 (x, y, w, h) → BGRA 바이트 (위에서 아래로)"""
+    def grab(self, x, y, w, h, tw=None, th=None):
+        """화면 (x, y, w, h) → BGRA 바이트 (위에서 아래로). tw·th 를 주면 그 크기로 줄여서 (StretchBlt, 부드럽게)"""
+        tw, th = tw or w, th or h
         ct = self.ct
 
         class BIH(ct.Structure):
@@ -282,13 +290,17 @@ class _Capture:
                         ("biClrUsed", ct.c_uint32), ("biClrImportant", ct.c_uint32)]
         sdc = self.u.GetDC(None)
         mdc = self.g.CreateCompatibleDC(sdc)
-        bmp = self.g.CreateCompatibleBitmap(sdc, w, h)
+        bmp = self.g.CreateCompatibleBitmap(sdc, tw, th)
         old = self.g.SelectObject(mdc, bmp)
         try:
-            self.g.BitBlt(mdc, 0, 0, w, h, sdc, x, y, 0x00CC0020)  # SRCCOPY
-            bih = BIH(ct.sizeof(BIH), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
-            buf = ct.create_string_buffer(w * h * 4)
-            self.g.GetDIBits(mdc, bmp, 0, h, buf, ct.byref(bih), 0)
+            if (tw, th) == (w, h):
+                self.g.BitBlt(mdc, 0, 0, w, h, sdc, x, y, 0x00CC0020)  # SRCCOPY
+            else:
+                self.g.SetStretchBltMode(mdc, 4)  # HALFTONE (줄여도 글자가 덜 뭉개지게)
+                self.g.StretchBlt(mdc, 0, 0, tw, th, sdc, x, y, w, h, 0x00CC0020)
+            bih = BIH(ct.sizeof(BIH), tw, -th, 1, 32, 0, 0, 0, 0, 0, 0)
+            buf = ct.create_string_buffer(tw * th * 4)
+            self.g.GetDIBits(mdc, bmp, 0, th, buf, ct.byref(bih), 0)
             return buf.raw
         finally:
             self.g.SelectObject(mdc, old)
@@ -502,6 +514,7 @@ class Reader(threading.Thread):
         self._shop_img = False
         self._hud_logged = False
         self._area_saved = False
+        self._hud_at = 0
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -528,11 +541,20 @@ class Reader(threading.Thread):
                 self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
             time.sleep(CLICK_POLL)
 
+    def read_band(self, cap, ocr, rect, band):
+        """게임 창의 가로 띠를 (크면 줄여서) 읽는다 → (게임 창 좌표 단어들, 이미지 바이트, 이미지 너비, 높이)"""
+        gx, gy, gw, gh = rect
+        y0, y1 = int(gh * band[0]), int(gh * band[1])
+        k = min(1.0, OCR_HEIGHT / gh)
+        tw, th = max(1, int(gw * k)), max(1, int((y1 - y0) * k))
+        img = cap.grab(gx, gy + y0, gw, y1 - y0, tw, th)
+        words = [(t, x / k, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
+        return words, img, tw, th
+
     def scan(self, cap, ocr, matcher, rect):
         gx, gy, gw, gh = rect
         n0, n1 = int(gh * NAME_BAND[0]), int(gh * NAME_BAND[1])
-        img = cap.grab(gx, gy + n0, gw, n1 - n0)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
-        words = [(t, x, y + n0, w, h) for t, x, y, w, h in ocr.words(img, gw, n1 - n0)]
+        words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         offers = find_offers(words, gw, gh, matcher)
         self.offered.update(n for n, _, _ in offers)
         partial = False
@@ -548,15 +570,24 @@ class Reader(threading.Thread):
         after = self.tracker.state
         if after.get("seq") != before.get("seq"):  # 새 선택지 (새로고침 포함): 읽은 글자 원문과 카드 이름 줄 그림
             self._rec("offers", {"read": segs, "offers": after.get("offers"), "pos": after.get("pos"),
-                                 "image": self.rec.image("card", img, gw, n1 - n0) if self.rec else None})
+                                 "image": self.rec.image("card", img, iw, ih) if self.rec else None})
         if after.get("pickSeq") != before.get("pickSeq"):
             self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
+            self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
-        # 상점 창: 열려 있을 때만 게임 화면 상자를 그 옆에 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적)
+        # 증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서)
+        now = time.time()
+        if self.hud and now >= getattr(self, "_hud_at", 0):
+            self.scan_hud(cap, rect)
+            self._hud_at = now + (HUD_EVERY if self.hud.size else HUD_EVERY_MISSING)
+        # 상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만
+        self._shop_n = getattr(self, "_shop_n", 0) + 1
+        if self._shop_n % SHOP_EVERY:
+            return
         s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
-        sw = [(t, x, y + s0, w, h) for t, x, y, w, h in ocr.words(cap.grab(gx, gy + s0, gw, s1 - s0), gw, s1 - s0)]
+        sw, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
         shop = find_shop(sw, gw, gh)
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
@@ -569,7 +600,3 @@ class Reader(threading.Thread):
                 self._shop_img = True
             self._rec("shop", data)
         self.shop = shop
-        # 증강 칸 아이콘 (고른 증강의 정답): 5번에 한 번 (무거워서)
-        self._hud_n = getattr(self, "_hud_n", 0) + 1
-        if self.hud and self._hud_n % 5 == 1:
-            self.scan_hud(cap, rect)

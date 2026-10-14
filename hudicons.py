@@ -135,7 +135,7 @@ def find_icons(tpl, rgb, size_px):
         if any(abs(x - cx) < GRID * 0.7 and abs(y - cy) < GRID * 0.7 for cx, cy in cands):
             continue
         cands.append((x, y))
-        if len(cands) >= 8:
+        if len(cands) >= 5:  # 증강 칸은 최대 4~6칸 (후보를 줄여 가볍게)
             break
     hits = []
     step = max(1, round(size_px / 24))  # 위치를 아이콘 크기의 1/24 씩 (1/12 씩이면 몇 픽셀 엇나가 점수가 확 떨어졌다)
@@ -198,7 +198,7 @@ class HudReader:
         if self.size:
             # 찾은 크기 앞뒤로도 한 번씩 (아이콘마다 몇 % 씩 크기가 달라 한 크기로는 하나를 놓쳤다) → 증강마다 가장 닮은 것
             merged = {h[0]: h for h in best}
-            for k in (0.89, 0.94, 1.06, 1.12):
+            for k in (0.92, 1.08):
                 for h in find_icons(self.tpl, crop, max(GRID, self.size * k * H)):
                     if h[0] not in merged or h[1] > merged[h[0]][1]:
                         merged[h[0]] = h

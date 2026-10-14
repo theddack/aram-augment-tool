@@ -838,7 +838,22 @@ def run_update_data():
             print(f"실패: {e}")
             return 1
 
+def lower_priority():
+    """윈도우: 이 프로그램을 '낮은 우선순위'로 → 게임이 늘 CPU 를 먼저 쓴다 (렉 지적 2026-10-14)"""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+        k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k.SetPriorityClass(k.GetCurrentProcess(), 0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+    except Exception:
+        pass
+
+
 def main():
+    lower_priority()
     if "--update-data" in sys.argv:
         sys.exit(run_update_data())
     overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
