@@ -52,6 +52,8 @@ class Expr:
         self.base, self.lvl, self.ratios = base, lvl, dict(ratios or {})
 
     def add(self, o):
+        if isinstance(o, Node):
+            return Node("+", [self, o])
         lvl = self.lvl
         if o.lvl:
             lvl = (lvl[0] + o.lvl[0], lvl[1] + o.lvl[1]) if lvl else o.lvl
@@ -66,6 +68,34 @@ class Expr:
 
     def is_number(self):
         return not self.lvl and not self.ratios
+
+
+class Node:
+    """'기본 + 계수' 한 줄로 못 담는 식 (능력치끼리 곱하는 식: (피해 + 계수) × (1 + 치명타 확률) 등).
+    화면(stats.js)이 실제 능력치를 넣어 계산한다. op: '+' 또는 '*'"""
+
+    __slots__ = ("op", "items")
+
+    def __init__(self, op, items):
+        self.op, self.items = op, items
+
+    def add(self, o):
+        return Node("+", [self, o])
+
+    def scale(self, k):
+        return Node("*", [self, Expr(k)])
+
+    def is_number(self):
+        return False
+
+
+def mul(a, b):
+    """두 식의 곱: 한쪽이 숫자면 Expr 로, 아니면 Node"""
+    if isinstance(b, Expr) and b.is_number():
+        return a.scale(b.base)
+    if isinstance(a, Expr) and a.is_number():
+        return b.scale(a.base)
+    return Node("*", [a, b])
 
 
 # 모드별 수치 덮어쓰기(DataValuesModeOverride) 우선순위: 칼바람 증강 모드 → 칼바람
@@ -130,7 +160,9 @@ class Calc:
             else:
                 # 계수가 레벨에 따라 변하면 18레벨 값을 쓴다 (빌드 비교는 풀템 기준이라)
                 sub = self.part(p.get("mSubpart"), rank, depth + 1)
-                coef = None if sub is None or sub.ratios else sub.base + (sub.lvl[1] if sub.lvl else 0)
+                if sub is not None and (isinstance(sub, Node) or sub.ratios):  # 계수가 다른 능력치에 따라 변함 → 곱셈 식
+                    return Node("*", [Expr(ratios={key: 1}), sub])
+                coef = None if sub is None else sub.base + (sub.lvl[1] if sub.lvl else 0)
             return None if coef is None else Expr(ratios={key: coef})
         if t == "AbilityResourceByCoefficientCalculationPart":  # 마나 계수 (라이즈 등)
             prefix = FORMULA_PREFIX.get(p.get("mStatFormula", 0), "")
@@ -165,7 +197,7 @@ class Calc:
                 if r is None:
                     return None
                 total = total.add(r)
-            if t == "ClampSubPartsCalculationPart" and total.is_number():  # 숫자일 때만 아래·위 한계 적용
+            if t == "ClampSubPartsCalculationPart" and isinstance(total, Expr) and total.is_number():  # 숫자일 때만 아래·위 한계 적용
                 lo, hi = p.get("mFloor"), p.get("mCeiling")
                 v = total.base
                 if lo is not None:
@@ -179,11 +211,7 @@ class Calc:
             b = self.part(p.get("mPart2"), rank, depth + 1)
             if a is None or b is None:
                 return None
-            if b.is_number():
-                return a.scale(b.base)
-            if a.is_number():
-                return b.scale(a.base)
-            return None
+            return mul(a, b)
         if t == "BuffCounterByCoefficientCalculationPart":  # 게임 중 쌓는 중첩 × 계수 → '중첩당 N' (계산에는 0중첩)
             return Expr(ratios={"STACKS": p.get("mCoefficient", 0)})
         if t == "BuffCounterByNamedDataValueCalculationPart":  # 중첩 × 값 이름
@@ -201,10 +229,10 @@ class Calc:
         t = c.get("__type")
         if t == "GameCalculationModified":
             base, pct = self.calc(c.get("mModifiedGameCalculation", ""), rank, depth + 1)
-            mul = self.part(c.get("mMultiplier"), rank, depth + 1)
-            if base is None or mul is None or not mul.is_number():
+            m = self.part(c.get("mMultiplier"), rank, depth + 1)
+            if base is None or m is None:
                 return None, False
-            return base.scale(mul.base), pct
+            return mul(base, m), pct
         if t == "GameCalculationConditional":
             return self.calc(c.get("mDefaultGameCalculation", ""), rank, depth + 1)
         total = Expr()
@@ -215,9 +243,9 @@ class Calc:
             total = total.add(r)
         if c.get("mMultiplier"):
             m = self.part(c["mMultiplier"], rank, depth + 1)
-            if m is None or not m.is_number():
+            if m is None:
                 return None, False
-            total = total.scale(m.base)
+            total = mul(total, m)
         return total, bool(c.get("mDisplayAsPercent"))
 
     def resolve(self, name, rank=1):
@@ -234,8 +262,29 @@ class Calc:
         return self.calc(name, rank)
 
 
+def fmt_node(e, pct=False):
+    if isinstance(e, Expr):
+        return fmt_expr_ranks([e], pct)
+    sep = " × " if e.op == "*" else " + "
+    inner = sep.join(fmt_node(x) for x in e.items)
+    return f"({inner})" if e.op == "*" else inner
+
+
+def tree_json(e):
+    if isinstance(e, Expr):
+        out = {"b": round(e.base, 4)}
+        if e.lvl:
+            out["l"] = [round(e.lvl[0], 4), round(e.lvl[1], 4)]
+        if e.ratios:
+            out["r"] = {k: round(v, 4) for k, v in e.ratios.items()}
+        return out
+    return {"op": e.op, "a": [tree_json(x) for x in e.items]}
+
+
 def fmt_expr_ranks(exprs, pct=False):
     """랭크별 Expr 목록을 '40/55/70 + 40% 주문력' 형태로."""
+    if any(isinstance(e, Node) for e in exprs):  # 곱셈 식: 마지막 랭크 기준으로 식 모양 그대로
+        return fmt_node(exprs[-1], pct)
     k = 100 if pct else 1
     unit = "%" if pct else ""
     bases = [e.base * k for e in exprs]
@@ -268,7 +317,9 @@ def fmt_expr_ranks(exprs, pct=False):
 
 
 def expr_json(exprs):
-    """화면 계산용: 랭크별 base, 레벨 비례, 계수(랭크별)."""
+    """화면 계산용: 랭크별 base, 레벨 비례, 계수(랭크별). 곱셈 식이 섞이면 랭크별 식 나무(tree)."""
+    if any(isinstance(e, Node) for e in exprs):
+        return {"base": [0] * len(exprs), "tree": [tree_json(e) for e in exprs]}
     keys = sorted({k for e in exprs for k in e.ratios})
     out = {"base": [round(e.base, 4) for e in exprs]}
     if exprs and exprs[-1].lvl:

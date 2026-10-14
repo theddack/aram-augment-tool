@@ -60,7 +60,8 @@
     const mult = { HPmult: 0, ADmult: 0, APmult: 0, ASmult: 0, MSmult: 0, adaptiveMult: 0 };
     const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, noUlt: false };
     const conv = {};
-    const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean)];
+    // 중첩형 패시브·스킬(베이가·쓰레쉬 등)의 게임 중반 평균 능력치도 항상 들어간다
+    const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean), ...(champ.stackStats ? [champ.stackStats] : [])];
     // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
     const effects = [
       ...((champ.passive && champ.passive.effects) || []).map((e) => ({ ...e, src: "패시브" })),
@@ -109,6 +110,7 @@
     t.MANA = champ.partype === "마나" ? base.MANA + add.MANA : 0;
     t.bonusMANA = champ.partype === "마나" ? add.MANA : 0;
     if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
+    if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
@@ -122,6 +124,7 @@
     t.bonusAP = t.AP;  // 주문력은 전부 추가 주문력 (기본 주문력이 없다)
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
     t.RANGE = base.RANGE;
+    t.CSTACKS = champ.stacks || 0;  // 스킬의 '중첩당' 피해 (나서스 Q, 스몰더 Q …)
     return { total: t, base, flags, aram, effects, conv };
   }
 
@@ -156,8 +159,19 @@
     return 0;
   }
 
+  // 곱셈 식 나무 (예: (피해 + 계수) × (1 + 치명타 확률)): 실제 능력치를 넣어 계산
+  function evalTree(n, L, t) {
+    if (n.op === "*") return n.a.reduce((v, x) => v * evalTree(x, L, t), 1);
+    if (n.op === "+") return n.a.reduce((v, x) => v + evalTree(x, L, t), 0);
+    let v = n.b || 0;
+    if (n.l) v += n.l[0] + (n.l[1] - n.l[0]) * (L - 1) / 17;
+    for (const [k, c] of Object.entries(n.r || {})) v += c * statFor(k, t);
+    return v;
+  }
+
   function effectValue(e, rank, L, t) {
     const i = Math.max(0, rank - 1);
+    if (e.tree) return evalTree(e.tree[Math.min(i, e.tree.length - 1)], L, t);
     let v = e.base[Math.min(i, e.base.length - 1)] || 0;
     if (e.lvl) v += e.lvl[0] + (e.lvl[1] - e.lvl[0]) * (L - 1) / 17;
     for (const [k, arr] of Object.entries(e.ratios || {})) v += arr[Math.min(i, arr.length - 1)] * statFor(k, t);
@@ -175,15 +189,65 @@
     }
     // 최소/최대(또는 기본/최대) 같은 대체 수치는 같은 이름 줄기끼리 묶어서 큰 쪽 하나만 센다
     // (다리우스 R damage·maximumdamage, 그라가스 Q mindamage·maxdamage …)
+    // 치명타 버전(미스 포츈 Q totaldamagecrit)은 같은 줄기로 묶고, 치명타 확률만큼만 더한 기대값으로 센다
     const stem = (n) => String(n).toLowerCase().replace(/^spell\.[^:]+:/, "")
-      .replace(/(minimum|maximum|min|max|tooltip|total|floor|base|calc)/g, "");
-    const best = new Map();
+      .replace(/(minimum|maximum|min|max|tooltip|total|floor|base|calc|crit(ical)?)/g, "");
+    const groups = new Map();
     for (const v of vals) {
       if (DMG_KINDS.includes(v.kind) && STAT_BUFF.test(String(v.name).replace(/^spell\.[^:]+:/, ""))) continue;  // 능력치 증가 수치(리븐 R bonusad)는 피해가 아니다
       const k = v.kind + "|" + stem(v.name);
-      if (!best.has(k) || v.value > best.get(k).value) best.set(k, v);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(v);
     }
-    return [...best.values()];
+    // 같은 종류 안에서: 총합(total)이 있으면 한 번당(per wave·bullet·tick…) 값은 뺀다 (루시안 R, 미스 포츈 R)
+    // 강화·벽·지형 같은 조건부 대체 버전은 기본 버전이 있으면 뺀다 (볼리베어 W, 제리 W, 키아나 Q)
+    const PER = /per(wave|bullet|tick|second|sec|missile|hit|shot|dagger|blade|stack|bolt)/i;
+    const ALT = /(empowered|enhanced|wall|tremor|terrain)/i;  // 재사용(리 신 Q2)·두 번째 공격은 실제로 한 번 더 맞아서 빼지 않는다
+    const byKind = new Map();
+    for (const [k, list] of groups) {
+      const kind = k.split("|")[0];
+      if (!byKind.has(kind)) byKind.set(kind, []);
+      byKind.get(kind).push(k);
+    }
+    for (const keys of byKind.values()) {
+      const names = keys.flatMap((k) => groups.get(k).map((v) => String(v.name)));
+      const hasTotal = names.some((n) => /total/i.test(n) && !PER.test(n));
+      const hasBase = names.some((n) => !ALT.test(n) && !/crit/i.test(n));
+      for (const k of keys) {
+        const kept = groups.get(k).filter((v) => !(hasTotal && PER.test(v.name) && !/total/i.test(v.name)) && !(hasBase && ALT.test(v.name)));
+        if (kept.length) groups.set(k, kept); else groups.delete(k);
+      }
+    }
+    // 하나만 고르는 버전(트위스티드 페이트 W 파랑·빨강·노랑 카드)은 가장 큰 것 하나
+    for (const keys of byKind.values()) {
+      const cards = keys.filter((k) => groups.has(k) && groups.get(k).every((v) => /^(blue|red|gold)/i.test(String(v.name).replace(/^spell\.[^:]+:/, ""))));
+      if (cards.length > 1) {
+        const best = cards.reduce((a, b) => (Math.max(...groups.get(b).map((v) => v.value)) > Math.max(...groups.get(a).map((v) => v.value)) ? b : a));
+        for (const k of cards) if (k !== best) groups.delete(k);
+      }
+      // 치명타 버전이 다른 이름 줄기에 있어도(탈론 Q leap·critical) 같은 종류의 기본 값이 있으면 치명타 확률만큼만
+      const live = keys.filter((k) => groups.has(k));
+      const critKeys = live.filter((k) => groups.get(k).every((v) => /crit/i.test(v.name)));
+      const normKeys = live.filter((k) => !critKeys.includes(k));
+      if (critKeys.length && normKeys.length) {
+        const nTop = Math.max(...normKeys.flatMap((k) => groups.get(k).map((v) => v.value)));
+        for (const k of critKeys) {
+          const c = groups.get(k).reduce((a, b) => (b.value > a.value ? b : a));
+          groups.set(k, [{ ...c, value: Math.min(1, t.CRIT || 0) * Math.max(0, c.value - nTop) }]);
+        }
+      }
+    }
+    const out = [];
+    for (const list of groups.values()) {
+      const isCrit = (v) => /crit/i.test(v.name);
+      const crit = list.filter(isCrit), normal = list.filter((v) => !isCrit(v));
+      const top = (l) => l.reduce((a, b) => (b.value > a.value ? b : a));
+      if (crit.length && normal.length) {
+        const n = top(normal), c = top(crit);
+        out.push({ ...n, value: n.value + Math.min(1, t.CRIT || 0) * Math.max(0, c.value - n.value) });
+      } else out.push(top(list));
+    }
+    return out;
   }
   const STAT_BUFF = /^(bonus|flat|percent)?(ad|ap|attackdamage|abilitypower|armor|mr|magicresist|ms|movespeed|movementspeed|as|attackspeed)$/i;
 
@@ -225,6 +289,7 @@
     { what: "재사용 대기시간은 가속을 받아도 최소 0.5초로 셈", src: "assume", why: "징크스 Q처럼 전환형 스킬이 초당 피해를 부풀리지 않게 했어요." },
     { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
     { what: "최소~최대가 있는 스킬 피해는 최대로 셈", src: "assume", why: "충전·거리·중첩에 따라 커지는 스킬(바이 Q, 다리우스 R, 사이온 Q 등)은 최대치를 기준으로 비교해요. 최소와 최대를 둘 다 더하던 오류를 고치면서 정한 기준이에요." },
+    { what: "같은 스킬의 대체 버전은 하나만 셈", src: "assume", why: "총합과 한 번당 값이 같이 있으면 총합만, 강화·벽 통과·지형 같은 조건부 버전은 기본 버전으로, 치명타 버전은 치명타 확률만큼만 더해요 (예: 볼리베어 W 강화, 루시안 R 한 발당, 미스 포츈 Q 치명타)." },
     { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초)." },
   ];
 
@@ -271,7 +336,7 @@
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
-        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP);
+        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0));
         else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP);
       }
       out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled });
@@ -329,6 +394,13 @@
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
       else out.augCombo += hit;
     }
+    // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
+    if (cv.skillVamp) out.heal += out.spells.reduce((a, sp) => a + sp.dmg, 0) * cv.skillVamp * (aram.healing || 1) * (1 + t.HSP);
+    if (cv.healToDamage && out.heal > 0) {
+      const hd = out.heal * cv.healToDamage * magMit * dealt;
+      out.augCombo += hd;
+      out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
+    }
     out.combo += out.augCombo;
     const critMul = 1 + t.CRIT * (t.CRITDMG - 1);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus);
@@ -336,6 +408,7 @@
     const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
+    if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
     out.ehp = (out.ehpPhys + out.ehpMag) / 2;
     // ---- 기동성: 평균 이동 속도 (궁극기 후 가속 영역 등 가동률 반영)
     out.mobility = t.MS * (1 + (cv.ultTriggerMs || 0) * ultUptime(cv.ultTriggerDur));
