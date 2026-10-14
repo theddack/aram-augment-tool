@@ -435,7 +435,8 @@ def wiki_mayhem_augments(module_text, wiki_champs):
         # 위키는 퀘스트 증강 이름 앞에 'Quest: ' 를 붙인다 (게임 이름에는 없음)
         out[norm_name(re.sub(r"^Quest:\s*", "", name))] = {
             "disabled": "currently disabled" in (v.get("description") or ""),
-            "eligible": champs if len(champs) >= 3 else None, "wikiName": name}
+            "eligible": champs if len(champs) >= 3 else None, "wikiName": name,
+            "description": v.get("description") or ""}
     return out
 
 
@@ -625,6 +626,13 @@ def rule_basis(rule, resolved, desc_html, warn, who):
     out, unexplained = [], []
     if rule.get("auto"):
         out.append({"t": "auto", "text": rule.get("model", "").replace("자동 추정 (검토 필요): ", "설명 문장에서 자동으로 읽음: ")})
+        wc = rule.get("wikiCheck") or {}
+        ok = [STAT_LABEL.get(k, k) for k, v in wc.items() if v is True]
+        bad = [STAT_LABEL.get(k, k) for k, v in wc.items() if v is False]
+        if ok:
+            out.append({"t": "wiki", "text": f"위키 설명과 일치: {', '.join(ok)}"})
+        if bad:
+            out.append({"t": "missing", "text": f"위키 설명과 다름 (확인 필요): {', '.join(bad)}"})
     for k, v in spec.items():
         label = STAT_LABEL.get(k, k)
         val = resolved.get(k, v)
@@ -650,6 +658,34 @@ def rule_basis(rule, resolved, desc_html, warn, who):
     if unexplained and not b:
         warn.append(f"{who}: 근거 없는 가정값 {', '.join(unexplained)} → rules.json basis 필요")
         out.append({"t": "missing", "text": "근거를 아직 적지 않은 값: " + ", ".join(unexplained)})
+    return out
+
+
+# 자동 추정 키 → 위키 영어 설명의 능력치 이름
+WIKI_STAT = {
+    "AS": "attack speed", "CRIT": "critical strike chance", "HASTE": "ability haste", "MS": "movement speed",
+    "MSP": "movement speed", "AD": "attack damage", "ADmult": "attack damage", "AP": "ability power",
+    "APmult": "ability power", "HP": "health", "HPmult": "health", "ARMOR": "armor", "MR": "magic resistance",
+    "LS": "life steal", "OMNIVAMP": "omnivamp", "HSP": "heal and shield power", "adaptive": "adaptive force",
+    "adaptiveMult": "adaptive force", "LETHALITY": "lethality", "MPEN": "magic penetration", "MPENP": "magic penetration",
+}
+
+
+def wiki_check(stats, wiki_text):
+    """자동 추정 값마다 위키 설명에 같은 숫자 + 같은 능력치가 있는지: {키: True(일치)/False(다름)/None(위키에 없음)}"""
+    text = re.sub(r"\{\{[a-z]+\|([^{}|]*\|)?", "", wiki_text or "", flags=re.I)
+    text = re.sub(r"[{}'|\[\]]", " ", text).lower()
+    out = {}
+    for k, v in stats.items():
+        word = WIKI_STAT.get(k)
+        if not word or word not in text:
+            out[k] = None
+            continue
+        want = round(v * 100, 2) if k in PCT_KEYS else round(v, 2)
+        nums = set()
+        for m in re.finditer(re.escape(word), text):
+            nums.update(round(float(x), 2) for x in re.findall(r"\d+(?:\.\d+)?", text[max(0, m.start() - 40):m.start()]))
+        out[k] = want in nums
     return out
 
 
@@ -719,6 +755,33 @@ def review_report(version, new, changed, mismatch, rule_warn, auto_rules, no_num
                        for x, r in mismatch])
     sec("🔧 규칙 수치 경고 (값 이름이 사라짐 등)", rule_warn)
     return "\n".join(out) if len(out) > 4 else ""
+
+
+ICON_MAX = {"augment": 128}  # 증강 아이콘은 256px 이지만 화면에서는 64px 이하로만 보인다 (선명도용 2배)
+
+
+def optimize_icons(icons_dir):
+    """아이콘 PNG → WebP (약 7.4MB → 2MB). Pillow 가 있을 때만 (웹 사이트·저장소용 데이터).
+
+    프로그램의 '데이터 갱신'에는 Pillow 를 넣지 않아서 PNG 그대로 쓴다 → data.json iconExt 로 화면이 따라간다.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return "png" if any(icons_dir.rglob("*.png")) or not any(icons_dir.rglob("*.webp")) else "webp"
+    for png in list(icons_dir.rglob("*.png")):
+        try:
+            im = Image.open(png)
+            im.load()
+            limit = ICON_MAX.get(png.parent.name)
+            if limit and max(im.size) > limit:
+                im = im.resize((limit, limit), Image.LANCZOS)
+            im.save(png.with_suffix(".webp"), "WEBP", quality=85, method=6)
+            png.unlink()
+        except Exception as e:
+            print("  아이콘 변환 실패:", png.name, e)
+            return "png"
+    return "webp"
 
 
 # ---------------------------------------------------------------- 수집
@@ -840,6 +903,7 @@ def main():
     rarity_name = {0: "실버", 1: "골드", 2: "프리즘"}
     out_augs, unresolved_total, disabled, disabled_ids, aug_spells = [], 0, [], set(), {}
     wiki_matched = 0
+    wiki_desc = {}  # 증강 id → 위키 영어 설명 (자동 추정 대조용)
     for name in kiwi_names:
         if not SAFE_ID.fullmatch(name):  # 화면 속성·아이콘 파일 이름에 쓰이므로 영문·숫자·밑줄만
             print("  [건너뜀] 이상한 증강 id:", repr(name)[:60])
@@ -858,6 +922,7 @@ def main():
             disabled.append(label + ("" if a.get("Enabled") is False else " (위키 기준)"))
             disabled_ids.add(name)
             continue
+        wiki_desc[name] = wa.get("description", "")
         spell = kiwi.get(a.get("RootSpell", ""), {}).get("mSpell", {})
         raw = strings.get((a.get("AugmentTooltipTra") or "").lower()) \
             or strings.get((a.get("DescriptionTra") or "").lower()) or ""
@@ -981,7 +1046,7 @@ def main():
              for i in out_items]
     jobs += [(f"{CDRAGON}/game/{a['_icon']}", ICONS / "augment" / f"{a['id']}.png")
              for a in out_augs if a["_icon"]]
-    jobs = [(u, p) for u, p in jobs if REFRESH or not p.exists()]
+    jobs = [(u, p) for u, p in jobs if REFRESH or not (p.exists() or p.with_suffix(".webp").exists())]
     failed = []
 
     def dl(job):
@@ -996,8 +1061,9 @@ def main():
     print(f"아이콘 {len(jobs)}개 받는 중...")
     with ThreadPoolExecutor(16) as ex:
         list(ex.map(dl, jobs))
+    icon_ext = optimize_icons(ICONS)
     for a in out_augs:
-        a["icon"] = (ICONS / "augment" / f"{a['id']}.png").exists()
+        a["icon"] = any((ICONS / "augment" / f"{a['id']}.{x}").exists() for x in ("png", "webp"))
         del a["_icon"]
 
     rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8"))
@@ -1018,7 +1084,11 @@ def main():
         if st:
             r = rules["augments"].setdefault(a["id"], {})
             r.update({"statsResolved": st, "auto": True, "model": "자동 추정 (검토 필요): " + " / ".join(used)})
+            r["wikiCheck"] = wiki_check(st, wiki_desc.get(a["id"], ""))
             auto_rules[a["id"]] = st
+            bad = [k for k, ok in r["wikiCheck"].items() if ok is False]
+            if bad:
+                rule_warn.append(f"{a['name']}: 자동 추정 {', '.join(bad)} 값이 위키 설명과 다름 → 확인 필요")
     aug_by_id = {a["id"]: a for a in out_augs}
     for aid, r in rules["augments"].items():  # 규칙 수치 근거 (화면 '근거')
         if aid in aug_by_id and (r.get("stats") or r.get("statsResolved")):
@@ -1047,7 +1117,7 @@ def main():
     (WEB / "review.md").write_text(report, encoding="utf-8")
     sources = build_sources(FETCHED, pn_url if patch else None)
     data = {"version": version, "dataVersion": cd_version, "sources": sources, "patchNotes": patch,
-            "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "tags": TAGS, "rules": rules,
+            "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "iconExt": icon_ext, "tags": TAGS, "rules": rules,
             "disabled": disabled,
             "champions": out_champs, "items": out_items, "augments": out_augs}
     (WEB / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
