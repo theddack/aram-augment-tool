@@ -1,0 +1,9 @@
+# 고정해 둔 버전(Actions 커밋 SHA, 빌드 도구)의 새 버전을 매주 PR 로 알려 준다. 자동으로 합치지 않는다.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly }

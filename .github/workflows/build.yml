@@ -17,14 +17,14 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
 
       - name: 도구 설치
-        run: python -m pip install pywebview pyinstaller
+        run: python -m pip install -r requirements-build.txt
 
       - name: 모듈 확인
         run: python -c "import desktop, build_data, champion_data, lol_calc, lcu, overlay, webview, tkinter; print('ok')"
@@ -47,7 +47,7 @@ jobs:
           python tools/make_zip.py dist/칼바람증강Addon KalbaramAddon-Windows.zip
           "exe: {0:N1} MB / zip: {1:N1} MB" -f ((Get-Item $exe).Length / 1MB), ((Get-Item KalbaramAddon-Windows.zip).Length / 1MB)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: windows
           path: KalbaramAddon-Windows.zip
@@ -56,14 +56,14 @@ jobs:
   mac:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
 
       - name: 도구 설치
-        run: python -m pip install pywebview pyinstaller
+        run: python -m pip install -r requirements-build.txt
 
       # 실행 파일 이름은 영어로: 한글 실행 파일 이름이면 codesign 이 서명 도중 멈춰서(Bus error)
       # 서명이 깨진 앱이 되고, 받은 사람 맥에서 "손상되었기 때문에 열 수 없습니다"가 뜬다 (v0.1.3 까지)
@@ -93,7 +93,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent dist/칼바람증강Addon.app KalbaramAddon-Mac.zip
           ls -la KalbaramAddon-Mac.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: mac
           path: KalbaramAddon-Mac.zip
@@ -105,18 +105,34 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write      # 빌드 출처 증명(attestation) 서명용
+      attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: 버전 확인 (태그 = desktop.py APP_VERSION, 새 버전 알림이 맞게 뜨도록)
+        run: |
+          v=$(python3 -c "import re;print(re.search(r'APP_VERSION = \"([^\"]+)\"', open('desktop.py', encoding='utf-8').read()).group(1))")
+          test "v$v" = "${{ github.ref_name }}" || { echo "태그 ${{ github.ref_name }} ≠ APP_VERSION $v"; exit 1; }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           path: out
           merge-multiple: true
-      - name: 릴리스 설명 (업데이트내역.md 의 그 버전)
-        run: python3 tools/changelog.py release "${{ github.ref_name }}" > notes.md
-      - uses: softprops/action-gh-release@v2
+      # 배포 파일 변조 확인용: SHA-256 체크섬 + GitHub 빌드 출처 증명 (이 저장소의 이 워크플로가 만든 파일인지)
+      - name: 체크섬
+        run: |
+          cd out && sha256sum KalbaramAddon-Windows.zip KalbaramAddon-Mac.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2
+        with:
+          subject-path: |
+            out/KalbaramAddon-Windows.zip
+            out/KalbaramAddon-Mac.zip
+      - name: 릴리스 설명 (업데이트내역.md 의 그 버전 + 체크섬)
+        run: python3 tools/changelog.py release "${{ github.ref_name }}" out/SHA256SUMS.txt > notes.md
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           name: 칼바람 증강 Addon ${{ github.ref_name }}
           body_path: notes.md
           files: |
             out/KalbaramAddon-Windows.zip
             out/KalbaramAddon-Mac.zip
+            out/SHA256SUMS.txt

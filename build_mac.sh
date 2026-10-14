@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/pip install -q pywebview pyinstaller
+.venv/bin/pip install -q -r requirements-build.txt
 [ -f web/data.json ] || .venv/bin/python build_data.py
 # 실행 파일 이름은 영어로 (한글이면 codesign 이 서명 도중 멈춰 '손상된 앱'이 된다), 보이는 이름·폴더만 한글
 .venv/bin/pyinstaller --noconfirm --windowed --name KalbaramAddon \
