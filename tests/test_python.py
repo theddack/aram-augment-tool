@@ -479,6 +479,23 @@ class AugOcr(unittest.TestCase):
         t.feed(None)
         self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("영혼 흡수", 1, None))
 
+    def test_hover_partial_names_keep_screen_open(self):
+        # v0.1.13 실제 PC: 마우스를 올리자 이름이 잘려 읽혀 닫힘으로 착각 → 그 뒤 클릭을 못 잡았다
+        t = self.o.Tracker()
+        offers = ["포로 쇄도", None, "지옥불 난사 발동"]
+        t.feed(offers)
+        for _ in range(5):
+            t.feed(None, partial=True)  # '포로' · '난사 발동' 만 보임
+        self.assertEqual(t.state["pickSeq"], 0, "잘린 이름이 보이는 동안은 열린 것")
+        t.click(2)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "지옥불 난사 발동")
+        m = self.o.Matcher(["포로 쇄도", "지옥불 난사 발동"])
+        self.assertEqual(m.match("포로 쇄도 저항")[0], "포로 쇄도")
+        self.assertTrue(m.partial("포로"))
+        self.assertFalse(m.partial("이전 공격과 다른 기본 공격 또는 스킬로 적 챔피언에게 피해를 입히면"))
+
     def test_tracker_reroll_resets_click_and_unknown(self):
         t = self.o.Tracker()
         t.feed(["눈 폭발", "강타자", "정신 변환"])

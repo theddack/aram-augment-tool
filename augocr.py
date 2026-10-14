@@ -39,12 +39,22 @@ class Matcher:
                 if a and norm(a) and norm(a) not in self.names:
                     self.names[norm(a)] = main
 
+    def partial(self, text):
+        """이름의 일부(2글자 이상)가 보이는지: '포로'·'난사 발동' 처럼 잘려 읽힌 이름. 설명 문장은 길어서 걸러진다"""
+        t = norm(text)
+        return 2 <= len(t) <= 10 and any(t in k for k in self.names if len(k) > len(t))
+
     def match(self, text):
         t = norm(text)
         if len(t) < 2:
             return None, 0.0
         if t in self.names:
             return self.names[t], 1.0
+        # 이름이 다른 글자와 붙어 읽힌 경우 ('포로 쇄도 저항'): 3글자 이상 이름이 통째로 들어 있으면 그 이름 (가장 긴 것)
+        inside = [k for k in self.names if len(k) >= 3 and k in t and len(t) <= len(k) + 8]
+        if inside:
+            k = max(inside, key=len)
+            return self.names[k], 0.9
         best, score = None, 0.0
         for k, n in self.names.items():
             if abs(len(k) - len(t)) > 3:
@@ -142,12 +152,14 @@ class Tracker:
     """한 번 읽을 때마다 결과를 넣으면, 선택지·고른 증강을 정리해 state 로 내보낸다"""
 
     CLOSE_AFTER = 2  # 연속으로 이만큼 못 읽으면 선택 화면이 닫힌 걸로
+    PARTIAL_HOLD = 25  # 초. 잘린 이름만 보여도 열린 걸로 보는 최대 시간 (게임 중 비슷한 글자로 안 닫히는 일 없게)
 
     def __init__(self):
         self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0}
         self._miss = 0
         self._click = None  # 이번 선택 화면에서 마지막으로 클릭한 카드 칸
         self._last = None
+        self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
 
     @property
     def showing(self):
@@ -157,8 +169,15 @@ class Tracker:
         if self._last is not None and slot is not None:
             self._click = slot
 
-    def feed(self, offers3, pos=None):
+    def feed(self, offers3, pos=None, partial=False):
+        """partial: 이름이 하나라도 보이면 True → 아직 선택 화면 (마우스를 올려 카드가 바뀌는 동안 닫혔다고 착각하지 않게.
+        v0.1.13 실제 PC: 마우스를 올리자 이름이 '포로'·'난사 발동'으로 잘려 읽혀 닫힘으로 판단, 클릭을 못 잡음)"""
+        now = time.time()
+        if not offers3 and partial and self._last is not None and now - self._full_at < self.PARTIAL_HOLD:
+            self._miss = 0
+            return
         if offers3:
+            self._full_at = now
             self._miss = 0
             if pos and pos != self.state.get("pos"):
                 self.state = {**self.state, "pos": pos}
@@ -389,10 +408,12 @@ class Reader(threading.Thread):
         img = cap.grab(gx, gy + n0, gw, n1 - n0)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         words = [(t, x, y + n0, w, h) for t, x, y, w, h in ocr.words(img, gw, n1 - n0)]
         offers = find_offers(words, gw, gh, matcher)
+        partial = False
         if not offers:
-            # 이름이 하나만 맞으면 선택 화면을 반쯤 읽은 것 → 읽은 글자를 기록에 남긴다 (실제 게임에서 왜 못 읽었는지 보려고)
+            # 이름이 하나라도 (일부라도) 맞으면 선택 화면이 아직 떠 있는 것 → 읽은 글자를 기록에 남긴다
             segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
-            if sum(1 for t in segs if matcher.match(t)[0]) == 1:
+            partial = any(matcher.match(t)[0] or matcher.partial(t) for t in segs)
+            if partial:
                 self.near = " | ".join(segs)[:160]
-        self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None)
+        self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
