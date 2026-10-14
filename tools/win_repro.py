@@ -91,6 +91,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 EVENTS = []
+EVENTS_BREAKDOWN = []  # 게임 중(140초) 프로세스별 메모리
 
 
 def log(msg):
@@ -257,6 +258,17 @@ def main():
                     cpu_prev = (cpu, time.time())
                 except Exception:
                     pass
+            if proc and now() >= 140 and not EVENTS_BREAKDOWN:
+                try:
+                    rows = []
+                    for p in [proc] + proc.children(recursive=True):
+                        mi = p.memory_info()
+                        rows.append((mi.rss / 1048576, p.name(), " ".join(p.cmdline()[1:3])[:60] if p.name() != "msedgewebview2.exe" else
+                                     next((a for a in p.cmdline() if a.startswith("--type=")), "--type=browser")))
+                    for mb, nm, extra in sorted(rows, reverse=True):
+                        EVENTS_BREAKDOWN.append(f"{mb:7.0f}MB {nm} {extra}")
+                except Exception as e:
+                    EVENTS_BREAKDOWN.append(f"측정 실패 {e}")
             for t, name in list(shots.items()):
                 if now() >= t:
                     shot(name)
@@ -268,6 +280,8 @@ def main():
             if p and p.poll() is None:
                 p.kill()
         log(f"가장 느린 응답 {worst:.2f}초")
+        for line in EVENTS_BREAKDOWN:
+            log("메모리 " + line)
         if usage:
             for ph in ("Lobby", "InProgress"):
                 rows = [u for u in usage if u[0] == ph]
