@@ -1,5 +1,9 @@
 # 칼바람 증강 계산기
 
+> 라이엇 게임즈와 무관한 팬 제작 도구입니다. League of Legends 및 관련 이미지·데이터는 Riot Games, Inc.의 자산입니다.
+
+웹: https://theddack.github.io/aram-augment-tool/ (main 에 올리면 `.github/workflows/pages.yml` 이 web/ 폴더를 자동 배포)
+
 칼바람 증강 모드(내부 이름 `KIWI`)의 증강 223개와 상점 아이템을 게임 데이터에서 뽑아,
 챔피언 성향 가중치로 **증강 추천 + 시너지 + 아이템 빌드**를 계산하는 로컬 도구. 통계(승률) 없이 수치·설명만 사용한다.
 

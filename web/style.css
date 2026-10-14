@@ -79,6 +79,9 @@ button.on { border-color: var(--accent); color: var(--accent); }
 #weights { display: grid; grid-template-columns: 90px 1fr 36px; gap: 4px 8px; align-items: center; font-size: 12px; margin: 8px 0; }
 #weights input { width: 100%; }
 
+footer { padding: 8px 16px 16px; text-align: center; }
+footer a { color: var(--muted); }
+
 /* 이번 선택지 */
 #offers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .offer { display: flex; flex-direction: column; gap: 4px; }
