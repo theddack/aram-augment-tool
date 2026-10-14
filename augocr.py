@@ -24,7 +24,8 @@ HUD_EVERY_MISSING = 60.0  # 초. 증강 칸을 아직 한 번도 못 찾았으�
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
-INTERVAL = 1.0  # 초 (글자 읽기)
+INTERVAL = 1.0  # 초 (글자 읽기: 증강 선택 화면이 떠 있거나 막 닫혔을 때)
+IDLE_INTERVAL = 2.0  # 초 (선택 화면이 아닐 때. 뜨면 2초 안에 알아채고 그때부터 1초마다)
 CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
 
 
@@ -127,11 +128,16 @@ def segments(words, gap):
     return res
 
 
+OWN_BOX_RIGHT = 0.22  # 애드온 상자(게임 창 왼쪽 위 고정) 오른쪽 끝 (너비 비율). 이 안의 글자는 우리 상자라 증강 이름으로 보지 않는다
+
+
 def find_offers(words, width, height, matcher):
     """카드 이름 덩어리 → [(증강 이름, 가운데 x, 이름 y)] 왼쪽부터. 2개 이상 맞아야 선택 화면으로 본다"""
     found = {}
     for text, cx, y in segments(words, gap=width * 0.04):
         if not (NAME_BAND[0] * height <= y <= NAME_BAND[1] * height):
+            continue
+        if cx < width * OWN_BOX_RIGHT:  # 우리 상자 글자 ('허리케인 > 몰락한 왕의 검' 을 읽었다, 2026-10-14 실제 기록)
             continue
         name, score = matcher.match(text)
         if name and (name not in found or found[name][2] < score):
@@ -441,9 +447,10 @@ class Reader(threading.Thread):
         rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]]
         if self.rec and self.offered and not getattr(self, "_area_saved", False):
             # 증강 칸이 화면 어디 있는지 보려고 한 판에 한 장: 아래 가운데만 (채팅·이름이 들어가지 않게 좌우 30% 는 뺀다)
-            ax0, ax1, ay0 = int(gw * 0.30), int(gw * 0.70), int(gh * 0.72)
+            # 해상도에 따라 HUD 가 왼쪽으로 치우친다 (2520x1575: 초상화가 너비 33%) → 12~70%, 아래 20% 띠
+            ax0, ax1, ay0 = int(gw * 0.12), int(gw * 0.70), int(gh * 0.80)
             self.rec.event("hudarea", {"image": self.rec.image("hudarea", cap.grab(gx + ax0, gy + ay0, ax1 - ax0, gh - ay0), ax1 - ax0, gh - ay0),
-                                       "box": [0.30, 0.72, 0.70, 1.0], "window": [gw, gh]})
+                                       "box": [0.12, 0.80, 0.70, 1.0], "window": [gw, gh]})
             self._area_saved = True
         groups = self.hud.scan(rgb, gh, (x0, y0))
         best = {g: sc for g, sc, _, _ in self.hud.last}
@@ -532,7 +539,9 @@ class Reader(threading.Thread):
         """다음 읽기까지 쉬는 동안, 선택 화면이 떠 있으면 클릭한 카드를 기록한다"""
         end = time.time() + INTERVAL
         if not (rect and self.tracker.showing):
-            time.sleep(INTERVAL)
+            # 선택 화면이 아니면 2초마다 (글자 인식이 CPU 를 가장 많이 쓴다). 직전 10초 안에 떴었으면 1초 (새로고침·다음 화면)
+            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10
+            time.sleep(INTERVAL if recent else IDLE_INTERVAL)
             return
         gx, gy, gw, gh = rect
         while time.time() < end:
@@ -556,12 +565,18 @@ class Reader(threading.Thread):
 
     def scan(self, cap, ocr, matcher, rect):
         gx, gy, gw, gh = rect
+        # 상점이 열려 있으면 증강 선택 화면은 아니다 → 이름 줄은 3번에 한 번만 (상점 아이템 이름을 증강 일부로 읽고 CPU 도 아끼게)
+        self._name_n = getattr(self, "_name_n", 0) + 1
+        if self.shop and not self.tracker.showing and self._name_n % 3:
+            self.scan_shop_only(cap, ocr, rect)
+            return
         n0, n1 = int(gh * NAME_BAND[0]), int(gh * NAME_BAND[1])
         words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         offers = find_offers(words, gw, gh, matcher)
         self.offered.update(n for n, _, _ in offers)
         partial = False
-        segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
+        segs = [t for t, cx, y in segments(words, gap=gw * 0.04)
+                if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh and cx >= gw * OWN_BOX_RIGHT]
         if not offers:
             # 이름이 하나라도 (일부라도) 맞으면 선택 화면이 아직 떠 있는 것 → 읽은 글자를 기록에 남긴다
             partial = any(matcher.match(t)[0] or matcher.partial(t) for t in segs)
@@ -585,7 +600,11 @@ class Reader(threading.Thread):
         if self.hud and now >= getattr(self, "_hud_at", 0):
             self.scan_hud(cap, rect)
             self._hud_at = now + (HUD_EVERY if self.hud.size else HUD_EVERY_MISSING)
-        # 상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만
+        self.scan_shop_only(cap, ocr, rect)
+
+    def scan_shop_only(self, cap, ocr, rect):
+        """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
+        gx, gy, gw, gh = rect
         self._shop_n = getattr(self, "_shop_n", 0) + 1
         if self._shop_n % SHOP_EVERY:
             return
