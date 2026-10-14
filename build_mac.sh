@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 .venv/bin/pyinstaller --noconfirm --windowed --name KalbaramAddon \
   --osx-bundle-identifier io.github.theddack.aramaugment \
   --add-data "web:web" --add-data "rules.json:." \
-  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import patch_check --hidden-import overlay \
+  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import patch_check --hidden-import overlay --exclude-module PIL \
   desktop.py
 APP="dist/칼바람증강Addon.app"
 rm -rf "$APP" && mv dist/KalbaramAddon.app "$APP"

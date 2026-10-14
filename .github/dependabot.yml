@@ -1,9 +1,16 @@
-# 고정해 둔 버전(Actions 커밋 SHA, 빌드 도구)의 새 버전을 매주 PR 로 알려 준다. 자동으로 합치지 않는다.
+# 고정해 둔 버전(Actions 커밋 SHA, 빌드·데이터 도구)의 새 버전을 한 달에 한 번, 종류별 PR 하나로 묶어서 알려 준다.
+# 자동으로 합치지 않는다: 릴리스 노트에서 깨지는 변경을 확인하고, 빌드가 통과한 뒤 합친다.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: pip
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
+    groups:
+      python-tools:
+        patterns: ["*"]
