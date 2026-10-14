@@ -59,11 +59,18 @@ def segments(words, gap):
     """OCR 단어들 [(글자, x, y, w, h)] → 같은 줄에서 간격이 gap 보다 크면 나눈 덩어리 [(글자, 가운데 x, y)]
     세 카드 이름이 한 줄로 합쳐져 나와도 카드별로 나눈다"""
     out = []
-    rows = {}
-    for t, x, y, w, h in words:
-        key = round((y + h / 2) / max(h, 1))  # 비슷한 높이끼리
-        rows.setdefault(key, []).append((t, x, y, w, h))
-    for row in rows.values():
+    # 같은 줄 = 세로 가운데가 가까운 단어끼리 (글자 높이로 나누면 'Heavy'·'Hitter'·'to' 처럼 높이가 다른 단어가
+    # 서로 다른 줄로 갈라졌다: 2026-10-14 윈도우 가상 PC 실측)
+    rows = []
+    for wd in sorted(words, key=lambda r: r[2] + r[4] / 2):
+        cy = wd[2] + wd[4] / 2
+        row = next((r for r in rows if abs(r["cy"] - cy) <= 0.6 * max(r["h"], wd[4])), None)
+        if row:
+            row["words"].append(wd)
+            row["h"] = max(row["h"], wd[4])
+        else:
+            rows.append({"cy": cy, "h": wd[4], "words": [wd]})
+    for row in (r["words"] for r in rows):
         row.sort(key=lambda r: r[1])
         cur = [row[0]]
         for r in row[1:]:

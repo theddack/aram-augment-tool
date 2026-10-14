@@ -419,6 +419,15 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(m.match("Mind to Mater")[0], "정신 변환")  # 한 글자 틀려도
         self.assertEqual(m.match("눈 폭발")[0], "눈 폭발")
 
+    def test_words_of_different_height_stay_together(self):
+        # 윈도우 가상 PC 실측 단어 상자 (1024x700 창, 이름 줄 y≈322): 높이가 달라도 한 이름으로 묶여야 한다
+        m = self.o.Matcher([("눈 폭발", "Snowblast"), ("강타자", "Heavy Hitter"), ("정신 변환", "Mind to Matter")])
+        W, H = 1024, 700
+        words = [("Snowblast", 220, 313, 88, 18), ("Heavy", 466, 313, 50, 22), ("Hitter", 522, 314, 52, 17),
+                 ("Mind", 717, 313, 42, 17), ("to", 765, 316, 16, 14), ("Matter", 787, 313, 58, 17)]
+        offers = self.o.find_offers(words, W, H, m)
+        self.assertEqual(self.o.slots(offers, W), ["눈 폭발", "강타자", "정신 변환"])
+
     def test_merged_line_split_into_cards(self):
         W, H = 1920, 1080
         y = int(H * 0.46)
