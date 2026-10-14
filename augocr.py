@@ -2,10 +2,11 @@
 
 - 라이엇 게임 중 데이터(Live Client Data)에는 증강이 없다 (2026-10-14 실제 기록 307초, 증강 고른 뒤에도 없음).
 - 화면을 읽기만 한다 (게임 메모리·입력에 손대지 않음). 블리츠 같은 프로그램과 같은 방식.
-- 고른 증강: 선택 화면이 닫히기 직전에 금색 테두리(마우스를 올린 카드)였던 카드. 하나로 정해지지 않으면 None
-  → 화면(app.js)이 '어떤 걸 골랐나요' 버튼을 띄운다.
+- 고른 증강: 선택 화면이 떠 있는 동안 마지막으로 클릭한 카드 (마우스 위치·왼쪽 버튼 상태만 읽는다, 게임에 입력을 보내지 않음).
+  카드 테두리 색은 등급(실버·골드·프리즘)이라 고른 표시로 쓸 수 없다 (2026-10-14 실제 화면: 세 장 모두 금색인 판).
+  클릭을 못 봤으면 None → 화면(app.js)이 '이걸로 선택'을 눌러 달라고 안내한다.
 
-화면 비율 (실제 화면 2026-10-14, 카드 이름 줄은 게임 창 높이의 약 46%):
+화면 비율 (실제 화면 2026-10-14): 카드 위 테두리 ≈ 0.20, 이름 줄 ≈ 0.46, 새로고침 버튼 ≈ 0.70 (게임 창 높이 비율)
 """
 import difflib
 import re
@@ -14,11 +15,12 @@ import threading
 import time
 
 IS_WINDOWS = sys.platform == "win32"
-BAND = (0.15, 0.58)  # 잡는 세로 범위 (게임 창 높이 비율): 카드 위 테두리 ~ 이름 줄
-NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다
-FRAME_ABOVE = 0.255  # 이름 줄에서 카드 위 테두리까지 (게임 창 높이 비율)
+NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다 (게임 창 높이 비율)
+CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
+CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
-INTERVAL = 1.0  # 초
+INTERVAL = 1.0  # 초 (글자 읽기)
+CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
 
 
 def norm(s):
@@ -113,27 +115,13 @@ def card_pos(offers, width, height):
     return {"xs": [round(x, 4) for x in xs], "nameY": round(sum(ys) / len(ys), 4)}
 
 
-def gold_score(pixel_at, cx, frame_y, width):
-    """카드 위 테두리 근처의 금색 정도 (0~1). pixel_at(x, y) → (r, g, b)
-    마우스를 올린 카드는 금색(빨강 > 파랑), 나머지는 은색(빨강 ≈ 파랑)"""
-    best = 0.0
-    for dx in range(-int(width * 0.01), int(width * 0.01) + 1, 2):
-        for dy in range(-12, 13, 2):
-            r, g, b = pixel_at(int(cx + dx), int(frame_y + dy))
-            if r > 150:
-                best = max(best, (r - b) / 255)
-    return best
-
-
-def picked(history):
-    """선택 화면이 닫히기 직전 몇 번의 금색 기록 [{이름: 점수}] → 고른 증강 이름. 정해지지 않으면 None"""
-    for g in reversed(history):
-        if not g:
-            continue
-        top = sorted(g.items(), key=lambda kv: -kv[1])
-        if top[0][1] >= 0.25 and (len(top) == 1 or top[0][1] - top[1][1] >= 0.15):
-            return top[0][0]
+def card_at(pos, x, y):
+    """클릭 위치 (게임 창 비율) → 카드 칸 번호. 카드 밖(새로고침 버튼 등)이면 None"""
+    if not pos or not (CARD_Y[0] <= y <= CARD_Y[1]):
         return None
+    for i, cx in enumerate(pos.get("xs") or []):
+        if cx is not None and abs(x - cx) <= CARD_HALF_W:
+            return i
     return None
 
 
@@ -145,27 +133,34 @@ class Tracker:
     def __init__(self):
         self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0}
         self._miss = 0
-        self._gold = []
+        self._click = None  # 이번 선택 화면에서 마지막으로 클릭한 카드 칸
         self._last = None
 
-    def feed(self, offers3, gold, pos=None):
+    @property
+    def showing(self):
+        return self._last is not None
+
+    def click(self, slot):
+        if self._last is not None and slot is not None:
+            self._click = slot
+
+    def feed(self, offers3, pos=None):
         if offers3:
             self._miss = 0
             if pos and pos != self.state.get("pos"):
                 self.state = {**self.state, "pos": pos}
-            self._gold = (self._gold + [gold])[-3:]
-            if offers3 != self._last:  # 새 선택지 (새로고침 포함)
-                self._last = offers3
+            if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
+                self._last, self._click = offers3, None
                 self.state = {**self.state, "offers": offers3, "seq": self.state["seq"] + 1}
             return
         if self._last is None:
             return
         self._miss += 1
         if self._miss >= self.CLOSE_AFTER:
-            p = picked(self._gold)
+            p = self._last[self._click] if self._click is not None else None
             self.state = {**self.state, "offers": None, "pos": None, "picked": p, "pickedFrom": self._last,
                           "pickSeq": self.state["pickSeq"] + 1}
-            self._last, self._gold, self._miss = None, [], 0
+            self._last, self._click, self._miss = None, None, 0
 
 
 # ---------------------------------------------------------------- 윈도우: 화면 잡기 + 글자 인식
@@ -248,6 +243,28 @@ class _Ocr:
         return out
 
 
+class _Mouse:
+    """왼쪽 버튼을 새로 누른 순간의 화면 좌표 (GetAsyncKeyState·GetCursorPos 로 읽기만 한다)"""
+
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+        self.ct, self.wt = ctypes, wintypes
+        self.u = ctypes.windll.user32
+        self.u.GetAsyncKeyState.restype = ctypes.c_short
+        self.down = False
+
+    def clicked(self):
+        down = bool(self.u.GetAsyncKeyState(0x01) & 0x8000)  # VK_LBUTTON
+        hit = None
+        if down and not self.down:
+            pt = self.wt.POINT()
+            self.u.GetCursorPos(self.ct.byref(pt))
+            hit = (pt.x, pt.y)
+        self.down = down
+        return hit
+
+
 class Reader(threading.Thread):
     """게임 창이 맨 앞일 때 1초마다 카드 이름 줄을 읽는다. game_rect() → ((x, y, w, h) | None, 맨 앞 여부)"""
 
@@ -271,19 +288,20 @@ class Reader(threading.Thread):
             self.status = "윈도우에서만 동작"
             return
         try:
-            cap, ocr = _Capture(), _Ocr()
+            cap, ocr, mouse = _Capture(), _Ocr(), _Mouse()
         except Exception as e:
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
         matcher, names = None, None
         while True:
             self.beat = time.time()
+            rect = None
             try:
                 rect, front = self.game_rect()
                 if not (self.enabled and rect and front):
                     self.status = "게임 창 기다리는 중" if self.enabled else "꺼짐"
                     if rect is None:
-                        self.tracker.feed(None, {})
+                        self.tracker.feed(None)
                     time.sleep(INTERVAL)
                     continue
                 cur = self.names_fn()
@@ -294,30 +312,31 @@ class Reader(threading.Thread):
                 self.last_ms = int((time.time() - t0) * 1000)
             except Exception as e:
                 self.status = f"읽기 오류: {str(e)[:120]}"
+            self.wait_clicks(mouse, rect)
+
+    def wait_clicks(self, mouse, rect):
+        """다음 읽기까지 쉬는 동안, 선택 화면이 떠 있으면 클릭한 카드를 기록한다"""
+        end = time.time() + INTERVAL
+        if not (rect and self.tracker.showing):
             time.sleep(INTERVAL)
+            return
+        gx, gy, gw, gh = rect
+        while time.time() < end:
+            hit = mouse.clicked()
+            if hit:
+                self.tracker.click(card_at(self.tracker.state.get("pos"), (hit[0] - gx) / gw, (hit[1] - gy) / gh))
+            time.sleep(CLICK_POLL)
 
     def scan(self, cap, ocr, matcher, rect):
         gx, gy, gw, gh = rect
-        top = int(gh * BAND[0])
-        bh = int(gh * (BAND[1] - BAND[0]))
-        img = cap.grab(gx, gy + top, gw, bh)
-        # 이름 줄만 글자 인식 (빠르고 설명 글자와 덜 섞인다)
-        n0, n1 = int(gh * NAME_BAND[0]) - top, int(gh * NAME_BAND[1]) - top
-        words = ocr.words(img[n0 * gw * 4: n1 * gw * 4], gw, n1 - n0)
-        words = [(t, x, y + n0 + top, w, h) for t, x, y, w, h in words]
+        n0, n1 = int(gh * NAME_BAND[0]), int(gh * NAME_BAND[1])
+        img = cap.grab(gx, gy + n0, gw, n1 - n0)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
+        words = [(t, x, y + n0, w, h) for t, x, y, w, h in ocr.words(img, gw, n1 - n0)]
         offers = find_offers(words, gw, gh, matcher)
         if not offers:
             # 이름이 하나만 맞으면 선택 화면을 반쯤 읽은 것 → 읽은 글자를 기록에 남긴다 (실제 게임에서 왜 못 읽었는지 보려고)
             segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
             if sum(1 for t in segs if matcher.match(t)[0]) == 1:
                 self.near = " | ".join(segs)[:160]
-
-        def pixel_at(x, y):
-            y -= top
-            if not (0 <= x < gw and 0 <= y < bh):
-                return (0, 0, 0)
-            i = (y * gw + x) * 4
-            return img[i + 2], img[i + 1], img[i]
-        gold = {n: gold_score(pixel_at, x, y - gh * FRAME_ABOVE, gw) for n, x, y in offers}
-        self.tracker.feed(slots(offers, gw) if offers else None, gold, card_pos(offers, gw, gh) if offers else None)
+        self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None)
         self.status = "증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님"

@@ -157,6 +157,16 @@ class Lcu(unittest.TestCase):
         c.req = req
         return c
 
+    def test_current_champion_from_session_first(self):
+        c = lcu.Lcu.__new__(lcu.Lcu)
+        replies = {"/lol-champ-select/v1/session": {"localPlayerCellId": 2, "myTeam": [{"cellId": 1, "championId": 39},
+                                                                                     {"cellId": 2, "championId": 799}]},
+                   "/lol-champ-select/v1/current-champion": 39}  # 대기석에서 바꾼 뒤에도 앞 챔피언으로 남는 경우
+        c.req = lambda m, path, body=None: replies[path]
+        self.assertEqual(c.current_champion(), 799)
+        replies["/lol-champ-select/v1/session"] = {}
+        self.assertEqual(c.current_champion(), 39)
+
     def test_keeps_user_sets_and_backs_up(self):
         c = self._client({"itemSets": [{"uid": "mine", "title": "내 세트"}], "accountId": 456})
         bd = tempfile.mkdtemp()
@@ -432,35 +442,39 @@ class AugOcr(unittest.TestCase):
         self.assertEqual([x for _, x, _, _ in items], [620, 945, 1300])
         self.assertEqual(items[0][2], int(H * (497 / H + overlay.BELOW_NAME)))
 
-    def test_gold_frame(self):
-        gold = lambda x, y: (240, 210, 150)  # noqa: E731
-        silver = lambda x, y: (200, 205, 210)  # noqa: E731
-        self.assertGreater(self.o.gold_score(gold, 500, 300, 1920), 0.25)
-        self.assertLess(self.o.gold_score(silver, 500, 300, 1920), 0.05)
+    def test_click_to_card(self):
+        pos = {"xs": [0.29, 0.5, 0.72], "nameY": 0.46}
+        self.assertEqual(self.o.card_at(pos, 0.51, 0.40), 1)
+        self.assertEqual(self.o.card_at(pos, 0.30, 0.60), 0)
+        self.assertIsNone(self.o.card_at(pos, 0.5, 0.70), "카드 밑 새로고침 버튼은 고른 게 아니다")
+        self.assertIsNone(self.o.card_at(pos, 0.61, 0.40), "카드 사이 빈 곳")
 
     def test_tracker_offers_then_pick(self):
         t = self.o.Tracker()
-        offers = ["눈 폭발", "강타자", "정신 변환"]
-        t.feed(offers, {"눈 폭발": 0.0, "강타자": 0.02, "정신 변환": 0.0})
+        offers = ["치명적 리듬", "영혼 흡수", "화염 낙인"]
+        t.click(1)  # 선택 화면 전 클릭은 무시
+        t.feed(offers)
         self.assertEqual(t.state["offers"], offers)
         seq = t.state["seq"]
-        t.feed(offers, {"눈 폭발": 0.0, "강타자": 0.4, "정신 변환": 0.01})  # 강타자에 마우스
+        t.feed(offers)
         self.assertEqual(t.state["seq"], seq)  # 같은 선택지는 다시 안 보낸다
-        t.feed(None, {})
+        t.click(1)  # 영혼 흡수 클릭
+        t.feed(None)
         self.assertEqual(t.state["pickSeq"], 0)  # 한 번 못 읽은 걸로는 닫힘 아님
-        t.feed(None, {})
-        self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("강타자", 1, None))
+        t.feed(None)
+        self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("영혼 흡수", 1, None))
 
-    def test_tracker_ambiguous_and_reroll(self):
+    def test_tracker_reroll_resets_click_and_unknown(self):
         t = self.o.Tracker()
-        t.feed(["눈 폭발", "강타자", "정신 변환"], {"눈 폭발": 0.4, "강타자": 0.38})
-        t.feed(["눈 폭발", "탱크 엔진", "정신 변환"], {})  # 새로고침 → 새 선택지
+        t.feed(["눈 폭발", "강타자", "정신 변환"])
+        t.click(1)
+        t.feed(["눈 폭발", "탱크 엔진", "정신 변환"])  # 새로고침 → 새 선택지, 앞 클릭 무효
         self.assertEqual(t.state["seq"], 2)
-        t.feed(None, {})
-        t.feed(None, {})
-        self.assertIsNone(t.state["picked"])  # 금색이 안 보였으면 정하지 않는다
+        t.click(None)  # 카드 밖 클릭
+        t.feed(None)
+        t.feed(None)
+        self.assertIsNone(t.state["picked"])  # 클릭을 못 봤으면 정하지 않는다
         self.assertEqual(t.state["pickedFrom"], ["눈 폭발", "탱크 엔진", "정신 변환"])
-
 
 class UpdateData(unittest.TestCase):
     """데이터 받기는 별도 프로그램에서 (창이 '응답 없음'이 되지 않게), 진행은 기록 파일로 본다"""

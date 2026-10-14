@@ -146,7 +146,7 @@ A = ["눈 폭발", "강타자", "정신 변환"]
 B = ["눈 폭발", "탱크 엔진", "정신 변환"]
 r.after(300, lambda: (r.lift(), r.focus_force()))
 r.after(15000, lambda: cards(A))             # 게임 60초: 첫 증강 선택 화면
-r.after(21000, lambda: cards(A, gold=1))     # 가운데(강타자)에 마우스
+# 게임 66초쯤 재현 스크립트가 가운데(강타자) 카드를 클릭한다 (테두리 색은 등급이라 고른 표시가 아님)
 r.after(28000, lambda: c.delete("card"))     # 골라서 닫힘 → 고른 증강 = 강타자
 r.after(45000, lambda: cards(B))             # 두 번째 선택 화면 (마우스 표시 없음)
 r.after(53000, lambda: c.delete("card"))     # 닫힘 → 못 정함 (직접 선택)
@@ -190,6 +190,7 @@ def main():
     log(f"애드온 시작: {cmd[0]}")
     game = None
     hwnd = None
+    clicked = False
     hung_since = None
     worst = 0.0
     shots = {10: "1_lobby", 30: "2_champselect", 64: "3_aug_offer", 69: "4_aug_hover", 76: "5_aug_picked",
@@ -218,6 +219,13 @@ def main():
                     hung_since = None
                 elif lag > 0.5:
                     log(f"애드온 창 응답 느림 {lag:.2f}초 (단계 {phase()})")
+            if not clicked and now() >= 66:  # 가운데 카드 클릭 (가짜 게임 창 1024x700 이 0,0 에 있음)
+                u32.SetCursorPos(512, 280)
+                u32.mouse_event(0x0002, 0, 0, 0, 0)  # 왼쪽 누름
+                time.sleep(0.1)
+                u32.mouse_event(0x0004, 0, 0, 0, 0)  # 뗌
+                clicked = True
+                log("가운데 카드 클릭")
             for t, name in list(shots.items()):
                 if now() >= t:
                     shot(name)
