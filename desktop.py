@@ -564,7 +564,8 @@ class Diag(threading.Thread):
     def run(self):
         gb = total_ram_gb()
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}"
-                   + (f" · 메모리 {gb:.0f}GB" if gb else "") + (" · 가벼운 모드" if self.light else ""))
+                   + (f" · 메모리 {gb:.0f}GB" if gb else "") + (" · 가벼운 모드" if self.light else "")
+                   + (f" · CPU 상한 코어 {self.cpu_cap}개분" if getattr(self, "cpu_cap", None) else " · CPU 상한 없음"))
         # 프로그램 전체가 멈추면(파이썬 잠금 교착) 이 스레드도 못 돌아서 위의 '멈춤' 기록을 못 남긴다 (v0.1.12 실제 PC:
         # 20:21:06 뒤로 한 줄도 없음). faulthandler 는 파이썬 잠금 없이 도는 감시라, 다시 못 맞추면 모든 스레드 위치를 쓴다
         import faulthandler
@@ -898,6 +899,44 @@ def light_mode(settings):
     return v if isinstance(v, bool) else True
 
 
+CPU_CAP_CORES = {True: 0.5, False: 1.0}  # 가벼운 모드 / 전체 모드: 애드온 전체가 쓸 수 있는 CPU (코어 몇 개분)
+_job = None  # 작업 개체 핸들 (프로그램이 끝날 때까지 들고 있어야 상한이 유지된다)
+
+
+def cap_cpu(cores):
+    """윈도우: 이 프로그램과 자식(화면 엔진 WebView2)이 함께 쓸 수 있는 CPU 를 코어 cores 개분으로 묶는다 (작업 개체 하드 캡).
+    무거운 계산이 순간적으로 몰려도 게임 몫을 뺏지 않는다 (CPU 순간 최대 지적 2026-10-14). 실패해도 다른 기능엔 영향 없음"""
+    global _job
+    if sys.platform != "win32" or _job:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.windll.kernel32
+        k.CreateJobObjectW.restype = wintypes.HANDLE
+        k.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        k.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        k.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        k.GetCurrentProcess.restype = wintypes.HANDLE
+
+        class CpuRate(ctypes.Structure):
+            _fields_ = [("ControlFlags", wintypes.DWORD), ("CpuRate", wintypes.DWORD)]
+        job = k.CreateJobObjectW(None, None)
+        if not job:
+            return False
+        ncpu = os.cpu_count() or 4
+        rate = max(100, min(10000, int(cores * 10000 / ncpu)))  # 전체 CPU 의 1/100 % 단위
+        info = CpuRate(0x1 | 0x4, rate)  # JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | HARD_CAP
+        if not k.SetInformationJobObject(job, 15, ctypes.byref(info), ctypes.sizeof(info)):  # JobObjectCpuRateControlInformation
+            return False
+        if not k.AssignProcessToJobObject(job, k.GetCurrentProcess()):
+            return False
+        _job = job
+        return True
+    except Exception:
+        return False
+
+
 def trim_memory():
     """윈도우: 안 쓰는 메모리를 돌려준다 (한 번 크게 쓰고 끝나는 작업 뒤·게임이 끝날 때)"""
     if sys.platform != "win32":
@@ -922,6 +961,7 @@ def main():
         sys.exit(run_update_data())
     overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
     settings = Settings()
+    capped = cap_cpu(CPU_CAP_CORES[light_mode(settings)])  # 화면 엔진을 띄우기 전에 (자식 프로세스도 같이 묶이게)
     web = prepare_web()
     watcher = LiveWatcher(user_dir() / "logs")
     watcher.enabled = bool(settings.get("live", True))
@@ -989,6 +1029,7 @@ def main():
         "증강 인식": (lambda: reader.beat if reader else None, 30),
     }, status=lambda: ov.status, aug=lambda: reader.state if reader else None)
     diag.light = light_mode(settings)
+    diag.cpu_cap = CPU_CAP_CORES[diag.light] if capped else None
     diag.start()
 
     def on_closing():
