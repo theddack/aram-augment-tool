@@ -582,6 +582,13 @@ class Diag(threading.Thread):
             self._n = getattr(self, "_n", 0) + 1
             if self._n % (self.TRIM_EVERY // self.CHECK) == 0:
                 trim_memory()
+            if getattr(self, "cpu_cap", None) and self._n % 6 == 1:  # 30초마다 새로 뜬 화면 엔진 프로세스도 상한에
+                try:
+                    added = cap_children()
+                    if added:
+                        self.write(f"CPU 상한 묶음에 화면 엔진 프로세스 {added}개 추가")
+                except Exception as e:
+                    self.write(f"CPU 상한 묶기 실패: {str(e)[:100]}")
             try:
                 self.check()
                 size = fpath.stat().st_size if fpath.exists() else 0
@@ -935,6 +942,64 @@ def cap_cpu(cores):
         return True
     except Exception:
         return False
+
+
+def child_pids(root_pid):
+    """윈도우: root_pid 의 자손 프로세스 PID 목록 (Toolhelp 스냅샷)"""
+    import ctypes
+    from ctypes import wintypes
+
+    class PE(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_void_p), ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD),
+                    ("szExeFile", ctypes.c_wchar * 260)]
+    k = ctypes.windll.kernel32
+    k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = k.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    parent = {}
+    try:
+        e = PE()
+        e.dwSize = ctypes.sizeof(PE)
+        ok = k.Process32FirstW(snap, ctypes.byref(e))
+        while ok:
+            parent[e.th32ProcessID] = e.th32ParentProcessID
+            ok = k.Process32NextW(snap, ctypes.byref(e))
+    finally:
+        k.CloseHandle(snap)
+    out, frontier = [], {root_pid}
+    while frontier:
+        nxt = {pid for pid, pp in parent.items() if pp in frontier and pid not in out and pid != root_pid}
+        out += sorted(nxt)
+        frontier = nxt
+    return out
+
+
+def cap_children():
+    """화면 엔진(WebView2)이 상한 묶음 밖에서 따로 뜨는 경우가 있어서 (측정: 상한 0.5개분인데 순간 77~93%),
+    뜬 자손 프로세스를 찾아 같은 작업 개체에 넣는다. 넣은 개수를 돌려준다"""
+    if sys.platform != "win32" or not _job:
+        return 0
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    k.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    n = 0
+    for pid in child_pids(os.getpid()):
+        h = k.OpenProcess(0x0100 | 0x0001 | 0x1000, False, pid)  # SET_QUOTA | TERMINATE | QUERY_LIMITED
+        if not h:
+            continue
+        try:
+            inside = wintypes.BOOL()
+            if k.IsProcessInJob(h, _job, ctypes.byref(inside)) and inside.value:
+                continue
+            if k.AssignProcessToJobObject(_job, h):
+                n += 1
+        finally:
+            k.CloseHandle(h)
+    return n
 
 
 def trim_memory():
