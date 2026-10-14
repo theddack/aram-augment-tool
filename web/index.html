@@ -11,9 +11,12 @@
   <h1>칼바람 증강 계산기</h1>
   <span id="meta" class="muted"></span>
   <span id="desktop-tools" hidden>
+    <label class="small" title="게임 중 챔피언·레벨·아이템을 자동으로 반영 (롤 공식 게임 중 데이터 API)"><input id="live-toggle" type="checkbox"> 게임 연동</label>
+    <span id="live-status" class="small muted"></span>
     <label class="small"><input id="on-top" type="checkbox"> 항상 위</label>
     <button id="update-data" class="reset" title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
   </span>
+  <button id="mini-toggle" class="reset" title="게임 옆에 띄울 작은 화면 (선택지·티어·빌드만)">작게 보기</button>
   <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
 </header>
 <main>
@@ -36,7 +39,7 @@
       <div id="skills"></div>
       <p class="muted small">스킬 콤보 = Q·W·E·R 각 1회 피해 합 (방어력 ${TARGET_ARMOR}·마법 저항력 ${TARGET_MR}인 대상 기준, 관통력 적용).
         평타 DPS = 공격력 × 공격 속도 × 치명타 기대값. 유효 체력 = 체력 × (1 + 방어력/100), 마법은 마법 저항력 기준.
-        아이템 고유 효과는 능력치를 바꾸는 일부(라바돈·대천사·워모그·해신 작쇼)만 반영돼요.</p>
+        아이템 고유 효과·챔피언 패시브·증강 효과는 게임 데이터 수치로 계산해요(칼바람 증강 모드 전용 수치 우선).</p>
     </details>
 
     <div class="row"><h2>고른 증강 <span class="muted">(최대 4개, 누르면 해제)</span></h2>
@@ -50,7 +53,11 @@
     <datalist id="aug-names"></datalist>
 
     <div class="row">
-      <h2>전체 증강 순위 <span class="muted small">(이 챔피언과 잘 맞는 증강 구경용)</span></h2>
+      <h2><span id="aug-title">첫 증강 추천</span> <span class="muted small" id="tier-basis"></span></h2>
+      <div id="tier-mode" hidden title="연계 우선: 고른 증강과 잘 맞는 순서 / 종합: 원래 챔피언에게 좋은 것까지 합친 순서">
+        <button data-m="synergy" class="on">연계 우선</button>
+        <button data-m="total">종합</button>
+      </div>
       <div id="rarity-filter">
         <button data-r="all" class="on">전체</button>
         <button data-r="0">실버</button>
@@ -59,6 +66,9 @@
       </div>
       <input id="aug-search" type="search" placeholder="증강 검색">
     </div>
+    <p class="muted small">어떤 증강도 재밌게! 🔥 강력 추천 · 👍 추천 · 🙂 무난 · 🤔 애매 · 🎲 도전(낯설지만 빌드를 바꾸면 재밌는 것) · ⛔ 효과 없음(이 챔피언은 발동 안 함).
+      🔄 변신 = 고르면 원딜형·탱커형·근접 등으로 플레이 방향이 바뀌어요. 첫 증강은 챔피언 기준, 고른 뒤에는 그 증강과 잘 맞는 순서예요.
+      평가에 마우스를 올리면 S~D 등급과 자세한 숫자가 나와요.</p>
     <div id="aug-list"></div>
   </section>
 
@@ -67,6 +77,8 @@
       <button id="reset-items" class="reset">아이템 초기화</button></div>
     <div id="chosen-items"></div>
 
+    <div id="next-buy"></div>
+    <div id="mini-build"></div>
     <div class="row"><h2>추천 빌드 <span class="muted">(고른 아이템은 고정)</span></h2>
       <div id="concept-tabs"></div></div>
     <p id="concept-desc" class="muted small"></p>

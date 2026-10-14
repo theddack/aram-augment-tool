@@ -15,7 +15,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from champion_data import augment_effects, parse_lua_table, process_champion, wiki_extras
+from champion_data import (augment_effects, item_spell, parse_lua_table, passive_spell, process_champion,
+                           text_effects, wiki_extras)
 from lol_calc import Calc, expr_json, fmt_expr_ranks
 
 ROOT = Path(__file__).resolve().parent
@@ -252,6 +253,43 @@ def champion_traits(detail):
     return traits, (round(magic / dmg, 2) if dmg else None), sorted(features)
 
 
+# ---------------------------------------------------------------- 아이템 고유 효과
+def item_passive(item_bin, strings):
+    """아이템 고유 효과 설명을 수치로 채우고 피해·보호막·회복 효과를 뽑는다. (효과, 표시용 html, 적용한 모드)"""
+    if not item_bin:
+        return [], None, None
+    spell, mode_used = item_spell(item_bin)
+    keys = (item_bin.get("mItemDataClient") or {}).get("mTooltipData", {}).get("mLocKeys", {})
+    raw = strings.get((keys.get("keyTooltip") or "").lower(), "")
+    if not raw:
+        return [], None, mode_used
+    vals = {d["name"]: d["values"][0] for d in spell["DataValues"]}
+    ranged_scale = None
+    if "{{ Item_Melee_Ranged_Split_Dynamic }}" in raw.replace("{{Item", "{{ Item"):
+        # 근접/원거리 값이 다른 효과: 근접 값으로 계산하고 원거리 비율을 따로 저장
+        if vals.get("MeleeValue"):
+            ranged_scale = vals.get("RangedValue", vals["MeleeValue"]) / vals["MeleeValue"]
+        raw = re.sub(r"{{\s*Item_Melee_Ranged_Split_Dynamic\s*}}", "@MeleeValue*100@%", raw)
+    raw = expand_templates(raw, strings)
+    text, _ = resolve_values(raw, spell)
+    html, plain, _ = to_html(text)
+    effects = text_effects(raw, spell, plain)
+    # 아이템 재사용 대기시간은 그 쿨다운 표시가 있는 고유 효과 구역(<passive>…) 안의 효과에만 건다
+    # (몰락한 왕의 검: 쿨은 둔화 효과 것이고 적중 시 피해에는 없다)
+    original = strings.get((keys.get("keyTooltip") or "").lower(), "")
+    cd_names = set()
+    if vals.get("Cooldown"):
+        for sec in re.split(r"<passive>|<active>", original):
+            if re.search(r"Item_Cooldown", sec):
+                cd_names |= {n.split("*")[0].strip().lower() for n in re.findall(r"@([^@]+)@", sec)}
+    for e in effects:
+        if ranged_scale is not None:
+            e["rangedScale"] = round(ranged_scale, 4)
+        if e["name"].lower() in cd_names:
+            e["cooldown"] = vals["Cooldown"]  # 발동 횟수 상한
+    return effects, html, mode_used
+
+
 # ---------------------------------------------------------------- 증강 능력치 (rules.json stats)
 def resolve_rule_stats(rules, aug_spells):
     """rules.json 의 stats 값을 숫자로 바꾼다.
@@ -322,6 +360,7 @@ def main():
     kiwi = fetch_json(f"{CDRAGON}/game/maps/modespecificdata/kiwi.bin.json", "kiwi.bin.json")
     aug_lists = fetch_json(f"{CDRAGON}/plugins/rcp-be-lol-game-data/global/ko_kr/v1/augment-lists.json",
                            "augment-lists.json")
+    items_bin = fetch_json(f"{CDRAGON}/game/items.cdtb.bin.json", "items.cdtb.bin.json")
     print("문자열 테이블 받는 중 (약 35MB, 첫 실행만)...")
     strings = fetch_json(f"{CDRAGON}/game/ko_kr/data/menu/en_us/lol.stringtable.json",
                          "lol.stringtable.json")["entries"]
@@ -367,9 +406,11 @@ def main():
                 tags.setdefault(t, round(s * 0.7, 2))
         stats, unknown = item_stats(it.get("description", ""))
         unknown_stats.extend(f"{it['name']}: {u}" for u in unknown)
+        effects, passive_html, mode_used = item_passive(items_bin.get(f"Items/{iid}"), strings)
         out_items.append({
             "id": iid, "name": it["name"], "kind": kind, "gold": it["gold"]["total"],
-            "tags": tags, "stats": stats, "desc": html,
+            "tags": tags, "stats": stats, "desc": html, "effects": effects,
+            "passiveHtml": passive_html, "modeValues": mode_used,
         })
 
     # --- 증강
@@ -435,11 +476,19 @@ def main():
         bins = dict(zip(champs, ex.map(champ_bin, champs)))
     wiki = parse_lua_table(fetch(f"{WIKI}/Module:ChampionData/data?action=raw",
                                  "wiki_championdata.lua").decode("utf-8"))
-    out_champs, spell_unresolved, no_wiki = [], 0, []
+    out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
     for cid, c in champs.items():
         d = details[cid]
         traits, magic_share, features = champion_traits(d)
         spells, unresolved = process_champion(cid, d, bins[cid])
+        p_spell, p_key = passive_spell(bins[cid], cid)
+        p_raw = expand_templates(strings.get((p_key or "").lower(), ""), strings)
+        p_effects, p_html = [], None
+        if p_raw:
+            p_text, _ = resolve_values(p_raw, p_spell)
+            p_html, p_plain, _ = to_html(p_text)
+            p_effects = text_effects(p_raw, p_spell, p_plain)
+            passive_found += 1
         spell_unresolved += unresolved
         for sp in spells:
             sp["tooltip"], _, _ = to_html(sp["tooltip"])
@@ -453,7 +502,8 @@ def main():
             "traits": traits, "magicShare": magic_share,
             "features": features + (["melee"] if c["stats"]["attackrange"] <= 250 else ["ranged"]),
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
-            "passive": {"name": d["passive"]["name"], "desc": to_html(d["passive"]["description"])[0]},
+            "passive": {"name": d["passive"]["name"], "desc": p_html or to_html(d["passive"]["description"])[0],
+                        "effects": p_effects},
             "spells": spells,
         })
     out_champs.sort(key=lambda c: c["name"])
@@ -516,6 +566,10 @@ def main():
     print(f"  비활성(Enabled=False)이라 제외한 증강 {len(disabled)}개: {', '.join(disabled)}")
     print(f"  스킬 수치 못 채운 자리 {spell_unresolved}개 (스킬 {sum(len(c['spells']) for c in out_champs)}개 중)")
     print(f"  위키 데이터 없는 챔피언 {len(no_wiki)}명: {', '.join(no_wiki)}")
+    print(f"  패시브 수치 설명 찾음 {passive_found}명, 패시브 효과(피해·보호막·회복) 있는 챔피언 "
+          f"{sum(1 for c in out_champs if c['passive']['effects'])}명")
+    print(f"  고유 효과 수치 뽑은 아이템 {sum(1 for i in out_items if i['effects'])}개 / {len(out_items)}개, "
+          f"칼바람 전용 수치 적용 {sum(1 for i in out_items if i['modeValues'])}개")
     print(f"  아이템 능력치 줄 해석 실패 {len(unknown_stats)}개: {unknown_stats[:5]}")
     for w in rule_warn:
         print("  [규칙 수치]", w)

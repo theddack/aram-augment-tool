@@ -11,9 +11,12 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
+import ssl
 import sys
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -49,15 +52,111 @@ def data_version(path):
 
 
 def prepare_web():
-    """번들의 화면 파일은 매번 덮어쓰고, 데이터는 사용자 폴더에 없을 때만 복사한다."""
+    """번들의 화면 파일은 매번 덮어쓴다. 데이터는 아래 규칙으로 복사한다."""
     src, dst = resource_dir() / "web", user_dir() / "web"
     dst.mkdir(parents=True, exist_ok=True)
     for name in CODE_FILES:
         shutil.copy2(src / name, dst / name)
-    if not (dst / "data.json").exists():
-        shutil.copy2(src / "data.json", dst / "data.json")
+    # 데이터: 없거나, 앱에 든 데이터와 같은 패치면 앱 것으로 교체 (앱 업데이트로 데이터 형식이 바뀔 수 있어서).
+    # '데이터 갱신'으로 더 최신 패치를 받아둔 경우만 그대로 둔다.
+    mine, bundled = dst / "data.json", src / "data.json"
+    if not mine.exists() or data_version(mine) == data_version(bundled):
+        shutil.copy2(bundled, mine)
         shutil.copytree(src / "icons", dst / "icons", dirs_exist_ok=True)
     return dst
+
+
+# ---------------------------------------------------------------- 게임 연동
+# 롤 게임 중 데이터 API: 게임 중에만 내 PC(127.0.0.1:2999)에서 열린다. 자체 서명 인증서라 검증을 끈다.
+LIVE_URL = os.environ.get("ARAM_LIVE_URL", "https://127.0.0.1:2999/liveclientdata/allgamedata")
+LIVE_INTERVAL = 3  # 초
+SNAPSHOT_EVERY = 300  # 같은 게임에서 원본을 다시 저장하는 간격(초). 증강 필드 확인용
+_insecure = ssl.create_default_context()
+_insecure.check_hostname = False
+_insecure.verify_mode = ssl.CERT_NONE
+
+
+def find_keys(obj, pattern, path=""):
+    """응답 안에서 이름이 pattern 에 맞는 키 경로 목록 (증강 필드가 숨어 있는지 찾기)"""
+    found = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            p = f"{path}.{k}" if path else k
+            if re.search(pattern, k, re.I):
+                found.append(p)
+            found += find_keys(v, pattern, p)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj[:12]):
+            found += find_keys(v, pattern, f"{path}[{i}]")
+    return found
+
+
+def parse_live(raw):
+    """게임 중 데이터 → 화면에 필요한 것만"""
+    ap = raw.get("activePlayer") or {}
+    me = ap.get("riotId") or ap.get("summonerName")
+    players = raw.get("allPlayers") or []
+    mine = next((p for p in players if me and (p.get("riotId") == me or p.get("summonerName") == me)), None)
+    champ_id = None
+    if mine:
+        m = re.search(r"displayname_(\w+)", mine.get("rawChampionName") or "", re.I)
+        champ_id = m.group(1) if m else None
+    gd = raw.get("gameData") or {}
+    return {
+        "inGame": True,
+        "champion": champ_id,
+        "championName": mine.get("championName") if mine else None,
+        "level": ap.get("level"),
+        "items": [str(i.get("itemID")) for i in (mine.get("items") if mine else []) if i.get("itemID")],
+        "stats": ap.get("championStats") or {},
+        "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),
+        "augmentFields": find_keys(raw, r"augment"),
+    }
+
+
+class LiveWatcher(threading.Thread):
+    """프로그램이 켜져 있는 동안 게임 중 데이터를 주기적으로 읽는다. 게임마다 원본을 logs/ 에 저장."""
+
+    def __init__(self, log_dir):
+        super().__init__(daemon=True)
+        self.log_dir = log_dir
+        self.state = {"inGame": False}
+        self.enabled = True
+        self._game_key = None
+        self._last_snap = 0
+
+    def run(self):
+        while True:
+            if self.enabled:
+                self.poll()
+            time.sleep(LIVE_INTERVAL)
+
+    def poll(self):
+        try:
+            with urllib.request.urlopen(LIVE_URL, timeout=2, context=_insecure) as r:
+                raw = json.loads(r.read())
+        except Exception:
+            self.state = {"inGame": False}
+            self._game_key = None
+            return
+        try:
+            st = parse_live(raw)
+        except Exception as e:
+            st = {"inGame": True, "error": str(e)}
+        self.state = st
+        self.snapshot(raw, st)
+
+    def snapshot(self, raw, st):
+        # 게임 시작 시각으로 게임을 구분 (gameTime 이 줄어들면 새 게임)
+        t = st.get("gameTime") or 0
+        key = (st.get("champion"), st.get("gameMode"))
+        now = time.time()
+        if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
+            (self.log_dir / name).write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+            self._game_key, self._last_snap = key, now
+            st["savedSnapshot"] = name
 
 
 class Settings:
@@ -79,17 +178,44 @@ class Settings:
 class Api:
     """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들"""
 
-    def __init__(self, settings):
+    def __init__(self, settings, watcher=None):
         self.settings = settings
         self.window = None
+        self.watcher = watcher
         self._lock = threading.Lock()
 
+    def get_live(self):
+        """게임 연동 상태 (화면이 몇 초마다 부른다)"""
+        if not self.watcher:
+            return {"inGame": False, "disabled": True}
+        return {**self.watcher.state, "enabled": self.watcher.enabled, "logDir": str(self.watcher.log_dir)}
+
+    def set_live(self, on):
+        if self.watcher:
+            self.watcher.enabled = bool(on)
+            self.settings.set(live=bool(on))
+        return bool(on)
+
     def get_state(self):
-        return {"onTop": bool(self.settings.get("on_top", False)), "desktop": True}
+        return {"onTop": bool(self.settings.get("on_top", False)), "desktop": True,
+                "live": bool(self.settings.get("live", True))}
 
     def set_on_top(self, on):
         self.window.on_top = bool(on)
         self.settings.set(on_top=bool(on))
+        return bool(on)
+
+    def set_mini(self, on):
+        """작게 보기: 창 크기를 줄이고(게임 옆에 띄우기), 끄면 원래 크기로"""
+        if on:
+            if not self.settings.get("mini"):
+                self.settings.set(full_size=[self.window.width, self.window.height])
+            w, h = self.settings.get("mini_size") or (440, 760)
+            self.window.resize(int(w), int(h))
+        else:
+            w, h = self.settings.get("full_size") or (1400, 900)
+            self.window.resize(int(w), int(h))
+        self.settings.set(mini=bool(on))
         return bool(on)
 
     def check_update(self):
@@ -127,7 +253,10 @@ class Api:
 def main():
     settings = Settings()
     web = prepare_web()
-    api = Api(settings)
+    watcher = LiveWatcher(user_dir() / "logs")
+    watcher.enabled = bool(settings.get("live", True))
+    watcher.start()
+    api = Api(settings, watcher)
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

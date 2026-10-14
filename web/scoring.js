@@ -77,6 +77,20 @@
   }
 
   const ruleOf = (rules, aug) => (rules && rules.augments && rules.augments[aug.id]) || {};
+
+  // 고른 증강이 챔피언 특징을 바꾸는 경우(검을 뽑아라: 원거리 → 근접)를 반영한 챔피언
+  function withChosenFeatures(champ, chosen, rules) {
+    if (!champ) return champ;
+    let f = [...(champ.features || [])];
+    let changed = false;
+    for (const a of chosen) {
+      const sf = ruleOf(rules, a).setsFeatures;
+      if (!sf) continue;
+      f = f.filter((x) => !(sf.remove || []).includes(x)).concat(sf.add || []);
+      changed = true;
+    }
+    return changed ? { ...champ, features: [...new Set(f)], melee: f.includes("melee") } : champ;
+  }
   // 규칙에 tags 가 있으면 자동 분류 대신 그것을 쓴다
   const effTags = (rules, aug) => ruleOf(rules, aug).tags || aug.tags;
 
@@ -129,6 +143,7 @@
   }
 
   function rankAugments(augs, w, chosen, chosenItems = [], champ = null, rules = null) {
+    champ = withChosenFeatures(champ, chosen, rules);
     const chosenIds = new Set(chosen.map((a) => a.id));
     return augs
       .filter((a) => !chosenIds.has(a.id))
@@ -309,10 +324,11 @@
   // 능력치 계산에 넘길 증강 데이터: 능력치(rules stats) + 피해·보호막 효과(게임 데이터)
   // champ 를 주면 증강 조건(밀어내기 스킬 등)을 못 맞출 때 효과를 뺀다 (발동하지 않으니까)
   function augStatsOf(chosen, rules, champ = null) {
+    champ = withChosenFeatures(champ, chosen, rules);
     return chosen.map((a) => {
       const rule = ruleOf(rules, a);
       const unmet = champ && rule.requires && !(champ.features || []).includes(rule.requires);
-      return { ...(rule.statsResolved || {}), _effects: unmet ? [] : a.effects || [] };
+      return { ...(rule.statsResolved || {}), _effects: unmet ? [] : (a.effects || []).map((e) => ({ ...e, src: a.name })) };
     });
   }
 
@@ -321,6 +337,7 @@
   // 실제 숫자 평가: 지금 균형 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 빌드 가치가 얼마나 오르나.
   // 숫자가 없는 증강(무적·CC·쿨 반환 등)은 null.
   function numericAugmentGains(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}) {
+    champ = withChosenFeatures(champ, chosen, rules);
     const ctx = augContext(chosen, rules);
     const iw = conceptWeights(w, ctx, CONCEPTS[1]);
     const bal = buildConcepts(itemPool, w, chosen, fixed, rules, champ, statOpts, ["balanced"])[0];
@@ -359,9 +376,10 @@
   }
 
   // 아이템 목록 정렬용: 균형 컨셉 기준으로 '지금 빌드에 하나 더 넣으면' 점수 (추천 빌드와 같은 가치 함수)
-  function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}) {
+  // conceptKey: 아이템 목록 정렬 기준 컨셉 (증강을 골랐으면 "augment" 로 연계 아이템을 위로)
+  function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced") {
     const ctx = augContext(chosen, rules);
-    const iw = conceptWeights(w, ctx, CONCEPTS[1]);
+    const iw = conceptWeights(w, ctx, CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1]);
     const covered = {};
     for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts, mw: metricWeights(iw) } : null;
@@ -384,9 +402,68 @@
       .sort((a, b) => b.score - a.score);
   }
 
+  // 연계 티어: 지금까지 고른 증강 기준으로 같은 등급 증강을 S/A/B/C/D 로 나눈다.
+  // 숫자로 평가되는 증강은 빌드 가치 증가(같이 골랐을 때)로, 나머지는 효과 점수로 각각 순위를 매긴다.
+  // 궁합(interaction) = 같이 골랐을 때 가치 − 혼자 골랐을 때 가치 (고른 증강이 있을 때만)
+  const TIER_CUTS = [["S", 0.1], ["A", 0.3], ["B", 0.6], ["C", 0.85], ["D", 1]];
+  const SYNERGY_MARK = 0.05; // 궁합 표시 기준 (가치 ×100 기준 ±5)
+
+  // mode: "total"(같이 골랐을 때 총 가치 + 궁합 보정) / "synergy"(고른 증강과의 궁합만)
+  function augmentTiers(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}, mode = "total") {
+    const synergyMode = mode === "synergy" && chosen.length > 0;
+    const withC = numericAugmentGains(augs, itemPool, w, chosen, fixed, rules, champ, statOpts).gains;
+    const alone = chosen.length ? numericAugmentGains(augs, itemPool, w, [], fixed, rules, champ, statOpts).gains : withC;
+    const tagged = rankAugments(augs, w, chosen, fixed, champ, rules);
+    const tagScore = Object.fromEntries(tagged.map((r) => [r.aug.id, r]));
+    const out = {};
+    const chosenIds = new Set(chosen.map((a) => a.id));
+    for (const rarity of [0, 1, 2]) {
+      const pool = augs.filter((a) => a.rarity === rarity && !chosenIds.has(a.id));
+      // 연계만 보기: 숫자 증강은 궁합(같이 − 혼자), 나머지는 효과 점수 중 시너지로 붙은 부분만
+      const inter = (a) => withC[a.id].gain - (alone[a.id] ? alone[a.id].gain : 0);
+      const synTag = (a) => ((tagScore[a.id] || {}).parts || []).filter((p) => p.synergy).reduce((t, p) => t + p.value, 0)
+        + ((tagScore[a.id] || {}).itemMatch ? 0.3 : 0);
+      const num = pool.filter((a) => withC[a.id])
+        .sort((x, y) => (synergyMode ? inter(y) - inter(x) : withC[y.id].gain - withC[x.id].gain));
+      const rest = pool.filter((a) => !withC[a.id])
+        .sort((x, y) => (synergyMode ? synTag(y) - synTag(x) : 0) || (tagScore[y.id]?.score || 0) - (tagScore[x.id]?.score || 0));
+      for (const [list, basis] of [[num, "수치"], [rest, "효과"]]) {
+        list.forEach((a, i) => {
+          const pct = (i + 1) / list.length;
+          let tier = TIER_CUTS.find(([, cut]) => pct <= cut)[0];
+          const sc = tagScore[a.id] || {};
+          const g = withC[a.id];
+          const reasons = [];
+          if (sc.req && !sc.req.met) { tier = "D"; reasons.push("조건 없음"); }
+          if (!synergyMode && g && g.gain < 0) { tier = "D"; reasons.push("손해"); }
+          const interaction = g && chosen.length && alone[a.id] ? g.gain - alone[a.id].gain : null;
+          if (synergyMode && interaction != null && interaction <= 0 && tier !== "D") { tier = "D"; reasons.push("연계 없음"); }
+          if (synergyMode && !g && synTag(a) <= 0 && tier !== "D") { tier = "D"; reasons.push("연계 없음"); }
+          // 종합 보기에서는 궁합이 크면 한 단계 올리고, 충돌이면 한 단계 내린다 (연계만 보기는 궁합이 이미 기준)
+          const order = ["S", "A", "B", "C", "D"];
+          if (!synergyMode && interaction != null && tier !== "D") {
+            if (interaction >= SYNERGY_MARK) { tier = order[Math.max(0, order.indexOf(tier) - 1)]; reasons.push("궁합"); }
+            else if (interaction <= -SYNERGY_MARK) { tier = order[Math.min(4, order.indexOf(tier) + 1)]; reasons.push("충돌"); }
+          }
+          if (synergyMode && interaction != null && interaction > 0) reasons.push("궁합");
+          out[a.id] = { tier, pct, basis, gain: g ? g.gain : null, interaction, reasons, rank: i + 1, n: list.length, mode: synergyMode ? "synergy" : "total" };
+        });
+      }
+    }
+    return out;
+  }
+
+  // 아이템 연계: 고른 증강이 있을 때와 없을 때 점수 차이. 클수록 "증강 때문에 좋아진" 아이템
+  function itemSynergy(items, w, chosen, fixed, rules, champ, statOpts = {}) {
+    if (!chosen.length) return {};
+    const withA = rankItems(items, w, chosen, fixed, rules, champ, statOpts, "augment");
+    const without = Object.fromEntries(rankItems(items, w, [], fixed, rules, champ, statOpts, "balanced").map((r) => [r.item.id, r.score]));
+    return Object.fromEntries(withA.map((r) => [r.item.id, { delta: r.score - (without[r.item.id] || 0), score: r.score, reasons: r.reasons, gain: r.gain }]));
+  }
+
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
-    numericAugmentGains, hasNumbers,
+    numericAugmentGains, hasNumbers, augmentTiers, SYNERGY_MARK, itemSynergy,
     conceptWeights, buildConcepts, rankItems, scoreItem,
   };
   if (typeof module !== "undefined") module.exports = api;

@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -324,20 +324,27 @@
       }
     },
     "ARAM_DrawYourSword": {
-      "requires": "ranged",
       "tags": {
         "AD": 1,
         "HP": 0.6,
         "VAMP": 0.6,
         "AS": 0.5
       },
-      "note": "잃은 사거리에 비례해 강해짐. 원거리 챔피언일수록 효과 큼",
+      "note": "근접이 되면서 공격력·체력·공격 속도·흡혈·이동 속도를 얻어요. 원거리 챔피언일수록(잃는 사거리가 클수록) 더 커져요",
       "stats": {
         "ADmult": "BonusAD",
         "HPmult": "BonusHP",
         "AS": "BonusAS",
         "LS": "BonusLifesteal",
         "MSmult": "BonusMS"
+      },
+      "setsFeatures": {
+        "add": [
+          "melee"
+        ],
+        "remove": [
+          "ranged"
+        ]
       }
     },
     "LittleExtraHelp": {

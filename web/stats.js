@@ -53,7 +53,11 @@
     const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, noUlt: false };
     const conv = {};
     const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean)];
-    const effects = [];
+    // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
+    const effects = [
+      ...((champ.passive && champ.passive.effects) || []).map((e) => ({ ...e, src: "패시브" })),
+      ...items.flatMap((it) => (it.effects || []).map((e) => ({ ...e, src: it.name }))),
+    ];
     for (const s of mods) {
       for (const [k, raw] of Object.entries(s || {})) {
         if (k === "_effects") { effects.push(...raw); continue; }
@@ -117,6 +121,9 @@
   }
 
   function statFor(key, t) {
+    if (key === "TGT_MAXHP") return TARGET.HP;
+    if (key === "TGT_CURHP") return TARGET.HP * TARGET.CUR;
+    if (key === "TGT_MISSINGHP") return TARGET.HP * (1 - TARGET.CUR);
     if (key in t) return t[key];
     if (key.startsWith("base")) return t[key] ?? 0;
     return 0;
@@ -149,8 +156,10 @@
     return 100 / (100 + eff);
   }
 
-  // 기준 상대: 칼바람 평균 정도의 방어력·마법 저항력 (비교용 고정값)
-  const TARGET = { ARMOR: 80, MR: 60 };
+  // 기준 상대: 칼바람 18레벨 평균 정도의 방어력·마법 저항력·체력 (비교용 고정값)
+  // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
+  const TARGET = { ARMOR: 80, MR: 60, HP: 3000, CUR: 0.7 };
+  const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
 
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
@@ -185,28 +194,45 @@
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
       if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
     });
-    // 증강 효과(불여우·부메랑 등): 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
+    // 증강·아이템 고유 효과·패시브: 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
     const casts = out.spells.filter((s) => !s.disabled).length;
     const castRate = out.spells.reduce((a, s) => a + (!s.disabled && s.cd > 0 ? 1 / Math.max(s.cd, 0.5) : 0), 0);
     out.augCombo = 0;
     out.augDps = 0;
+    out.effects = [];
     for (const e of stats.effects || []) {
-      const v = effectValue(e, 1, L, t);
+      let v = effectValue(e, 1, L, t) * (e.ticks || 1);
+      if (e.rangedScale != null && !champ.melee) v *= e.rangedScale;
+      if (e.chance === "CRIT") v *= t.CRIT;  // 확률 발동은 기대값
       const tr = e.trigger || { type: "once" };
+      // 쿨다운이 있으면 콤보 한 번(COMBO_WINDOW초) 안 발동 횟수와 초당 발동 횟수를 제한
+      // 기본 공격이 필요한 효과는 콤보 시간 동안 칠 수 있는 기본 공격 수·공격 속도로도 제한
+      const autos = Math.max(1, Math.floor(t.AS * COMBO_WINDOW));
+      const comboTimes = (n) => {
+        let k = e.cooldown ? Math.min(n, 1 + Math.floor(COMBO_WINDOW / e.cooldown)) : n;
+        return e.needsAuto ? Math.min(k, autos) : k;
+      };
+      const rate = (r) => {
+        let k = e.cooldown ? Math.min(r, 1 / e.cooldown) : r;
+        return e.needsAuto ? Math.min(k, t.AS) : k;
+      };
+      const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type };
+      out.effects.push(row);
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);
-        const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? casts : 1);
+        const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? comboTimes(casts) : 1);
         if (e.kind === "shield") out.shield += amt; else out.heal += amt;
-        out.support += 0;
         continue;
       }
       const kind = e.kind === "adaptive" ? ((champ.magicShare ?? 0.5) >= 0.5 ? "magic" : "physical") : e.kind;
+      row.kind = kind;
       const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
       const hit = v * mit * dealt * (1 + flags.trueBonus);
-      if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / tr.sec; }
-      else if (tr.type === "attacks") out.augDps += hit * t.AS / tr.n;
-      else if (tr.type === "onhit") out.augDps += hit * t.AS;
-      else if (tr.type === "cast") { out.augCombo += hit * casts; out.augDps += hit * castRate; }
+      row.hit = hit;
+      if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
+      else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
+      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS);
+      else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
       else out.augCombo += hit;
     }
     out.combo += out.augCombo;

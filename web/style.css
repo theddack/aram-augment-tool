@@ -82,6 +82,45 @@ button.on { border-color: var(--accent); color: var(--accent); }
 footer { padding: 8px 16px 16px; text-align: center; }
 footer a { color: var(--muted); }
 
+/* 작게 보기: 게임 옆 창 모드용. 선택지·티어·빌드만 */
+body.mini main { grid-template-columns: 1fr; height: auto; padding: 6px; gap: 6px; }
+body.mini #stat-panel, body.mini #right > *:not(#mini-build):not(#next-buy),
+body.mini #aug-list, body.mini #aug-list ~ *, body.mini #rarity-filter, body.mini #aug-search,
+body.mini #center > p.muted, body.mini footer, body.mini #meta, body.mini #reset-all,
+body.mini #tier-mode + p, body.mini .offer-table + p { display: none !important; }
+body.mini header { padding: 6px 8px; gap: 6px; flex-wrap: wrap; }
+body.mini h1 { font-size: 14px; }
+body.mini h2 { font-size: 13px; margin: 6px 0 4px; }
+body.mini .panel { padding: 8px; }
+body.mini #champ-card img { width: 36px; height: 36px; }
+body.mini #champ-card > div > div:not(:first-child) { display: none; }
+body.mini #chosen { grid-template-columns: repeat(4, 1fr); }
+body.mini .slot { min-height: 40px; font-size: 11px; }
+body.mini .slot img { width: 24px; height: 24px; }
+body.mini #offers { grid-template-columns: 1fr; gap: 4px; }
+body.mini .offer { flex-direction: row; align-items: center; }
+body.mini .offer input[type=search] { flex: 1; }
+body.mini .offer-table th:nth-child(n+4), body.mini .offer-table td:nth-child(n+4):not(:last-child) { display: none; }
+body.mini .offer-table { display: table; }
+body.mini #champ-grid { max-height: 96px; overflow-y: auto; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); }
+body.mini .champ { font-size: 0; }
+body.mini .champ img { width: 34px; height: 34px; }
+#mini-build { display: none; }
+body.mini #mini-build { display: block; }
+.mini-row { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; font-size: 12px; margin: 2px 0; }
+.mini-row img { width: 26px; height: 26px; border-radius: 4px; }
+
+/* 연계 티어 배지 */
+.tier { display: inline-block; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 12px; color: #111; margin-right: 4px; white-space: nowrap; }
+.why { font-size: 12px; margin-top: 2px; color: var(--text); }
+.why .chip { margin-right: 6px; }
+.aug .tags .chip { opacity: 0.7; }
+#next-buy .next-row { display: grid; grid-template-columns: 16px 32px 1fr; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+#next-buy .next-row:hover { background: #1d2631; }
+#next-buy .next-row img { width: 32px; height: 32px; border-radius: 4px; }
+.t-S { background: #ff7043; } .t-A { background: #ffb300; } .t-B { background: #9ccc65; }
+.t-C { background: #90a4ae; } .t-D { background: #546e7a; color: #e0e0e0; }
+
 /* 이번 선택지 */
 #offers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .offer { display: flex; flex-direction: column; gap: 4px; }
@@ -106,6 +145,10 @@ footer a { color: var(--muted); }
 #stat-table th, #stat-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: right; }
 #stat-table th:first-child, #stat-table td:first-child { text-align: left; }
 #stat-table th { color: var(--muted); font-weight: 500; }
+.eff-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.eff-table th, .eff-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+.eff-table th:first-child, .eff-table td:first-child { text-align: left; }
+.eff-table th { color: var(--muted); font-weight: 500; }
 .skill { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .skill.off { opacity: 0.5; }
 .skill .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
