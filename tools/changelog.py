@@ -1,7 +1,7 @@
 """업데이트내역.md 하나로 화면 페이지와 릴리스 설명을 만든다.
 
   python tools/changelog.py html                 → web/changelog.html (프로그램·웹의 '업데이트 내역' 페이지)
-  python tools/changelog.py release v0.1.2       → 릴리스 설명 (받기 안내 + 그 버전 내역), 표준 출력
+  python tools/changelog.py release v0.1.2 [SHA256SUMS.txt] → 릴리스 설명 (받기 안내 + 체크섬 + 그 버전 내역), 표준 출력
 """
 import html
 import re
@@ -64,7 +64,7 @@ def to_html(md):
 
 
 PAGE = """<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>업데이트 내역 · 칼바람 증강 Addon</title>
 <style>
 :root {{ --bg:#0f1419; --panel:#171e26; --line:#26313d; --text:#e6e9ec; --muted:#8b96a3; --accent:#c8aa6e; }}
@@ -96,4 +96,20 @@ if __name__ == "__main__":
         (ROOT / "web" / "changelog.html").write_text(PAGE.format(body=to_html(text)), encoding="utf-8")
         print("web/changelog.html")
     elif sys.argv[1] == "release":
-        print(DOWNLOAD + "\n" + section(text, sys.argv[2]) + "\n\n전체 내역: [업데이트내역.md](https://github.com/theddack/aram-augment-tool/blob/main/업데이트내역.md)\n\n라이엇 게임즈와 무관한 팬 제작 도구입니다.")
+        sums = Path(sys.argv[3]).read_text(encoding="utf-8").split("\n") if len(sys.argv) > 3 else []
+        verify = ""
+        if sums:
+            rows = "\n".join(f"| `{x.split()[1]}` | `{x.split()[0]}` |" for x in sums if x.strip())
+            verify = f"""
+## 받은 파일이 진짜인지 확인 (변조 방지)
+**이 릴리스 페이지에서 받은 파일만 쓰세요.** 다른 곳에서 받은 파일은 경고를 넘기지 말고 지우세요.
+
+| 파일 | SHA-256 |
+|---|---|
+{rows}
+
+- 윈도우: PowerShell 에서 `Get-FileHash KalbaramAddon-Windows.zip` → 위 값과 같은지
+- 맥: 터미널에서 `shasum -a 256 KalbaramAddon-Mac.zip`
+- GitHub 빌드 출처 증명: `gh attestation verify KalbaramAddon-Windows.zip -R theddack/aram-augment-tool` (이 저장소의 빌드 워크플로가 만든 파일인지 확인)
+"""
+        print(DOWNLOAD + verify + "\n" + section(text, sys.argv[2]) + "\n\n전체 내역: [업데이트내역.md](https://github.com/theddack/aram-augment-tool/blob/main/업데이트내역.md)\n\n라이엇 게임즈와 무관한 팬 제작 도구입니다.")

@@ -27,12 +27,22 @@ const label = (t) => S.TAG_LABEL[t] || t;
 
 // 근거·패치 펼치기를 눌렀을 때 증강·아이템이 같이 선택되지 않게
 document.addEventListener("click", (e) => {
-  if (e.target.closest && e.target.closest(".basis, details.patch")) e.stopPropagation();
+  if (e.target.closest && e.target.closest(".basis, details.patch, .refs a")) e.stopPropagation();
 }, true);
+
+// 받은 데이터의 id 검사: id 는 HTML 속성과 아이콘 파일 경로에 그대로 들어가서, 영문·숫자·밑줄이 아니면 뺀다
+// (데이터를 만들 때도 같은 검사를 하지만, 사용자 폴더의 data.json 이 바뀌었을 때를 대비해 화면에서 한 번 더)
+function sanitizeData(d) {
+  const okId = (x) => /^[A-Za-z0-9_]{1,80}$/.test(String(x));
+  d.champions = (d.champions || []).filter((c) => okId(c.id) && /^\d+$/.test(String(c.key)));
+  d.augments = (d.augments || []).filter((a) => okId(a.id));
+  d.items = (d.items || []).filter((i) => /^\d{1,8}$/.test(String(i.id)));
+  return d;
+}
 
 async function init() {
   const res = await fetch("data.json");
-  state.data = await res.json();
+  state.data = sanitizeData(await res.json());
   const d = state.data;
   $("#meta").textContent = `패치 ${d.version} · 증강 ${d.augments.length}개 (비활성 ${d.disabled.length}개 제외) · 아이템 ${d.items.length}개 (칼바람 증강 모드 상점 기준)`;
   $("#meta").title = `게임 데이터 ${d.dataVersion}\n제외한 비활성 증강: ${d.disabled.join(", ")}`;
@@ -292,7 +302,9 @@ function tierBadge(t) {
 // 출처 링크 (클릭해도 증강·아이템이 선택되지 않게)
 function refLinks(refs) {
   if (!refs || !refs.length) return "";
-  return `<div class="refs">🔗 ${refs.map((r) => `<a href="${esc(r.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"${r.external ? ' class="ext"' : ""}>${esc(r.label)}</a>`).join(" · ")}</div>`;
+  const safe = refs.filter((r) => /^https:\/\//.test(r.url || ""));  // https 주소만 (javascript: 같은 주소 차단)
+  if (!safe.length) return "";
+  return `<div class="refs">🔗 ${safe.map((r) => `<a href="${esc(r.url)}" target="_blank" rel="noopener"${r.external ? ' class="ext"' : ""}>${esc(r.label)}</a>`).join(" · ")}</div>`;
 }
 const majorMinor = (v) => String(v || "").split(".").slice(0, 2).join(".");
 // 새 증강(이번 패치에 처음 본 것)·자동 추정 규칙 표시
@@ -804,6 +816,14 @@ window.addEventListener("pywebviewready", async () => {
   const api = window.pywebview.api;
   const st = await api.get_state();
   $("#desktop-tools").hidden = false;
+  // 새 프로그램 버전 알림 (받기는 공식 릴리스 페이지에서 직접. 프로그램이 스스로 바꾸지 않는다)
+  api.check_app_update().then((u) => {
+    if (!u || !u.newer || !/^https:\/\/github\.com\/theddack\/aram-augment-tool\//.test(u.url || "")) return;
+    const bar = document.createElement("div");
+    bar.id = "app-update";
+    bar.innerHTML = `새 버전 <b>v${esc(u.latest)}</b>이 나왔어요 (지금 v${esc(u.current)}). <a href="${esc(u.url)}" target="_blank" rel="noopener">공식 릴리스 페이지에서 받기</a> · 받은 뒤 이 폴더를 새 폴더로 바꾸면 돼요. 설정·데이터는 그대로예요.`;
+    document.body.prepend(bar);
+  }).catch(() => {});
   $("#on-top").checked = st.onTop;
   $("#on-top").addEventListener("change", (e) => api.set_on_top(e.target.checked));
   if (st.overlaySupported) {
