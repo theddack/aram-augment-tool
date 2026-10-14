@@ -136,8 +136,10 @@ class Calc:
             prefix = FORMULA_PREFIX.get(p.get("mStatFormula", 0), "")
             return Expr(ratios={prefix + "MANA": p.get("mCoefficient", 0)})
         if t == "ByCharLevelFormulaCalculationPart":  # 레벨별 값 표
+            # 표마다 시작이 다르다: 럭스·브라움 패시브는 첫 칸 = 1레벨, 카타리나·세트 패시브는 첫 칸이 0(0레벨 자리)이고 둘째 칸 = 1레벨
             vals = p.get("values") or [0]
-            return Expr(lvl=(vals[0], vals[min(17, len(vals) - 1)]))
+            off = 1 if len(vals) > 18 and vals[0] == 0 and vals[1] != 0 else 0
+            return Expr(lvl=(vals[off], vals[min(17 + off, len(vals) - 1)]))
         if "StartDataValue" in p and "EndDataValue" in p:  # 시작값~끝값 레벨 비례
             a, b = self.value(p["StartDataValue"], rank), self.value(p["EndDataValue"], rank)
             return None if a is None or b is None else Expr(lvl=(a, b))
@@ -163,6 +165,14 @@ class Calc:
                 if r is None:
                     return None
                 total = total.add(r)
+            if t == "ClampSubPartsCalculationPart" and total.is_number():  # 숫자일 때만 아래·위 한계 적용
+                lo, hi = p.get("mFloor"), p.get("mCeiling")
+                v = total.base
+                if lo is not None:
+                    v = max(v, lo)
+                if hi is not None:
+                    v = min(v, hi)
+                total = Expr(v)
             return total
         if t == "ProductOfSubPartsCalculationPart":
             a = self.part(p.get("mPart1"), rank, depth + 1)
@@ -176,6 +186,9 @@ class Calc:
             return None
         if t == "BuffCounterByCoefficientCalculationPart":  # 게임 중 쌓는 중첩 × 계수 → '중첩당 N' (계산에는 0중첩)
             return Expr(ratios={"STACKS": p.get("mCoefficient", 0)})
+        if t == "BuffCounterByNamedDataValueCalculationPart":  # 중첩 × 값 이름
+            v = self.value(p.get("mDataValue"), rank)
+            return None if v is None else Expr(ratios={"STACKS": v})
         if "mSpellCalculationKey" in p:  # 다른 계산식 참조
             return self.calc(p["mSpellCalculationKey"], rank, depth + 1)[0]
         return None

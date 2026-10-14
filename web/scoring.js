@@ -372,6 +372,7 @@
   // champ 를 주면 수치 평가(18레벨)를 같이 한다
   // keys 를 주면 그 컨셉만 계산한다 (선택지 비교처럼 하나만 필요할 때)
   function buildConceptsRaw(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
+    champ = champ && withChosenFeatures(champ, chosen, rules);  // 고른 증강이 챔피언 특징을 바꾸면(검을 뽑아라 → 근접) 그 기준으로
     const ctx = augContext(chosen, rules);
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
@@ -390,6 +391,7 @@
   // 아이템 목록 정렬용: 균형 컨셉 기준으로 '지금 빌드에 하나 더 넣으면' 점수 (추천 빌드와 같은 가치 함수)
   // conceptKey: 아이템 목록 정렬 기준 컨셉 (증강을 골랐으면 "augment" 로 연계 아이템을 위로)
   function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced") {
+    champ = champ && withChosenFeatures(champ, chosen, rules);
     const ctx = augContext(chosen, rules);
     const iw = conceptWeights(w, ctx, CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1]);
     const covered = {};
@@ -508,7 +510,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, withChosenFeatures,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

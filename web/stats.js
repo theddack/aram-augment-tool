@@ -115,22 +115,36 @@
     t.AS = Math.min(AS_CAP, (base.AS + bonusAS * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     t.CRIT = Math.min(1, add.CRIT);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
-    t.MS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP) * (1 + mult.MSmult);
+    // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
+    const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
+    t.MS = rawMS > 490 ? rawMS * 0.5 + 230 : rawMS > 415 ? rawMS * 0.8 + 83 : rawMS;
+    t.bonusMS = t.MS - base.MS;
+    t.bonusAP = t.AP;  // 주문력은 전부 추가 주문력 (기본 주문력이 없다)
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
     t.RANGE = base.RANGE;
     return { total: t, base, flags, aram, effects, conv };
   }
 
-  // 레벨 L 에서의 스킬 랭크 (궁극기 6/11/16, 기본 스킬은 남는 포인트를 Q→W→E 순으로 균등 배분)
+  // 레벨 L 에서의 스킬 랭크. 궁극기: 3단계면 6/11/16, 4단계(니달리·엘리스·카르마)는 1레벨에 1단계를 그냥 받고 6/11/16,
+  // 1단계(제이스)는 1레벨부터. 기본 스킬은 남는 포인트를 Q→W→E 순으로 균등 배분. 우디르처럼 R 도 6단계면 4개 모두 기본 스킬로 본다
   function ranksAt(L, spells) {
-    const r = L >= 16 ? 3 : L >= 11 ? 2 : L >= 6 ? 1 : 0;
-    let pts = L - r;
-    const out = [0, 0, 0];
-    for (let i = 0; pts > 0 && i < 30; i++) {
-      const slot = i % 3;
+    const rr = spells[3] ? spells[3].ranks : 3;
+    const basic4 = rr >= 5;
+    let r = 0, freeR = 0;
+    if (!basic4) {
+      if (rr === 1) { r = 1; freeR = 1; }
+      else if (rr === 4) { r = 1 + (L >= 6) + (L >= 11) + (L >= 16); freeR = 1; }
+      else r = L >= 16 ? 3 : L >= 11 ? 2 : L >= 6 ? 1 : 0;
+      r = Math.min(r, rr);
+    }
+    let pts = L - (r - freeR);
+    const n = basic4 ? 4 : 3;
+    const out = [0, 0, 0, 0];
+    for (let i = 0; pts > 0 && i < 40; i++) {
+      const slot = i % n;
       if (out[slot] < (spells[slot] ? spells[slot].ranks : 5)) { out[slot]++; pts--; }
     }
-    return [...out, Math.min(r, spells[3] ? spells[3].ranks : 3)];
+    return basic4 ? out : [out[0], out[1], out[2], r];
   }
 
   function statFor(key, t) {
@@ -159,10 +173,19 @@
       seen.add(e.name);
       vals.push({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t) });
     }
-    const alt = /(min|floor|base)$/i;
-    const hasMax = vals.some((v) => /max/i.test(v.name));
-    return vals.filter((v) => !(hasMax && alt.test(v.name)));
+    // 최소/최대(또는 기본/최대) 같은 대체 수치는 같은 이름 줄기끼리 묶어서 큰 쪽 하나만 센다
+    // (다리우스 R damage·maximumdamage, 그라가스 Q mindamage·maxdamage …)
+    const stem = (n) => String(n).toLowerCase().replace(/^spell\.[^:]+:/, "")
+      .replace(/(minimum|maximum|min|max|tooltip|total|floor|base|calc)/g, "");
+    const best = new Map();
+    for (const v of vals) {
+      if (DMG_KINDS.includes(v.kind) && STAT_BUFF.test(String(v.name).replace(/^spell\.[^:]+:/, ""))) continue;  // 능력치 증가 수치(리븐 R bonusad)는 피해가 아니다
+      const k = v.kind + "|" + stem(v.name);
+      if (!best.has(k) || v.value > best.get(k).value) best.set(k, v);
+    }
+    return [...best.values()];
   }
+  const STAT_BUFF = /^(bonus|flat|percent)?(ad|ap|attackdamage|abilitypower|armor|mr|magicresist|ms|movespeed|movementspeed|as|attackspeed)$/i;
 
   function mitigation(resist, pctPen, flatPen) {
     const eff = Math.max(0, resist * (1 - pctPen) - flatPen);
@@ -201,6 +224,7 @@
     { what: "치명타 확률로 발동하는 효과는 치명타 확률만큼 기대값", src: "data", why: "설명의 '치명타 확률과 같은 확률'을 그대로 계산해요." },
     { what: "재사용 대기시간은 가속을 받아도 최소 0.5초로 셈", src: "assume", why: "징크스 Q처럼 전환형 스킬이 초당 피해를 부풀리지 않게 했어요." },
     { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
+    { what: "최소~최대가 있는 스킬 피해는 최대로 셈", src: "assume", why: "충전·거리·중첩에 따라 커지는 스킬(바이 Q, 다리우스 R, 사이온 Q 등)은 최대치를 기준으로 비교해요. 최소와 최대를 둘 다 더하던 오류를 고치면서 정한 기준이에요." },
     { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초)." },
   ];
 
