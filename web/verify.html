@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>받은 파일 확인 · 칼바람 증강 Addon</title>
+<style>
+:root { --bg:#0f1419; --panel:#171e26; --line:#26313d; --text:#e6e9ec; --muted:#8b96a3; --accent:#c8aa6e; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.7 -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+main { max-width:760px; margin:0 auto; padding:16px; }
+a { color:var(--accent); } h1 { color:var(--accent); font-size:22px; margin:8px 0; }
+.muted { color:var(--muted); } .small { font-size:13px; }
+#drop { margin:16px 0; padding:40px 16px; border:2px dashed var(--line); border-radius:12px; text-align:center; background:var(--panel); cursor:pointer; }
+#drop.over { border-color:var(--accent); }
+#drop b { font-size:17px; }
+#pick { margin-top:10px; padding:8px 16px; border-radius:8px; border:1px solid var(--accent); background:transparent; color:var(--accent); font-size:15px; cursor:pointer; }
+#result { display:none; padding:16px; border-radius:12px; border:2px solid var(--line); background:var(--panel); }
+#result.ok { border-color:var(--ok); } #result.bad { border-color:var(--bad); } #result.warn { border-color:var(--warn); }
+#result h2 { margin:0 0 6px; font-size:19px; }
+.hash { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; word-break:break-all; color:var(--muted); }
+ol { padding-left:20px; } .box { background:var(--panel); border-left:3px solid var(--accent); padding:8px 12px; margin:12px 0; font-size:14px; }
+</style></head><body><main>
+<a href="index.html">← 칼바람 증강 Addon</a>
+<h1>받은 파일 확인</h1>
+<p>받은 프로그램 파일이 <b>공식 릴리스 파일인지</b> 확인해요. 압축을 풀거나 실행하기 <b>전에</b> 해 주세요.</p>
+<div class="box">이 페이지의 정식 주소는 <b>https://theddack.github.io/aram-augment-tool/verify.html</b> 이에요. 다른 주소의 "확인 페이지"는 믿지 마세요.</div>
+
+<div id="drop" tabindex="0">
+  <b>받은 zip 파일을 여기에 끌어다 놓으세요</b>
+  <div class="muted small">KalbaramAddon-Windows.zip 또는 KalbaramAddon-Mac.zip — 압축을 풀지 말고 받은 그대로</div>
+  <button id="pick" type="button">파일 고르기</button>
+  <input id="file" type="file" accept=".zip" hidden>
+</div>
+<div id="result" role="status" aria-live="polite"></div>
+
+<h2 style="font-size:16px;margin-top:28px">어떻게 확인하나요?</h2>
+<ol class="small">
+  <li>브라우저가 파일의 지문(SHA-256)을 계산해요. <b>파일은 어디에도 올라가지 않고</b> 이 컴퓨터 안에서만 계산해요.</li>
+  <li>GitHub가 공식 릴리스 파일마다 직접 계산해 공개한 지문과 비교해요. 한 글자라도 바뀐 파일은 지문이 완전히 달라져요.</li>
+  <li>지난 버전 지문과도 비교해서, 예전 버전이면 알려 줘요.</li>
+</ol>
+<p class="muted small">이 확인은 "공식 릴리스와 같은 파일인지"만 알려 줘요. 코드 서명(유료 인증서)이 없어서 윈도우·맥 경고는 공식 파일이어도 떠요.
+경고를 넘기는 방법은 <a href="https://github.com/theddack/aram-augment-tool/blob/main/사용설명서.md#처음-실행할-때-경고가-뜨면" target="_blank" rel="noopener">사용 설명서</a>를 보세요.</p>
+<p class="muted small">라이엇 게임즈와 무관한 팬 제작 도구입니다.</p>
+</main>
+<script src="verify.js"></script>
+</body></html>
