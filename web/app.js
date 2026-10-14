@@ -968,7 +968,7 @@ window.addEventListener("pywebviewready", async () => {
     if (!u || !u.newer || !/^https:\/\/github\.com\/theddack\/kalbaram-addon\//.test(u.url || "")) return;
     const bar = document.createElement("div");
     bar.id = "app-update";
-    bar.innerHTML = `새 버전 <b>v${esc(u.latest)}</b>이 나왔어요 (지금 v${esc(u.current)}). <a href="${esc(u.url)}" target="_blank" rel="noopener">공식 릴리스 페이지에서 받기</a> → 압축을 풀기 전에 <a href="https://theddack.github.io/kalbaram-addon/verify.html" target="_blank" rel="noopener">받은 파일 확인</a> → 이 폴더를 새 폴더로 바꾸면 돼요. 설정·데이터는 그대로예요.`;
+    bar.innerHTML = `새 버전 <b>v${esc(u.latest)}</b>이 나왔어요 (지금 v${esc(u.current)}). <a href="${esc(u.url)}" target="_blank" rel="noopener">공식 릴리스 페이지에서 받기</a> → 압축을 풀기 전에 <a href="https://theddack.github.io/kalbaram-addon/verify.html" target="_blank" rel="noopener">받은 파일 확인</a> → 예전 폴더 안의 <b>data</b> 폴더를 새 폴더로 옮기면 설정·기록이 그대로예요.`;
     document.body.prepend(bar);
   }).catch(() => {});
   $("#on-top").checked = st.onTop;

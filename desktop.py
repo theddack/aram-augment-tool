@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """칼바람 증강 계산기 데스크톱 프로그램 (맥·윈도우 공용).
 
-web/ 화면을 pywebview 창으로 띄운다. 데이터(data.json, 아이콘)는 사용자 폴더에 두어서
+web/ 화면을 pywebview 창으로 띄운다. 데이터(data.json, 아이콘)는 데이터 폴더에 두어서
 프로그램을 다시 빌드하지 않아도 '데이터 갱신' 버튼으로 패치 데이터를 받을 수 있다.
 
-  사용자 폴더: 맥 ~/Library/Application Support/AramAugment
-              윈도우 %APPDATA%\\AramAugment
+  데이터 폴더: 윈도우 프로그램 폴더\\data (쓸 수 없으면 %APPDATA%\\AramAugment)
+              맥 ~/Library/Application Support/AramAugment
 """
 import contextlib
 import json
@@ -52,16 +52,68 @@ def atomic_write(path, text):
     os.replace(tmp, path)
 
 
+_user_dir = None
+
+
+def program_dir():
+    """프로그램이 있는 폴더 (exe 로 실행하면 exe 옆, 소스로 실행하면 desktop.py 옆)"""
+    return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+
+
 def user_dir():
+    """설정·기록·받은 데이터를 두는 곳.
+
+    윈도우: 프로그램 폴더 안 data\\ (사용자 요청 2026-10-14: AppData 에 두지 말고 실행한 곳에).
+            그 폴더에 쓸 수 없으면(Program Files 등) 예전처럼 %APPDATA%\\AramAugment.
+    맥: 앱 안은 쓸 수 없어서 ~/Library/Application Support/AramAugment
+    """
+    global _user_dir
+    if _user_dir:
+        return _user_dir
+    old = None
     if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
+        d = Path.home() / "Library" / "Application Support" / APP
     elif os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home()))
+        old = Path(os.environ.get("APPDATA", Path.home())) / APP
+        d = program_dir() / "data"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            (d / ".write_test").write_text("", encoding="utf-8")
+            (d / ".write_test").unlink()
+        except OSError:
+            d, old = old, None
     else:
-        base = Path.home() / ".local" / "share"
-    d = base / APP
+        d = Path.home() / ".local" / "share" / APP
     d.mkdir(parents=True, exist_ok=True)
+    if old and old.is_dir() and old != d:
+        move_old_data(old, d)
+    _user_dir = d
     return d
+
+
+def move_old_data(old, new):
+    """예전 위치(%APPDATA%\\AramAugment)의 설정·기록·받은 데이터를 새 위치로 옮기고 예전 폴더를 지운다.
+    새 위치에 이미 있는 건 덮어쓰지 않는다."""
+    for item in old.iterdir():
+        target = new / item.name
+        try:
+            if not target.exists():
+                shutil.move(str(item), str(target))
+            elif item.is_dir():
+                for sub in item.rglob("*"):
+                    t = target / sub.relative_to(item)
+                    if sub.is_file() and not t.exists():
+                        t.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(sub), str(t))
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                item.unlink()
+        except OSError:
+            pass
+    try:
+        shutil.rmtree(old)
+    except OSError:
+        pass
 
 
 def data_version(path):

@@ -31,7 +31,7 @@
 처음 실행 시 경고가 뜨면 [사용 설명서](사용설명서.md#처음-실행할-때-경고가-뜨면)를 보세요. 맥에서 "손상되었다"고 나오면 v0.1.3 이하 파일이에요. 최신 버전을 받으세요.
 
 문제가 생기면 [GitHub 이슈](https://github.com/theddack/kalbaram-addon/issues)에 증강 선택 화면 스크린샷과 기록 파일을 올려 주세요.
-기록 파일 위치: 윈도우 `C:\Users\(사용자 이름)\AppData\Roaming\AramAugment\logs\` (**윈도우 키 + R** → `%APPDATA%\AramAugment\logs` → 확인) · 맥 `~/Library/Application Support/AramAugment/logs/` — [자세히](사용설명서.md#기록-파일-위치)
+기록 파일 위치: 윈도우 프로그램 폴더 안 `data\logs\` · 맥 `~/Library/Application Support/AramAugment/logs/` — [자세히](사용설명서.md#기록-파일-위치)
 
 ## 정확도와 한계
 

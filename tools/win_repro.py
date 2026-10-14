@@ -179,7 +179,7 @@ def main():
     cfg = pathlib.Path(r"C:\Riot Games\League of Legends\Config")
     cfg.mkdir(parents=True, exist_ok=True)
     (cfg / "game.cfg").write_text("[General]\nWindowMode=2\n", encoding="utf-8")
-    udir = pathlib.Path(os.environ["APPDATA"]) / "AramAugment"
+    udir = (pathlib.Path(a.exe).resolve().parent if a.exe else ROOT) / "data"  # 데이터는 프로그램 폴더 안 data
     udir.mkdir(parents=True, exist_ok=True)
     (udir / "settings.json").write_text(a.settings, encoding="utf-8")
 

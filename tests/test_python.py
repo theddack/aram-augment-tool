@@ -476,3 +476,24 @@ class UpdateData(unittest.TestCase):
             self.assertEqual(api.update_status()["ok"], True)
         finally:
             desktop.user_dir, desktop.subprocess.Popen = orig_user_dir, orig_popen
+
+
+class DataFolder(unittest.TestCase):
+    """윈도우 데이터 폴더는 프로그램 폴더 안 data (예전 %APPDATA%\\AramAugment 는 옮기고 지운다)"""
+
+    def test_move_old_data(self):
+        old, new = pathlib.Path(tempfile.mkdtemp()) / "AramAugment", pathlib.Path(tempfile.mkdtemp()) / "data"
+        (old / "logs").mkdir(parents=True)
+        (old / "logs" / "game_1.json").write_text("old", encoding="utf-8")
+        (old / "logs" / "diag.log").write_text("old", encoding="utf-8")
+        (old / "settings.json").write_text('{"on_top": true}', encoding="utf-8")
+        (old / "web").mkdir()
+        (old / "web" / "data.json").write_text("{}", encoding="utf-8")
+        (new / "logs").mkdir(parents=True)
+        (new / "logs" / "diag.log").write_text("new", encoding="utf-8")
+        desktop.move_old_data(old, new)
+        self.assertFalse(old.exists(), "예전 폴더는 지운다")
+        self.assertEqual((new / "settings.json").read_text(encoding="utf-8"), '{"on_top": true}')
+        self.assertEqual((new / "logs" / "game_1.json").read_text(encoding="utf-8"), "old")
+        self.assertEqual((new / "logs" / "diag.log").read_text(encoding="utf-8"), "new", "새 위치에 있는 건 덮어쓰지 않는다")
+        self.assertTrue((new / "web" / "data.json").exists())
