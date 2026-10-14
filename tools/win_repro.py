@@ -145,7 +145,7 @@ def cards(names, gold=None):
 
 # 가상 PC 에는 한국어 글자 인식이 없어서(설치가 30분 넘게 멈춤) 영어 이름으로 띄운다 → 애드온은 한국어 이름으로 맞춰야 한다
 A = ["Snowblast", "Heavy Hitter", "Mind to Matter"]
-B = ["Snowblast", "Tank Engine", "Mind to Matter"]
+B = ["Snowblast", "Goldrend", "Mind to Matter"]  # 증강 칸 그림의 골드 강탈이 그 판 선택지에 떠야 인정된다
 r.after(300, lambda: (r.lift(), r.focus_force()))
 r.after(15000, lambda: cards(A))             # 게임 60초: 첫 증강 선택 화면
 # 게임 66초쯤 재현 스크립트가 가운데(강타자) 카드를 클릭한다 (테두리 색은 등급이라 고른 표시가 아님)
@@ -271,7 +271,7 @@ def main():
     print("결과:", "멈춤 재현됨" if hung else "멈춤 없음")
     diag = (OUT / "diag.log").read_text(encoding="utf-8") if (OUT / "diag.log").exists() else ""
     want = ["증강 선택지: 눈 폭발 / 강타자 / 정신 변환", "고른 증강: 강타자",
-            "증강 선택지: 눈 폭발 / 탱크 엔진 / 정신 변환", "고른 증강: 못 정함",
+            "증강 선택지: 눈 폭발 / 골드 강탈 / 정신 변환", "고른 증강: 못 정함",
             "증강 칸: 골드 강탈", "상점 창: 열림"]
     miss = [w for w in want if w not in diag]
     print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")
