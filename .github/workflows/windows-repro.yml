@@ -20,9 +20,9 @@ jobs:
           # 게임 창 옆에 작게 띄운 보통 상황: 증강 인식까지 확인
           - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr
-          # 멈춤이 났던 설정: 항상 위
-          - settings: '{"on_top": true}'
-            check: ''
+          # 예전 설정 파일에 항상 위가 남아 있어도 무시되는지 (v0.1.14 에서 기능 삭제)
+          - settings: '{"on_top": true, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
+            check: --check-ocr
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 

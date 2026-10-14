@@ -167,7 +167,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe")
     ap.add_argument("--seconds", type=int, default=150)
-    ap.add_argument("--settings", default="{}", help="시작 전 settings.json (예: '{\"on_top\": true}')")
+    ap.add_argument("--settings", default="{}", help="시작 전 settings.json (예: '{\"geometry\": {\"w\": 420}}')")
     ap.add_argument("--check-ocr", action="store_true", help="증강 인식 결과까지 확인 (애드온 창이 게임을 가리지 않을 때)")
     a = ap.parse_args()
     OUT.mkdir(exist_ok=True)

@@ -1010,7 +1010,7 @@ function applyLive(L) {
   renderAll();
 }
 
-// 데스크톱 프로그램(pywebview)에서만: 항상 위, 데이터 갱신
+// 데스크톱 프로그램(pywebview)에서만: 데이터 갱신 등
 window.addEventListener("pywebviewready", async () => {
   const api = window.pywebview.api;
   const st = await api.get_state();
@@ -1026,8 +1026,6 @@ window.addEventListener("pywebviewready", async () => {
       <span class="tip">압축을 풀기 전에 '받은 파일 확인'으로 공식 파일인지 확인하세요. 새 폴더로 바꿀 땐 예전 폴더 안의 data 폴더를 옮기면 설정·기록이 그대로예요.</span>`;
     document.body.prepend(bar);
   }).catch(() => {});
-  $("#on-top").checked = st.onTop;
-  $("#on-top").addEventListener("change", (e) => api.set_on_top(e.target.checked));
   if (st.overlaySupported) {
     $("#overlay-wrap").hidden = false;
     $("#overlay-pos").hidden = false;

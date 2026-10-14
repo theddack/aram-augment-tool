@@ -683,7 +683,7 @@ class Api:
         return bool(on)
 
     def get_state(self):
-        return {"onTop": bool(self._settings.get("on_top", False)), "desktop": True,
+        return {"desktop": True,
                 "live": bool(self._settings.get("live", True)),
                 "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
                 "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
@@ -692,13 +692,6 @@ class Api:
     def set_item_sets(self, on):
         self._settings.set(item_sets=bool(on))
         return bool(on)
-
-    def set_on_top(self, on):
-        on = bool(on)
-        if not set_top_most_on_ui_thread(self._window, on):
-            self._window.on_top = on
-        self._settings.set(on_top=on)
-        return on
 
     def set_mini(self, on):
         """작게 보기: 창 크기를 줄이고(게임 옆에 띄우기), 끄면 원래 크기로"""
@@ -782,29 +775,6 @@ class Api:
         return out
 
 
-def set_top_most_on_ui_thread(window, on):
-    """윈도우: '항상 위'를 창 스레드에서 바꾼다. pywebview(winforms)는 이 함수를 부른 스레드에서 TopMost 를 바로 바꾸는데,
-    WinForms 창 속성을 다른 스레드에서 바꾸면 창이 굳을 수 있다 ('항상 위'를 켠 판에서만 두 번 '응답 없음', 2026-10-14).
-    처리했으면 True, 윈도우가 아니거나 실패하면 False (그때는 pywebview 기본 방식)"""
-    if sys.platform != "win32":
-        return False
-    try:
-        from System import Func, Type  # pythonnet (pywebview winforms 가 이미 불러 둔 것)
-        from webview.platforms.winforms import BrowserView
-        form = BrowserView.instances.get(window.uid)
-        if form is None:
-            return False
-
-        def apply():
-            form.TopMost = on
-
-        form.Invoke(Func[Type](apply))
-        window._Window__on_top = on  # pywebview 가 기억하는 값도 맞춘다
-        return True
-    except Exception:
-        return False
-
-
 def update_step(line):
     """받기 기록 한 줄 → 버튼에 보일 짧은 글 ('… 받는 중...' → '… 받는 중')"""
     return re.sub(r"\s*\(.*?\)|\.{2,}|…", "", line).strip()[:40]
@@ -854,7 +824,8 @@ def main():
         TITLE, url=str(web / "index.html"), js_api=api,
         # 위치(x, y)는 창이 뜬 뒤에 옮긴다. 만들 때 넘기면 맥에서 화면이 정해지기 전에 옮기려다 멈춘다
         width=geo.get("w", 1400), height=geo.get("h", 900),
-        min_size=(420, 500), on_top=bool(settings.get("on_top", False)),
+        # '항상 위'는 없앴다: 켠 판에서만 프로그램 전체가 멈췄다 (2026-10-14 두 번, 사용자 요청으로 기능 삭제)
+        min_size=(420, 500),
     )
     api._window = window
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
