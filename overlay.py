@@ -165,9 +165,9 @@ def layout(payload, w, h):
     # 상점이 화면 왼쪽에 붙어 있으면 오른쪽 바깥에
     if hud and shop:
         if shop["left"] > 0.22:
-            items.append(("hud", int(w * shop["left"]) - 12, int(h * shop["top"]), (hud, "ne")))
+            items.append(("hud", int(w * shop["left"]) - 28, int(h * shop["top"]), (hud, "ne")))
         else:
-            items.append(("hud", int(w * shop["right"]) + 12, int(h * shop["top"]), (hud, "nw")))
+            items.append(("hud", int(w * shop["right"]) + 28, int(h * shop["top"]), (hud, "nw")))
     return items
 
 
