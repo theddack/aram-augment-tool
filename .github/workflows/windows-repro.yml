@@ -18,10 +18,11 @@ jobs:
       matrix:
         include:
           # 게임 창 옆에 작게 띄운 보통 상황: 증강 인식까지 확인
+          # 기본(가벼운 모드)
           - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr
-          # 예전 설정 파일에 항상 위가 남아 있어도 무시되는지 (v0.1.14 에서 기능 삭제)
-          - settings: '{"on_top": true, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
+          # 전체 모드 (증강 칸 아이콘 읽기 포함)
+          - settings: '{"light": false, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

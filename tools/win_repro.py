@@ -308,7 +308,9 @@ def main():
     diag = (OUT / "diag.log").read_text(encoding="utf-8") if (OUT / "diag.log").exists() else ""
     want = ["증강 선택지: 눈 폭발 / 강타자 / 정신 변환", "고른 증강: 강타자",
             "증강 선택지: 눈 폭발 / 골드 강탈 / 정신 변환", "고른 증강: 못 정함",
-            "증강 칸: 골드 강탈", "상점 창: 열림"]
+            "상점 창: 열림"]
+    if '"light": false' in a.settings:  # 전체 모드에서만 증강 칸 아이콘 읽기 (가벼운 모드가 기본)
+        want.append("증강 칸: 골드 강탈")
     miss = [w for w in want if w not in diag]
     print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")
     sys.exit(1 if hung or (miss and a.check_ocr) else 0)
