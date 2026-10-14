@@ -251,6 +251,16 @@ def main():
             if p and p.poll() is None:
                 p.kill()
         log(f"가장 느린 응답 {worst:.2f}초")
+        games = udir / "logs" / "games"
+        if games.exists():  # 한 판 기록 폴더 (events.json · 화면 조각)
+            import shutil
+            shutil.copytree(games, OUT / "games", dirs_exist_ok=True)
+            for g in sorted(p for p in games.iterdir() if p.is_dir()):
+                ev = json.loads((g / "events.json").read_text(encoding="utf-8")) if (g / "events.json").exists() else []
+                kinds = {}
+                for e in ev:
+                    kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
+                print(f"---- 한 판 기록 {g.name}: {kinds} · 그림 {sorted(p.name for p in g.glob('*.png'))}")
         for f in ("diag.log",):
             src = udir / "logs" / f
             if src.exists():

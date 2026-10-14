@@ -62,7 +62,7 @@ jobs:
           --add-data "web;web" --add-data "rules.json;."
           --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
           --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr
-          --collect-all winrt --hidden-import hudicons
+          --collect-all winrt --hidden-import hudicons --hidden-import gamelog
           desktop.py
 
       - name: 데이터 갱신 실행
