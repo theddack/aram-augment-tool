@@ -207,6 +207,13 @@ def main():
     clicked = False
     hung_since = None
     worst = 0.0
+    usage = []  # (단계, 애드온 CPU %, 메모리 MB) — 애드온 프로그램 + 화면(WebView2) 자식 프로세스 합
+    try:
+        import psutil
+        proc = psutil.Process(app.pid)
+    except Exception:
+        proc = None
+    cpu_prev = None
     shots = {10: "1_lobby", 30: "2_champselect", 64: "3_aug_offer", 69: "4_aug_hover", 76: "5_aug_picked",
              95: "6_aug_offer2", 104: "7_aug_unknown", 112: "8_shop_open", 125: "9_hud_slots"}
     try:
@@ -240,6 +247,16 @@ def main():
                 u32.mouse_event(0x0004, 0, 0, 0, 0)  # 뗌
                 clicked = True
                 log("가운데 카드 클릭")
+            if proc:
+                try:
+                    ps = [proc] + proc.children(recursive=True)
+                    cpu = sum(p.cpu_times().user + p.cpu_times().system for p in ps)
+                    mem = sum(p.memory_info().rss for p in ps) / 1048576
+                    if cpu_prev is not None:
+                        usage.append((phase(), (cpu - cpu_prev[0]) / max(1e-3, time.time() - cpu_prev[1]) * 100, mem))
+                    cpu_prev = (cpu, time.time())
+                except Exception:
+                    pass
             for t, name in list(shots.items()):
                 if now() >= t:
                     shot(name)
@@ -251,6 +268,11 @@ def main():
             if p and p.poll() is None:
                 p.kill()
         log(f"가장 느린 응답 {worst:.2f}초")
+        if usage:
+            for ph in ("Lobby", "InProgress"):
+                rows = [u for u in usage if u[0] == ph]
+                if rows:
+                    log(f"자원 {ph}: CPU 평균 {sum(r[1] for r in rows) / len(rows):.1f}% · 최대 {max(r[1] for r in rows):.0f}% · 메모리 최대 {max(r[2] for r in rows):.0f}MB")
         games = udir / "logs" / "games"
         if games.exists():  # 한 판 기록 폴더 (events.json · 화면 조각)
             import shutil
