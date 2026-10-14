@@ -16,7 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        settings: ['{}', '{"on_top": true}']
+        include:
+          # 게임 창 옆에 작게 띄운 보통 상황: 증강 인식까지 확인
+          - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
+            check: --check-ocr
+          # 멈춤이 났던 설정: 항상 위
+          - settings: '{"on_top": true}'
+            check: ''
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -24,11 +30,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: 한국어 글꼴·글자 인식 설치
+        shell: pwsh
+        run: |
+          Add-WindowsCapability -Online -Name "Language.Fonts.Kore~~~und-KORE~0.0.1.0"
+          Add-WindowsCapability -Online -Name "Language.OCR~~~ko-KR~0.0.1.0"
+
       - name: 도구 설치
         run: python -m pip install -r requirements-build.txt pillow==11.3.0
 
       - name: 한 판 재현
-        run: python tools/win_repro.py --settings '${{ matrix.settings }}'
+        run: python tools/win_repro.py --settings '${{ matrix.settings }}' ${{ matrix.check }}
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()

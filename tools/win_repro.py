@@ -125,10 +125,31 @@ GAME_WINDOW = r"""
 import tkinter as tk, ctypes
 try: ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception: pass
-r = tk.Tk(); r.title("League of Legends (TM) Client"); r.geometry("1280x720+0+0"); r.overrideredirect(True)
-r.configure(bg="#203040")
-tk.Label(r, text="가짜 게임 화면 (증강 선택 화면 자리)", fg="white", bg="#203040", font=("Malgun Gothic", 20)).pack(expand=True)
+W, H = 1024, 700
+r = tk.Tk(); r.title("League of Legends (TM) Client"); r.geometry(f"{W}x{H}+0+0"); r.overrideredirect(True)
+c = tk.Canvas(r, width=W, height=H, bg="#203040", highlightthickness=0); c.pack()
+c.create_text(W // 2, 40, text="가짜 게임 화면", fill="#8899aa", font=("Malgun Gothic", -18))
+
+def cards(names, gold=None):
+    # 실제 화면 비율: 카드 위 테두리 0.205, 이름 줄 0.46 (2026-10-14 실제 스크린샷)
+    c.delete("card")
+    for i, n in enumerate(names):
+        cx = int(W * (0.5 + (i - 1) * 0.246))
+        col = "#f0d296" if i == gold else "#c8cdd2"
+        c.create_rectangle(cx - W * 0.1, H * 0.205, cx + W * 0.1, H * 0.75, outline=col, width=8, fill="#0b1418", tags="card")
+        c.create_text(cx, int(H * 0.46), text=n, fill="#f0f0f0", font=("Malgun Gothic", -int(H * 0.034)), tags="card")
+        c.create_text(cx, int(H * 0.50), text="저항", fill="#aaaaaa", font=("Malgun Gothic", -int(H * 0.02)), tags="card")
+        c.create_text(cx, int(H * 0.56), text="기본 공격 시 최대 체력의 3.5%에 해당하는 추가 물리 피해", width=int(W * 0.18),
+                      fill="#dddddd", font=("Malgun Gothic", -int(H * 0.018)), tags="card")
+
+A = ["눈 폭발", "강타자", "정신 변환"]
+B = ["눈 폭발", "탱크 엔진", "정신 변환"]
 r.after(300, lambda: (r.lift(), r.focus_force()))
+r.after(15000, lambda: cards(A))             # 게임 60초: 첫 증강 선택 화면
+r.after(21000, lambda: cards(A, gold=1))     # 가운데(강타자)에 마우스
+r.after(28000, lambda: c.delete("card"))     # 골라서 닫힘 → 고른 증강 = 강타자
+r.after(45000, lambda: cards(B))             # 두 번째 선택 화면 (마우스 표시 없음)
+r.after(53000, lambda: c.delete("card"))     # 닫힘 → 못 정함 (직접 선택)
 r.mainloop()
 """
 
@@ -146,6 +167,7 @@ def main():
     ap.add_argument("--exe")
     ap.add_argument("--seconds", type=int, default=150)
     ap.add_argument("--settings", default="{}", help="시작 전 settings.json (예: '{\"on_top\": true}')")
+    ap.add_argument("--check-ocr", action="store_true", help="증강 인식 결과까지 확인 (애드온 창이 게임을 가리지 않을 때)")
     a = ap.parse_args()
     OUT.mkdir(exist_ok=True)
 
@@ -170,7 +192,8 @@ def main():
     hwnd = None
     hung_since = None
     worst = 0.0
-    shots = {10: "1_lobby", 30: "2_champselect", 60: "3_ingame", 100: "4_ingame_items"}
+    shots = {10: "1_lobby", 30: "2_champselect", 64: "3_aug_offer", 69: "4_aug_hover", 76: "5_aug_picked",
+             95: "6_aug_offer2", 104: "7_aug_unknown", 120: "8_ingame_items"}
     try:
         while now() < a.seconds:
             if app.poll() is not None:
@@ -214,7 +237,12 @@ def main():
         (OUT / "timeline.txt").write_text("\n".join(EVENTS), encoding="utf-8")
     hung = any("응답 없음" in e for e in EVENTS)
     print("결과:", "멈춤 재현됨" if hung else "멈춤 없음")
-    sys.exit(1 if hung else 0)
+    diag = (OUT / "diag.log").read_text(encoding="utf-8") if (OUT / "diag.log").exists() else ""
+    want = ["증강 선택지: 눈 폭발 / 강타자 / 정신 변환", "고른 증강: 강타자",
+            "증강 선택지: 눈 폭발 / 탱크 엔진 / 정신 변환", "고른 증강: 못 정함"]
+    miss = [w for w in want if w not in diag]
+    print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")
+    sys.exit(1 if hung or (miss and a.check_ocr) else 0)
 
 
 if __name__ == "__main__":
