@@ -254,7 +254,8 @@ class Overlay(threading.Thread):
                     root.attributes("-topmost", True)
                     shown = True
                 self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h}"
-            root.after(200, tick)
+            # 게임 창이 있으면 0.2초마다(창 이동·전환 따라가기), 없으면 1초마다만 확인
+            root.after(200 if rect else 1000, tick)
 
         root.after(200, tick)
         root.mainloop()

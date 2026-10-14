@@ -348,7 +348,7 @@
 
   // 실제 숫자 평가: 지금 균형 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 빌드 가치가 얼마나 오르나.
   // 숫자가 없는 증강(무적·CC·쿨 반환 등)은 null.
-  function numericAugmentGains(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}) {
+  function numericAugmentGainsRaw(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}) {
     champ = withChosenFeatures(champ, chosen, rules);
     const ctx = augContext(chosen, rules);
     const iw = conceptWeights(w, ctx, CONCEPTS[1]);
@@ -371,7 +371,7 @@
 
   // champ 를 주면 수치 평가(18레벨)를 같이 한다
   // keys 를 주면 그 컨셉만 계산한다 (선택지 비교처럼 하나만 필요할 때)
-  function buildConcepts(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
+  function buildConceptsRaw(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
     const ctx = augContext(chosen, rules);
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
@@ -473,10 +473,42 @@
     return Object.fromEntries(withA.map((r) => [r.item.id, { delta: r.score - (without[r.item.id] || 0), score: r.score, reasons: r.reasons, gain: r.gain }]));
   }
 
+  // ---- 계산 결과 기억 (같은 챔피언·증강·아이템·가중치·상대면 다시 계산하지 않는다)
+  // 증강 목록·선택지·추천 빌드·게임 화면 표시가 같은 계산을 여러 번 부르고, 게임 연동은 3초마다 다시 그린다.
+  // 결과는 읽기 전용으로 쓴다 (부르는 쪽에서 고치면 다음 호출에 그대로 나온다).
+  const MEMO_MAX = 40;
+  const memo = new Map();
+  const ids = (list) => (list || []).map((x) => x.id);
+  function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra) {
+    const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
+    return JSON.stringify([name, (list || []).length, champ && champ.id, (champ && champ.features) || null, ids(chosen), ids(fixed),
+      w, statOpts, extra, [T.ARMOR, T.MR, T.HP]]);
+  }
+  function remember(key, fn) {
+    if (memo.has(key)) {
+      const v = memo.get(key);
+      memo.delete(key); memo.set(key, v);  // 최근 사용으로
+      return v;
+    }
+    const v = fn();
+    memo.set(key, v);
+    if (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value);
+    return v;
+  }
+  function numericAugmentGains(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}) {
+    return remember(memoKey("gains", augs, w, chosen, fixed, champ, statOpts, itemPool.length),
+      () => numericAugmentGainsRaw(augs, itemPool, w, chosen, fixed, rules, champ, statOpts));
+  }
+  function buildConcepts(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
+    return remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, keys),
+      () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, keys));
+  }
+  const clearMemo = () => memo.clear();
+
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

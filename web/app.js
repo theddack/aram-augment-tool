@@ -24,6 +24,8 @@ const KIND_NAME = { legendary: "전설", boots: "신발", special: "증강 보�
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const label = (t) => S.TAG_LABEL[t] || t;
+// 아이콘 경로: 데이터를 만들 때 WebP 로 바꿨으면 webp, 아니면 png (프로그램의 '데이터 갱신')
+const icon = (kind, id) => `icons/${kind}/${id}.${(state.data && state.data.iconExt) || "png"}`;
 
 // 근거·패치 펼치기를 눌렀을 때 증강·아이템이 같이 선택되지 않게
 document.addEventListener("click", (e) => {
@@ -119,7 +121,7 @@ function renderChamps() {
   const list = state.data.champions.filter((c) => !q || c.name.includes(q) || c.id.toLowerCase().includes(q.toLowerCase()));
   $("#champ-grid").innerHTML = list.map((c) => `
     <div class="champ ${state.champ && state.champ.id === c.id ? "on" : ""}" data-id="${c.id}">
-      <img src="icons/champion/${c.id}.png" alt="" loading="lazy">${esc(c.name)}
+      <img src="${icon("champion", c.id)}" alt="" loading="lazy">${esc(c.name)}
     </div>`).join("");
   $("#champ-grid").querySelectorAll(".champ").forEach((el) => el.addEventListener("click", () => {
     const next = state.data.champions.find((c) => c.id === el.dataset.id);
@@ -137,15 +139,19 @@ function renderChamps() {
 }
 
 function renderAll() {
+  // 쉽게 보기에서 숨긴 칸(능력치 표·아이템 목록·가중치)은 그리지 않는다. '자세히 보기'로 바꿀 때 그린다
+  const simple = document.body.classList.contains("simple");
   renderChampCard();
-  renderStats();
+  if (!simple) renderStats();
   renderOffers();
   renderChosen();
   renderAugs();
   renderChosenItems();
   renderBuild();
-  renderItemList();
-  renderWeights();
+  if (!simple) {
+    renderItemList();
+    renderWeights();
+  }
 }
 
 function renderChampCard() {
@@ -157,7 +163,7 @@ function renderChampCard() {
   const featLabel = state.data.rules.features;
   const feats = (c.features || []).filter((f) => f !== "melee" && f !== "ranged");
   const traits = Object.entries(c.traits || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  el.innerHTML = `<img src="icons/champion/${c.id}.png" alt="">
+  el.innerHTML = `<img src="${icon("champion", c.id)}" alt="">
     <div><div><b>${esc(c.name)}</b> <span class="muted">${esc(c.title)}</span></div>
     <div class="muted small">${c.tags.join(" · ")} · ${c.melee ? "근접" : "원거리"} · ${esc(c.partype || "자원 없음")}
       ${c.magicShare != null ? ` · 스킬 피해 마법 ${Math.round(c.magicShare * 100)}%` : ""}</div>
@@ -230,7 +236,7 @@ function renderChosen() {
   const slots = [0, 1, 2, 3].map((i) => {
     const a = state.chosen[i];
     if (!a) return `<div class="slot muted">빈 칸</div>`;
-    return `<div class="slot" data-i="${i}" title="해제"><img src="icons/augment/${a.id}.png" alt=""><span class="r${a.rarity}">${esc(a.name)}</span></div>`;
+    return `<div class="slot" data-i="${i}" title="해제"><img src="${icon("augment", a.id)}" alt=""><span class="r${a.rarity}">${esc(a.name)}</span></div>`;
   });
   $("#chosen").innerHTML = slots.join("");
   $("#chosen").querySelectorAll(".slot[data-i]").forEach((el) => el.addEventListener("click", () => {
@@ -456,7 +462,7 @@ function renderOfferResult() {
     ${rows.map((r) => {
       const f = r.aug.final;
       return `<tr class="${r === best ? "best" : ""}">
-        <td><img src="icons/augment/${r.a.id}.png" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
+        <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
           ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
           ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
           <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div></td>
@@ -466,7 +472,7 @@ function renderOfferResult() {
         <td>${fmt(f.combo)} ${delta(f.combo, nf.combo)}</td>
         <td>${fmt(f.dps)} ${delta(f.dps, nf.dps)}</td>
         <td>${fmt(f.ehp)} ${delta(f.ehp, nf.ehp)}</td>
-        <td class="mini-build">${r.aug.pick.filter((p) => !p.fixed).map((p) => `<img src="icons/item/${p.item.id}.png" title="${esc(p.item.name)}" alt="">`).join("")}</td>
+        <td class="mini-build">${r.aug.pick.filter((p) => !p.fixed).map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</td>
         <td><button data-pick="${r.i}">이걸로 선택</button></td></tr>`;
     }).join("")}</table>
     <p class="muted small">강해지는 정도(빌드 가치) = 지금 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 스킬 피해·초당 피해·버티는 힘·회복/보호막이 오르는 정도(가중합 ×100).
@@ -534,7 +540,7 @@ function renderAugs() {
   if (document.body.classList.contains("simple") && !state.showAllAugs && !state.augQuery) ranked = ranked.slice(0, SIMPLE_N);
   list.innerHTML = ranked.map((r) => `
     <div class="aug" data-id="${r.aug.id}">
-      <img src="icons/augment/${r.aug.id}.png" alt="" loading="lazy">
+      <img src="${icon("augment", r.aug.id)}" alt="" loading="lazy">
       <div>
         <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>${newChips(r.aug)}
           ${gains[r.aug.id] ? `<span class="chip adv ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
@@ -573,7 +579,7 @@ function itemReason(r) {
 function itemRow(r, extra = "") {
   const tip = (r.item.passiveHtml ? r.item.passiveHtml + " " : "") + r.item.desc;
   return `<div class="item ${r.fixed ? "fixed" : ""}" data-id="${r.item.id}" title="${esc(tip.replace(/<br>/g, "\n").replace(/<[^>]+>/g, "").replace(/[ \t]+/g, " "))}">
-    <img src="icons/item/${r.item.id}.png" alt="">
+    <img src="${icon("item", r.item.id)}" alt="">
     <div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span> <span class="muted small">${KIND_NAME[r.item.kind] || ""}${r.item.limit ? ` · ${LIMIT_NAME[r.item.limit] || r.item.limit} 계열` : ""}</span>${r.fixed ? ` <span class="chip on">고정</span>` : ""}${r.mismatch ? ` <span class="chip">성향 반대</span>` : ""}</div>
     <div>${r.parts.slice(0, 4).map((p) => `<span class="chip">${label(p.tag)} +${p.value.toFixed(2)}</span>`).join("")}</div>
     ${r.synergy ? `<span class="chip syn">🔗 연계 추천</span>` : ""}
@@ -612,7 +618,7 @@ function addItem(id) {
 function renderChosenItems() {
   const slots = Array.from({ length: S.SLOTS }, (_, i) => state.items[i]);
   $("#chosen-items").innerHTML = slots.map((it) => it
-    ? `<div class="islot" data-id="${it.id}" title="${esc(it.name)} (해제)"><img src="icons/item/${it.id}.png" alt=""></div>`
+    ? `<div class="islot" data-id="${it.id}" title="${esc(it.name)} (해제)"><img src="${icon("item", it.id)}" alt=""></div>`
     : `<div class="islot muted">빈 칸</div>`).join("");
   $("#chosen-items").querySelectorAll(".islot[data-id]").forEach((el) => el.addEventListener("click", () => {
     state.items = state.items.filter((i) => i.id !== el.dataset.id);
@@ -625,12 +631,12 @@ function setSimple(on, rerender = true) {
   document.body.classList.toggle("simple", on);
   $("#simple-toggle").textContent = on ? "자세히 보기" : "쉽게 보기";
   try { localStorage.setItem("simple", on ? "1" : "0"); } catch (e) { /* 무시 */ }
-  if (rerender && state.data) renderAugs();
+  if (rerender && state.data) renderAll();
 }
 
 // 근거: 숫자마다 어디서 왔는지 (게임 데이터 / 설명 / 계산 / 가정+이유)
 const BASIS_ICON = { game: ["📊", "게임 데이터"], desc: ["📖", "설명 수치"], calc: ["🧮", "계산"], assume: ["⚠️", "가정"],
-  auto: ["🤖", "자동 추정"], missing: ["❔", "근거 없음"], trigger: ["⏱️", "발동 빈도"] };
+  auto: ["🤖", "자동 추정"], wiki: ["📚", "위키 대조"], missing: ["❔", "확인 필요"], trigger: ["⏱️", "발동 빈도"] };
 function basisBlock(list, open = false) {
   if (!list || !list.length) return "";
   const hasAssume = list.some((b) => b.t === "assume" || b.t === "auto" || b.t === "missing");
@@ -672,7 +678,7 @@ function renderBuild() {
   $("#concept-desc").textContent = cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
   // 작게 보기용 한 줄 요약: 컨셉 3개의 빌드 아이콘
   $("#mini-build").innerHTML = `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}</b>
-    ${b.pick.map((p) => `<img src="icons/item/${p.item.id}.png" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");
+    ${b.pick.map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");
   const f = cur.final;
   $("#build").innerHTML = (f ? `<div class="build-sum">완성 시 (18레벨): 스킬 한 바퀴 피해 <b>${fmt(f.combo)}</b> · 초당 피해 <b>${fmt(f.dps)}</b> · 버티는 힘 <b>${fmt(f.ehp)}</b>${f.support ? ` · 회복·보호막 <b>${fmt(f.support)}</b>` : ""}</div>` : "")
     + cur.pick.map((r) => itemRow(r)).join("");
@@ -706,7 +712,7 @@ function renderNextBuy(rows) {
     .slice(0, 3);
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}">
-      <b>${i + 1}</b><img src="icons/item/${r.item.id}.png" alt=""><div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
   sendOverlay();
@@ -796,7 +802,16 @@ function applyLive(L) {
     + `원본 저장 위치: ${L.logDir}`;
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id)]);
   if (key === liveLast) return;
+  const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
   liveLast = key;
+  // 레벨만 바뀌었으면 능력치 표만 다시: 증강·아이템 순위는 18레벨 완성 빌드 기준이라 레벨과 무관하다
+  if (sameBuild && state.champ && champ && state.champ.id === champ.id) {
+    state.level = level;
+    $("#level").value = level;
+    $("#level-val").textContent = level;
+    if (!document.body.classList.contains("simple")) renderStats();
+    return;
+  }
   if (champ && (!state.champ || state.champ.id !== champ.id)) {
     state.champ = champ;
     state.weights = S.profile(champ, d.tags);
@@ -845,7 +860,8 @@ window.addEventListener("pywebviewready", async () => {
       if (!e.target.checked) renderOfferResult();
       sendOverlay();
     });
-    setInterval(async () => { const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
+    // 위치 맞추기 칸을 펼쳤을 때만 상태를 묻는다
+    setInterval(async () => { if (!$("#overlay-pos").open) return; const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
   }
   $("#itemset-toggle").checked = st.itemSets;
   $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });

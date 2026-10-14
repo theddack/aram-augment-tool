@@ -28,7 +28,7 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-APP_VERSION = "0.1.6"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
+APP_VERSION = "0.1.7"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
 RELEASES_API = "https://api.github.com/repos/theddack/aram-augment-tool/releases/latest"
 RELEASES_PAGE = "https://github.com/theddack/aram-augment-tool/releases/latest"
 
@@ -98,7 +98,8 @@ def live_url():
 
 LIVE_URL = live_url()
 LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
-LIVE_INTERVAL = 3  # 초
+LIVE_INTERVAL = 3  # 초 (게임 중·챔피언 선택 중)
+IDLE_INTERVAL = 10  # 초 (게임 밖·롤 클라이언트 꺼짐: 자주 볼 필요가 없어서 줄인다)
 SNAPSHOT_EVERY = 300  # 같은 게임에서 원본을 다시 저장하는 간격(초). 증강 필드 확인용
 _insecure = ssl.create_default_context()
 _insecure.check_hostname = False
@@ -203,7 +204,8 @@ class LiveWatcher(threading.Thread):
         while True:
             if self.enabled:
                 self.poll()
-            time.sleep(LIVE_INTERVAL)
+            # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
+            time.sleep(LIVE_INTERVAL if self.state.get("inGame") else IDLE_INTERVAL)
 
     def poll(self):
         try:
@@ -245,7 +247,9 @@ class LcuWatcher(threading.Thread):
     def run(self):
         while True:
             self.poll()
-            time.sleep(LIVE_INTERVAL)
+            # 챔피언 선택 중에만 3초마다 (상점 추천 등록 시점), 그 밖에는 10초마다
+            busy = self.state.get("connected") and self.state.get("phase") in ("ChampSelect", "GameStart")
+            time.sleep(LIVE_INTERVAL if busy else IDLE_INTERVAL)
 
     def poll(self):
         try:
