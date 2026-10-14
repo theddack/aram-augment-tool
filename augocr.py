@@ -173,20 +173,31 @@ def card_at(pos, x, y):
     return None
 
 
-def resolve_groups(groups, id_names, offered):
+SURE_SCORE = 0.93  # 선택 화면을 못 본 경우(게임 중간에 켬) 증강 칸만으로 인정할 점수
+
+
+def resolve_groups(groups, id_names, offered, scores=None):
     """증강 칸에서 읽은 그림 묶음들 → (정한 증강 id 목록, 못 정한 묶음 [이름 목록]).
-    그림이 같은 증강이 여럿이면(돌진=앙파상) 이번 게임 선택 화면에 떴던 이름으로 가린다"""
+    - 그림이 같은 증강이 여럿이면(돌진=앙파상) 이번 게임 선택 화면에 떴던 이름으로 가린다
+    - 선택 화면을 본 게임이면 거기 떴던 증강만 인정한다 (안 뜬 증강을 골랐을 리 없다. 엉뚱한 판정 막기)
+    - 선택 화면을 못 봤으면(게임 중간에 켬) 점수가 SURE_SCORE 이상일 때만"""
     ids, unsure = [], []
-    for g in groups:
+    for i, g in enumerate(groups):
         g = list(g)
+        sc = scores[i] if scores and i < len(scores) else 1.0
+        seen = [a for a in g if id_names.get(a) in offered]
+        if offered:
+            if len(seen) == 1:
+                ids.append(seen[0])
+            elif len(seen) > 1:
+                unsure.append([id_names.get(a, a) for a in seen])
+            continue  # 선택 화면에 없던 그림은 무시
+        if sc < SURE_SCORE:
+            continue
         if len(g) == 1:
             ids.append(g[0])
-            continue
-        seen = [a for a in g if id_names.get(a) in offered]
-        if len(seen) == 1:
-            ids.append(seen[0])
         else:
-            unsure.append([id_names.get(a, a) for a in (seen or g)])
+            unsure.append([id_names.get(a, a) for a in g])
     return ids, unsure
 
 
@@ -415,8 +426,15 @@ class Reader(threading.Thread):
         x0, y0, x1, y1 = int(gw * l), int(gh * t), int(gw * r), int(gh * b)
         raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
         rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]]
+        if self.rec and self.offered and not getattr(self, "_area_saved", False):
+            # 증강 칸이 화면 어디 있는지 보려고 한 판에 한 장: 아래 가운데만 (채팅·이름이 들어가지 않게 좌우 30% 는 뺀다)
+            ax0, ax1, ay0 = int(gw * 0.30), int(gw * 0.70), int(gh * 0.72)
+            self.rec.event("hudarea", {"image": self.rec.image("hudarea", cap.grab(gx + ax0, gy + ay0, ax1 - ax0, gh - ay0), ax1 - ax0, gh - ay0),
+                                       "box": [0.30, 0.72, 0.70, 1.0], "window": [gw, gh]})
+            self._area_saved = True
         groups = self.hud.scan(rgb, gh, (x0, y0))
-        ids, unsure = resolve_groups(groups, self.id_names(), self.offered)
+        best = {g: sc for g, sc, _, _ in self.hud.last}
+        ids, unsure = resolve_groups(groups, self.id_names(), self.offered, [best.get(g, 0.0) for g in groups])
         if (ids, unsure) != (self.hud_ids, self.hud_unsure) or not getattr(self, "_hud_logged", False):
             names = self.id_names()
             data = {"picked": [names.get(i, i) for i in ids], "unsure": unsure, "size": self.hud.size,
@@ -483,6 +501,7 @@ class Reader(threading.Thread):
         """새 게임: 증강 칸에서 읽은 것을 비운다 (게임 창을 내렸다 올린 것만으로는 비우지 않는다)"""
         self._shop_img = False
         self._hud_logged = False
+        self._area_saved = False
         if self.hud:
             self.hud.reset()
         self.hud_ids = []

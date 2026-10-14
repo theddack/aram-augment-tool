@@ -36,13 +36,21 @@ def _prep(np, vecs, wts):
     return A.T, W.T, sw.ravel(), np.sqrt((W * (T - mt) ** 2).sum(1))
 
 
+MIN_STD = 0.04  # 창의 밝기 표준편차가 이보다 작으면(거의 단색: 바닥·빈 칸) 비교하지 않는다
+
+
 def _score(np, X, prep):
+    """가중 정규화 상관 (-1~1). 거의 단색인 창은 0.
+    v0.1.15 실제 게임: 단색 영역에서 0 에 가까운 수로 나눠 점수가 7.4 까지 터졌고, 바닥을 '존야 업그레이드'로 읽었다"""
     A, W, sw, tnorm = prep
     num = X @ A
     sx = X @ W
     sxx = (X * X) @ W
-    var = np.maximum(sxx - sx * sx / sw, 1e-6)
-    return num / (np.sqrt(var) * tnorm + 1e-6)
+    var = np.maximum(sxx - sx * sx / sw, 0.0)  # 가중 분산 × 가중치 합
+    std = np.sqrt(var / sw)
+    out = num / (np.sqrt(var) * tnorm + 1e-6)
+    out[std < MIN_STD] = 0.0
+    return np.clip(out, -1.0, 1.0)
 
 
 class Templates:

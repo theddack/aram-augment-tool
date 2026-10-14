@@ -964,9 +964,11 @@ function applyAug(A) {
   if (!A || !state.champ) return;
   const byName = (n) => (n ? state.data.augments.find((a) => a.name === n) || null : null);
   // 게임 증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭으로 짐작한 건 틀릴 수 있었다: 2026-10-14 나피리 판)
-  const hud = (A.hudPicked || []).map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean).slice(0, 4);
-  if (hud.length && hud.map((a) => a.id).join() !== state.chosen.map((a) => a.id).join()) {
-    state.chosen = hud;
+  // 클릭으로 잡은 것은 지우지 않고 합친다 (v0.1.15: 증강 칸 오판이 맞게 잡은 광신자·조준경 부착을 덮어썼다)
+  const hud = (A.hudPicked || []).map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean);
+  const add = hud.filter((a) => !state.chosen.some((c) => c.id === a.id));
+  if (add.length && state.chosen.length < 4) {
+    state.chosen = [...state.chosen, ...add].slice(0, 4);
     clearOffers();
     renderAll();
   }

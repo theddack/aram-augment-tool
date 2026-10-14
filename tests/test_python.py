@@ -605,6 +605,23 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
+    def test_real_false_positives(self):
+        # v0.1.15 실제 게임에서 바닥 타일·보라 단색을 증강으로 읽은 조각 (점수 7.4 · 2.6 이 나왔다) → 아무것도 아니어야
+        import numpy as np
+        from PIL import Image
+        for f in ("hud_false_floor.png", "hud_false_purple.png"):
+            img = np.asarray(Image.open(ROOT / "tests" / "data" / f).convert("RGB"))
+            r = self.h.HudReader(self.tpl)
+            r.scan(img, 1400)
+            self.assertEqual(r.scan(img, 1400), [], f)
+            self.assertTrue(all(-1 <= sc <= 1 for _, sc, _, _ in r.last), "점수는 -1~1")
+        import augocr
+        jonya = next(i for i, n in self.names.items() if n == "존야 업그레이드")
+        ids, _ = augocr.resolve_groups([(jonya,)], self.names, {"광신자", "도취"}, [0.99])
+        self.assertEqual(ids, [], "그 판 선택 화면에 없던 증강은 인정하지 않는다")
+        ids, _ = augocr.resolve_groups([(jonya,)], self.names, set(), [0.9])
+        self.assertEqual(ids, [], "선택 화면을 못 봤으면 아주 확실할 때만")
+
     def test_empty_screen_finds_nothing(self):
         import numpy as np
         rng = np.random.default_rng(0)
@@ -637,8 +654,9 @@ class ShopBox(unittest.TestCase):
         self.assertEqual(overlay.layout(payload, W, H), [], "상점이 안 열려 있으면 상자를 띄우지 않는다")
         items = overlay.layout({**payload, "shop": shop}, W, H)
         kind, x, y, (lines, anchor) = items[0]
-        self.assertEqual((kind, anchor), ("hud", "ne"))
-        self.assertLess(x, 560, "상점 창 왼쪽 바깥")
+        self.assertEqual((kind, anchor, x), ("hud", "nw", overlay.BOX_X), "왼쪽 위 고정")
+        moved = overlay.layout({**payload, "shop": {**shop, "left": 0.51, "right": 0.72}}, W, H)
+        self.assertEqual(moved[0][1:3], items[0][1:3], "상점 위치가 달라져도 상자는 안 움직인다")
 
 
 class GameLog(unittest.TestCase):

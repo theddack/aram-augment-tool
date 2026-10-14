@@ -294,13 +294,13 @@ test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산�
   assert.deepEqual(p.errors, []);
 });
 
-test("증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭 짐작보다 우선)", async () => {
+test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로 잡은 것과 합침)", async () => {
   const p = await loadPage({ simple: true });
   p.w.applyLive({ enabled: true, inGame: true, champion: "Naafiri", level: 9, items: [] });
   p.w.applyAug({ offers: null, seq: 1, picked: "골드 강탈", pickedFrom: ["골드 강탈", "신성한 눈덩이", "거인"], pickSeq: 1 });
   assert.match(p.text("#chosen"), /골드 강탈/);
   const giant = p.data.augments.find((a) => a.name === "거인");
   p.w.applyAug({ offers: null, seq: 1, picked: "골드 강탈", pickSeq: 1, hudPicked: [giant.id] });
-  assert.match(p.text("#chosen"), /거인/);
-  assert.doesNotMatch(p.text("#chosen"), /골드 강탈/, "증강 칸에 실제로 있는 것으로 바꾼다");
+  assert.match(p.text("#chosen"), /거인/, "증강 칸에서 찾은 것을 더한다");
+  assert.match(p.text("#chosen"), /골드 강탈/, "클릭으로 잡은 것은 지우지 않는다");
 });
