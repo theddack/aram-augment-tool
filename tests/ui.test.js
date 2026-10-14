@@ -258,3 +258,18 @@ test("게임 화면 상자: 카드 평가가 없으면 추천 증강 TOP, 산 �
   assert.match(p.text("#chosen-items"), /라바돈의 죽음모자 물리 챔피언에겐 반대 유형이에요/);
   assert.deepEqual(p.errors, []);
 });
+
+test("고른 증강을 못 정해도 게임 화면 카드 표시는 지운다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "DrMundo", level: 3, items: [] });
+  const offers = ["포로 쇄도", "강타자", "지옥불 난사 발동"];
+  p.w.applyAug({ offers, seq: 1, pickSeq: 0 });
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3);
+  p.w.applyAug({ offers: null, seq: 1, picked: null, pickedFrom: offers, pickSeq: 1 });
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 0, "선택 화면이 닫혔으니 게임 화면 카드는 지움");
+  assert.match(p.text("#offer-result"), /이걸로 선택/, "애드온엔 직접 고를 수 있게 남김");
+  p.w.applyLive({ enabled: true, inGame: true, champion: "DrMundo", level: 4, items: [] });  // 다시 그려도
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 0);
+});

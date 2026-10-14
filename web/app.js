@@ -424,6 +424,7 @@ function augReason(a, t, sc, g) {
 function clearOffers() {
   state.offers = [null, null, null];
   state.rerolled = [false, false, false];
+  state.offersClosed = false;
 }
 
 function renderOffers() {
@@ -437,6 +438,7 @@ function renderOffers() {
   box.querySelectorAll("input[type=search]").forEach((el) => el.addEventListener("change", () => {
     const a = state.data.augments.find((x) => x.name === el.value.trim());
     state.offers[Number(el.dataset.i)] = a || null;
+    state.offersClosed = false;  // 직접 입력하면 게임 화면에도 다시 표시
     if (!a && el.value.trim()) el.value = "";
     renderOfferResult();
   }));
@@ -451,7 +453,7 @@ function renderOfferResult() {
   const out = $("#offer-result");
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
   if (!state.champ || !offers.length) {
-    if (!$("#ov-preview").checked) pushOverlay([]);  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
+    if (!$("#ov-preview") || !$("#ov-preview").checked) pushOverlay([]);  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
     out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
     return;
@@ -508,7 +510,9 @@ function renderOfferResult() {
       콤보·DPS·유효 체력 칸은 그 증강에 맞춰 빌드를 다시 짰을 때(몰빵) 지금 대비 변화예요.
       새로고침 권장 = 새로고침을 안 쓴 칸 중 같은 등급 하위 ${REROLL_PCT * 100}% 안에 드는 가장 낮은 칸.
       추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
-  pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
+  // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
+  if (state.offersClosed) pushOverlay([]);
+  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
     const a = state.offers[Number(el.dataset.pick)];
     if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
@@ -926,6 +930,7 @@ function applyAug(A) {
     augSeq = A.seq;
     if (state.chosen.length < 4) {
       state.offers = A.offers.map(byName);
+      state.offersClosed = false;
       renderOffers();
     }
   }
@@ -937,8 +942,9 @@ function applyAug(A) {
       clearOffers();
       renderAll();
     } else if (A.pickedFrom) {
-      // 어느 카드였는지 못 정함 → 선택지를 그대로 두고 '이걸로 선택'을 누르게 한다
+      // 어느 카드였는지 못 정함 → 애드온엔 선택지를 남겨 '이걸로 선택'을 누르게 하고, 게임 화면 카드 표시는 지운다
       state.offers = A.pickedFrom.map(byName);
+      state.offersClosed = true;
       renderOffers();
       $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
     }
