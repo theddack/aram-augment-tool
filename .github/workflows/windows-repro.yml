@@ -42,3 +42,38 @@ jobs:
           name: repro-${{ strategy.job-index }}
           path: repro_out
           retention-days: 7
+
+  # '데이터 갱신'을 실제 exe 로: 같은 exe 를 --update-data 로 띄워 받는 방식이 빌드된 프로그램에서도 끝까지 되는지
+  update-data:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: 도구 설치
+        run: python -m pip install -r requirements-build.txt
+
+      - name: 빌드 (릴리스와 같은 옵션)
+        run: >
+          pyinstaller --noconfirm --windowed --name 칼바람증강Addon
+          --add-data "web;web" --add-data "rules.json;."
+          --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
+          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr
+          --collect-all winrt --exclude-module PIL
+          desktop.py
+
+      - name: 데이터 갱신 실행
+        shell: pwsh
+        run: |
+          $exe = "dist/칼바람증강Addon/칼바람증강Addon.exe"
+          $p = Start-Process $exe -ArgumentList "--update-data" -PassThru
+          if (-not $p.WaitForExit(900000)) { $p.Kill(); "15분 넘게 안 끝남" }
+          "종료 코드: $($p.ExitCode)"
+          $log = "dist/칼바람증강Addon/data/logs/update.log"
+          if (Test-Path $log) { Get-Content $log -Encoding utf8 | Select-Object -Last 40 } else { "update.log 없음" }
+          if ($p.ExitCode -ne 0) { exit 1 }
+          $d = Get-Content "dist/칼바람증강Addon/data/web/data.json" -Raw -Encoding utf8 | ConvertFrom-Json
+          "받은 데이터: 챔피언 $($d.champions.Count) · 증강 $($d.augments.Count) · 피해 유형 있음 $(@($d.champions | Where-Object { $_.damageType }).Count)"

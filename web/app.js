@@ -1061,26 +1061,45 @@ window.addEventListener("pywebviewready", async () => {
     setTimeout(livePoll, L && L.inGame ? 1000 : 3000);
   };
   livePoll();
+  // 데이터 갱신: 브라우저 확인창(제목이 '127.0.0.1:…의 메시지')은 헷갈려서 버튼 옆 안내 문구로 묻는다 (2026-10-14 지적)
   const btn = $("#update-data");
+  const note = document.createElement("span");
+  note.id = "update-note";
+  note.className = "small muted";
+  btn.after(note);
+  const patch = (v) => (String(v || "").match(/^\d+\.\d+/) || [v])[0];
+  const reset = () => { btn.disabled = false; btn.textContent = "데이터 갱신"; };
+  let again = 0;  // '이미 최신' 안내 뒤 10초 안에 한 번 더 누르면 다시 받는다
+  btn.title = "게임 패치 데이터(챔피언·아이템·증강 수치)를 다시 받아요. 프로그램 업데이트는 위 '새 버전' 알림으로 해요.";
   btn.addEventListener("click", async () => {
     btn.disabled = true;
-    btn.textContent = "확인 중…";
-    const v = await api.check_update();
-    if (v.error) { alert("최신 버전 확인 실패: " + v.error); btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
-    if (!v.outdated && !confirm(`이미 최신 데이터예요 (${v.current}).\n그래도 다시 받을까요?`)) { btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
+    if (Date.now() > again) {
+      btn.textContent = "확인 중…";
+      const v = await api.check_update();
+      if (v.error) { note.textContent = "최신 패치 확인 실패 (인터넷 연결 확인)"; note.title = v.error; reset(); return; }
+      if (!v.outdated) {
+        note.textContent = `이미 최신이에요 (패치 ${patch(v.current)}) · 그래도 다시 받으려면 한 번 더 누르세요`;
+        again = Date.now() + 10000;
+        setTimeout(() => { if (Date.now() > again) note.textContent = ""; }, 10500);
+        reset();
+        return;
+      }
+    }
+    again = 0;
+    note.textContent = "";
     btn.textContent = "받는 중…";
     const r = await api.update_data();
-    if (!r.ok) { alert("갱신 실패\n" + r.log); btn.disabled = false; btn.textContent = "데이터 갱신"; return; }
+    if (!r.ok) { note.textContent = "갱신 실패 (마우스를 올리면 이유)"; note.title = r.log; reset(); return; }
     // 진행 상황: 지금 단계와 걸린 시간 (보통 2~5분)
     const timer = setInterval(async () => {
       const u = await api.update_status();
       const t = `${Math.floor(u.seconds / 60)}분 ${u.seconds % 60}초`;
       btn.textContent = `받는 중… ${u.step || ""} · ${t}`;
-      btn.title = "다 받으면 화면이 새로 고쳐져요. 그동안 다른 기능은 그대로 써도 돼요.";
+      note.textContent = "다 받으면 화면이 새로 고쳐져요. 그동안 다른 기능은 그대로 써도 돼요.";
       if (u.running) return;
       clearInterval(timer);
       if (u.ok) location.reload();
-      else { alert("갱신 실패\n" + u.log); btn.disabled = false; btn.textContent = "데이터 갱신"; }
+      else { note.textContent = "갱신 실패 (마우스를 올리면 이유)"; note.title = u.log; reset(); }
     }, 1000);
   });
 });
