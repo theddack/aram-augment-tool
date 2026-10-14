@@ -25,6 +25,11 @@ const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const label = (t) => S.TAG_LABEL[t] || t;
 
+// 근거·패치 펼치기를 눌렀을 때 증강·아이템이 같이 선택되지 않게
+document.addEventListener("click", (e) => {
+  if (e.target.closest && e.target.closest(".basis, details.patch")) e.stopPropagation();
+}, true);
+
 async function init() {
   const res = await fetch("data.json");
   state.data = await res.json();
@@ -47,6 +52,10 @@ async function init() {
   $("#reset-augs").addEventListener("click", () => { state.chosen = []; state.tierMode = "auto"; renderAll(); });
   $("#reset-offers").addEventListener("click", () => { clearOffers(); renderAll(); });
   $("#mini-toggle").addEventListener("click", () => setMini(!document.body.classList.contains("mini")));
+  $("#simple-toggle").addEventListener("click", () => setSimple(!document.body.classList.contains("simple")));
+  let simple = true;  // 처음엔 쉽게 보기
+  try { simple = localStorage.getItem("simple") !== "0"; } catch (e) { /* 저장소를 못 쓰는 환경 */ }
+  setSimple(simple, false);
   try { if (localStorage.getItem("mini") === "1") setMini(true); } catch (e) { /* 저장소를 못 쓰는 환경 */ }
   document.querySelectorAll("#tier-mode button").forEach((b) => b.addEventListener("click", () => {
     state.tierMode = b.dataset.m;
@@ -91,7 +100,7 @@ function setTargetChamp(id) {
     St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
   }
   const T = St.TARGET;
-  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : "고정값"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
+  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
 }
 
@@ -145,7 +154,7 @@ function renderChampCard() {
     <div><span class="muted small">가중치</span> ${top.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}</div>
     <div><span class="muted small">스킬 특성</span> ${traits.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}
       ${feats.map((f) => `<span class="chip on">${esc(featLabel[f] || f)}</span>`).join("")}</div>
-    ${aramChips(c)}${patchChip(c.patch)}${refLinks(c.refs)}</div>`;
+    ${aramChips(c)}${patchChip(c.patch, c.patchCheck)}${refLinks(c.refs)}</div>`;
 }
 
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
@@ -293,8 +302,24 @@ function newChips(a) {
     + (r.auto ? `<span class="chip" title="사람이 확인하기 전, 설명 문장에서 자동으로 읽은 능력치예요">🤖 자동 추정</span>` : "");
 }
 
-function patchChip(lines) {
-  return lines && lines.length ? `<div class="patch">🆕 이번 패치: ${esc(lines.slice(0, 3).join(" · "))}${lines.length > 3 ? " …" : ""}</div>` : "";
+// 이번 패치 변경 + 줄마다 게임 데이터 대조 결과 (계산에 어떤 값을 썼는지 근거)
+const PATCH_STATUS = {
+  ok: ["✅", "게임 데이터에 반영된 것을 확인했어요"],
+  applied: ["📄", "게임 데이터가 아직 이전 값이라, 이 줄은 패치 노트 값으로 계산해요"],
+  stale: ["⚠️", "게임 데이터가 아직 이전 값이에요. 바꿀 자리를 확실히 못 찾아서 이전 값으로 계산해요"],
+  differ: ["❔", "이 수치를 데이터에서 찾지 못해 대조하지 못했어요"],
+  unknown: ["", "숫자 비교가 없는 변경이에요 (삭제·신규·설명 변경)"],
+};
+function patchChip(lines, checks) {
+  if (!lines || !lines.length) return "";
+  const rows = lines.map((ln, i) => {
+    const c = (checks || [])[i] || {};
+    const [icon, why] = PATCH_STATUS[c.status] || ["", ""];
+    const tip = why + (c.source ? ` · 비교한 곳: ${c.source}` : "") + (c.note ? ` · ${c.note}` : "");
+    return `<li title="${esc(tip)}">${icon ? icon + " " : ""}${esc(ln)}${c.status === "applied" ? ` <span class="chip on">패치 노트 값으로 계산</span>` : ""}</li>`;
+  }).join("");
+  return `<details class="patch"><summary>🆕 이번 패치 변경 ${lines.length}줄</summary><ul>${rows}</ul>
+    <div class="muted small">✅ 게임 데이터 반영 확인 · 📄 패치 노트 값으로 임시 계산 · ⚠️ 이전 값으로 계산 중 · ❔ 대조 못 함 (마우스를 올리면 이유)</div></details>`;
 }
 
 function transformChip(a) {
@@ -307,7 +332,19 @@ function augReason(a, t, sc, g) {
   const feat = state.data.rules.features;
   const names = state.chosen.map((x) => x.name).join(" + ");
   const topPart = (sign) => g && Object.entries(g.parts || {}).filter(([, v]) => sign * v >= 0.01).sort((x, y) => sign * (y[1] - x[1]))[0];
-  const partText = (p, word) => p ? `${josa(METRIC_LABEL[p[0]], "이", "가")} ${fmt(Math.abs(p[1]) * 100)}% ${word}` : "";
+  // 실제 숫자로: "회복·보호막이 112 → 407로 늘어요" (18레벨·아이템 6칸 기준). 퍼센트는 원래 값이 작으면 과장돼 보여서 뺀다
+  const partText = (p, word) => {
+    if (!p) return "";
+    const ab = g && g.abs && g.abs[p[0]];
+    if (ab) {
+      const d = p[0] === "control" ? 1 : 0;
+      const unit = p[0] === "control" ? "초" : "";
+      // 숫자 뒤 조사(로/으로)는 읽는 법에 따라 달라서 괄호로 뺀다: "회복·보호막이 늘어요 (558 → 2,330)."
+      const range = `(${fmt(ab[0], d)}${unit} → ${fmt(ab[1], d)}${unit})`;
+      return word.endsWith(".") ? `${josa(METRIC_LABEL[p[0]], "이", "가")} ${word.slice(0, -1)} ${range}.` : `${josa(METRIC_LABEL[p[0]], "이", "가")} ${range} ${word}`;
+    }
+    return `${josa(METRIC_LABEL[p[0]], "이", "가")} ${fmt(Math.abs(p[1]) * 100)}% ${word}`;
+  };
   if (!t) return "";
   if (t.reasons.includes("조건 없음") && sc && sc.req) {
     const f = sc.req.feature;
@@ -479,15 +516,19 @@ function renderAugs() {
   if (state.rarity !== "all") ranked = ranked.filter((r) => String(r.aug.rarity) === state.rarity);
   if (state.augQuery) ranked = ranked.filter((r) => r.aug.name.includes(state.augQuery) || r.aug.desc.includes(state.augQuery));
   const max = Math.max(...ranked.map((r) => r.score), 0.01);
+  // 쉽게 보기: 위 15개만 (검색 중이거나 '전체 보기'를 누르면 다)
+  const SIMPLE_N = 15;
+  const total = ranked.length;
+  if (document.body.classList.contains("simple") && !state.showAllAugs && !state.augQuery) ranked = ranked.slice(0, SIMPLE_N);
   list.innerHTML = ranked.map((r) => `
     <div class="aug" data-id="${r.aug.id}">
       <img src="icons/augment/${r.aug.id}.png" alt="" loading="lazy">
       <div>
         <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>${newChips(r.aug)}
-          ${gains[r.aug.id] ? `<span class="chip ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
+          ${gains[r.aug.id] ? `<span class="chip adv ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
-        ${(state.data.rules.augments[r.aug.id] || {}).model ? `<div class="muted small">${state.data.rules.augments[r.aug.id].auto ? "🤖" : "📐"} 계산 기준: ${esc(state.data.rules.augments[r.aug.id].model)}</div>` : ""}
-        ${patchChip(r.aug.patch)}${refLinks(r.aug.refs)}
+        ${basisBlock([...(((state.data.rules.augments[r.aug.id] || {}).basisView) || []), ...effectBasis(r.aug.effects)])}
+        ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${r.unclassified ? `<span class="chip">효과 분류 안 됨</span>` : ""}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
           ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
@@ -495,7 +536,10 @@ function renderAugs() {
         <div class="desc">${r.aug.desc}</div>
       </div>
       <div class="score">${r.score.toFixed(2)}<div class="bar"><i style="width:${(r.score / max) * 100}%"></i></div></div>
-    </div>`).join("") || `<p class="muted">조건에 맞는 증강이 없어요.</p>`;
+    </div>`).join("") + (ranked.length < total ? `<button class="more-augs reset">나머지 ${total - ranked.length}개 증강도 보기</button>` : "")
+    || `<p class="muted">조건에 맞는 증강이 없어요.</p>`;
+  const more = list.querySelector(".more-augs");
+  if (more) more.addEventListener("click", () => { state.showAllAugs = true; renderAugs(); });
   list.querySelectorAll(".aug").forEach((el) => el.addEventListener("click", () => {
     if (state.chosen.length >= 4) return;
     state.chosen.push(state.data.augments.find((a) => a.id === el.dataset.id));
@@ -522,7 +566,7 @@ function itemRow(r, extra = "") {
     <div>${r.parts.slice(0, 4).map((p) => `<span class="chip">${label(p.tag)} +${p.value.toFixed(2)}</span>`).join("")}</div>
     ${r.synergy ? `<span class="chip syn">🔗 연계 추천</span>` : ""}
     ${r.reasons && r.reasons.length ? `<div class="reason">${esc(itemReason(r))}</div>` : ""}
-    ${gainLine(r.gain)}${r.fixed ? "" : refLinks((r.item.refs || []).filter((x) => x.label === "위키"))}</div>
+    ${gainLine(r.gain)}${basisBlock([...(r.item.basisView || []), ...effectBasis(r.item.effects)])}${r.fixed ? "" : refLinks((r.item.refs || []).filter((x) => x.label === "위키"))}</div>
     <div class="score">${r.score.toFixed(2)}${extra}</div></div>`;
 }
 
@@ -562,6 +606,37 @@ function renderChosenItems() {
     state.items = state.items.filter((i) => i.id !== el.dataset.id);
     renderAll();
   }));
+}
+
+// 쉽게 보기: 추천·이유·살 아이템만. 자세히 보기: 능력치 표·점수·태그·가중치까지
+function setSimple(on, rerender = true) {
+  document.body.classList.toggle("simple", on);
+  $("#simple-toggle").textContent = on ? "자세히 보기" : "쉽게 보기";
+  try { localStorage.setItem("simple", on ? "1" : "0"); } catch (e) { /* 무시 */ }
+  if (rerender && state.data) renderAugs();
+}
+
+// 근거: 숫자마다 어디서 왔는지 (게임 데이터 / 설명 / 계산 / 가정+이유)
+const BASIS_ICON = { game: ["📊", "게임 데이터"], desc: ["📖", "설명 수치"], calc: ["🧮", "계산"], assume: ["⚠️", "가정"],
+  auto: ["🤖", "자동 추정"], missing: ["❔", "근거 없음"], trigger: ["⏱️", "발동 빈도"] };
+function basisBlock(list, open = false) {
+  if (!list || !list.length) return "";
+  const hasAssume = list.some((b) => b.t === "assume" || b.t === "auto" || b.t === "missing");
+  const rows = list.map((b) => {
+    const [icon, name] = BASIS_ICON[b.t] || ["•", ""];
+    return `<li>${icon} <b>${name}</b> ${esc(b.text)}${b.why ? `<div class="bwhy">이유: ${esc(b.why)}${b.noData ? " · 실측 아님 (게임 기록이 모이면 바꿀 예정)" : ""}</div>` : ""}</li>`;
+  }).join("");
+  return `<details class="basis"${open ? " open" : ""}><summary>📐 근거 보기${hasAssume ? " · ⚠️ 가정 포함" : ""}</summary><ul>${rows}</ul></details>`;
+}
+// 게임 데이터에서 뽑은 효과(피해·보호막·회복)의 근거: 발동 빈도를 어떤 문구로 정했는지
+const TRIGGER_WHY = { cast: "스킬을 쓸 때마다", onhit: "기본 공격마다", attacks: "기본 공격 N번마다", time: "일정 시간마다", once: "한 번 (처치·조건부)" };
+function effectBasis(effects) {
+  return (effects || []).map((e) => {
+    const tr = e.trigger || { type: "once" };
+    const freq = tr.type === "attacks" ? `기본 공격 ${tr.n}번마다` : tr.type === "time" ? `${tr.sec}초마다` : TRIGGER_WHY[tr.type];
+    return { t: tr.assume ? "assume" : "trigger", text: `${KIND_LABEL[e.kind] || e.kind}: ${freq}`
+      + (tr.from ? ` — 설명의 '${tr.from}'` : " — 발동 문구가 없어 한 번으로 셈"), why: tr.assume || "" };
+  });
 }
 
 function setMini(on) {

@@ -21,6 +21,7 @@
   </span>
   <a id="changelog-link" class="small" href="changelog.html" title="버전마다 바뀐 점">업데이트 내역</a>
   <a id="sources-link" class="small" href="sources.html" title="데이터를 가져온 곳, 라이선스, 가져온 시각">데이터 출처</a>
+  <button id="simple-toggle" class="reset" title="쉽게 보기: 추천·이유·살 아이템만 / 자세히 보기: 능력치 표·점수·가중치까지">자세히 보기</button>
   <button id="mini-toggle" class="reset" title="게임 옆에 띄울 작은 화면 (선택지·티어·빌드만)">작게 보기</button>
   <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
 </header>
@@ -31,15 +32,20 @@
   </section>
 
   <section id="center" class="panel">
+    <ol id="guide">
+      <li><b>챔피언 고르기</b> <span class="muted">왼쪽 목록 (게임 연동을 켜면 자동)</span></li>
+      <li><b>게임에 뜬 증강 3개 입력</b> <span class="muted">아래 '이번 선택지'에 이름 몇 글자만</span></li>
+      <li><b>🔥 추천을 고르고 아이템 사기</b> <span class="muted">오른쪽 '다음에 살 아이템'</span></li>
+    </ol>
     <div id="champ-card" class="empty">왼쪽에서 챔피언을 고르세요.</div>
 
-    <details id="stat-panel" open>
+    <details id="stat-panel" class="adv" open>
       <summary>능력치 · 스킬 수치 <span class="muted small">(고른 아이템·증강 적용)</span></summary>
       <div class="row controls">
         <label>레벨 <input id="level" type="range" min="1" max="18" value="18"> <b id="level-val">18</b></label>
         <label><input id="aram-toggle" type="checkbox" checked> 칼바람 밸런스 보정</label>
         <label title="피해 계산에 쓰는 상대. 챔피언을 고르면 그 챔피언의 18레벨 추천 빌드(균형) 능력치를 써요">상대
-          <select id="target-champ"><option value="">기준 상대 (고정값)</option></select></label>
+          <select id="target-champ"><option value="">기준 상대 (전 챔피언 중앙값)</option></select></label>
         <span id="target-info" class="muted small"></span>
       </div>
       <div id="metrics"></div>
@@ -49,7 +55,7 @@
         평타 DPS = 공격력 × 공격 속도 × 치명타 기대값. 유효 체력 = 체력 × (1 + 방어력/100), 마법은 마법 저항력 기준.
         아이템 고유 효과·챔피언 패시브·증강 효과는 게임 데이터 수치로 계산해요(칼바람 증강 모드 전용 수치 우선).
         쿨 반환·초기화는 스킬 가속으로, 무적·피해 감소는 그동안 받을 피해(초당 600 가정)만큼 버티는 힘으로, 골드는 위키 골드 효율 기준 능력치(주 공격·체력·저항)로 바꿔서 계산해요.
-        조건부 효과는 가동률을 가정한 기대값이에요. 증강마다 📐 계산 기준이 적혀 있어요.</p>
+        조건부 효과는 가동률을 가정한 기대값이에요. 증강·아이템마다 📐 근거가 있고, 공통 가정값은 <a href="sources.html#assumptions">계산 가정값</a>에 이유와 함께 있어요.</p>
     </details>
 
     <div class="row"><h2>고른 증강 <span class="muted">(최대 4개, 누르면 해제)</span></h2>
@@ -83,7 +89,8 @@
       </div>
       <input id="aug-search" type="search" placeholder="증강 검색">
     </div>
-    <p class="muted small">어떤 증강도 재밌게! 🔥 강력 추천 · 👍 추천 · 🙂 무난 · 🤔 애매 · 🎲 도전(낯설지만 빌드를 바꾸면 재밌는 것) · ⛔ 효과 없음(이 챔피언은 발동 안 함).
+    <p class="easy-legend">🔥 강력 추천 → 👍 추천 → 🙂 무난 → 🤔 애매 순서로 좋아요. 🎲 도전은 빌드를 바꾸면 재밌게 쓸 수 있는 증강, ⛔는 이 챔피언에게 효과가 없는 증강이에요.</p>
+    <p class="muted small adv">어떤 증강도 재밌게! 🔥 강력 추천 · 👍 추천 · 🙂 무난 · 🤔 애매 · 🎲 도전(낯설지만 빌드를 바꾸면 재밌는 것) · ⛔ 효과 없음(이 챔피언은 발동 안 함).
       🔄 변신 = 고르면 원딜형·탱커형·근접 등으로 플레이 방향이 바뀌어요. 첫 증강은 챔피언 기준, 고른 뒤에는 그 증강과 잘 맞는 순서예요.
       평가에 마우스를 올리면 S~D 등급과 자세한 숫자가 나와요.</p>
     <div id="aug-list"></div>
@@ -101,6 +108,7 @@
     <p id="concept-desc" class="muted small"></p>
     <div id="build"></div>
 
+    <div class="adv">
     <div class="row">
       <h2>아이템 고르기</h2>
       <div id="kind-filter">
@@ -113,8 +121,9 @@
     <input id="item-search" type="search" placeholder="아이템 검색">
     <p class="muted small">현재 빌드에 하나 더 넣는다고 했을 때의 점수순이에요. 누르면 고른 아이템에 추가돼요. "증강 보상"은 증강으로만 얻는 아이템이라 자동 추천에서는 빠져요.</p>
     <div id="item-list"></div>
+    </div>
 
-    <details id="formula">
+    <details id="formula" class="adv">
       <summary>공식 (가중치) 조정</summary>
       <p class="muted">챔피언 역할군과 공격/마법 성향으로 자동 설정된 값이에요. 바꾸면 증강·아이템 점수가 즉시 다시 계산돼요.</p>
       <div id="weights"></div>

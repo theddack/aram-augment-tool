@@ -119,6 +119,9 @@ body.mini #mini-build { display: block; }
 .refs a { color: var(--muted); }
 .refs a.ext::after { content: " ↗"; }
 .patch { font-size: 12px; color: #ffd166; margin-top: 2px; }
+.patch summary { cursor: pointer; }
+.patch ul { margin: 4px 0; padding-left: 18px; color: var(--text); }
+.patch li { margin: 1px 0; }
 body.mini .refs { display: none; }
 
 /* 연계 티어 배지 */
@@ -187,3 +190,25 @@ body.mini .refs { display: none; }
   #offers { grid-template-columns: 1fr; }
   .offer-table { display: block; overflow-x: auto; }
 }
+
+/* ---- 쉽게 보기 (기본): 처음 하는 사람이 볼 것만. 자세한 표·점수·가중치는 '자세히 보기' */
+#guide { display: none; margin: 0 0 10px; padding: 10px 12px 10px 32px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+#guide li { margin: 2px 0; }
+.easy-legend { display: none; font-size: 13px; margin: 4px 0 8px; }
+body.simple #guide, body.simple .easy-legend { display: block; }
+body.simple .adv, body.simple .aug .tags, body.simple .aug .score, body.simple .aug .desc,
+body.simple .aug .refs, body.simple .item .score, body.simple .item > div > div:nth-child(2),
+body.simple #champ-card > div > div:not(:first-child):not(.patch), body.simple .offer-table + p,
+body.simple #tier-basis, body.simple #meta { display: none !important; }
+body.simple .offer-table th:nth-child(n+3):nth-child(-n+7), body.simple .offer-table td:nth-child(n+3):nth-child(-n+7) { display: none; }
+body.simple .aug { padding: 10px 8px; }
+body.simple .aug .name { font-size: 15px; }
+body.simple .aug .why { font-size: 14px; }
+body.mini #guide, body.mini .easy-legend { display: none !important; }
+.more-augs { width: 100%; margin: 8px 0; }
+/* 근거 */
+.basis { font-size: 12px; margin-top: 3px; }
+.basis summary { cursor: pointer; color: var(--muted); }
+.basis ul { margin: 4px 0; padding-left: 4px; list-style: none; }
+.basis li { margin: 2px 0; }
+.basis .bwhy { color: var(--muted); font-size: 12px; }

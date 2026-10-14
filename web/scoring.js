@@ -260,6 +260,13 @@
     return v;
   }
 
+  // 화면 이유 문장용 실제 숫자 (퍼센트만 보면 원래 값이 작을 때 과장돼 보여서 '112 → 407'로 보여 준다)
+  function absParts(m0, m1) {
+    const out = {};
+    for (const k of Object.keys(METRIC_FLOOR)) out[k] = [m0[k], m1[k]];
+    return out;
+  }
+
   function gainParts(m0, m1) {
     const parts = {};
     for (const k of Object.keys(METRIC_FLOOR)) parts[k] = (m1[k] - m0[k]) / Math.max(m0[k], METRIC_FLOOR[k]);
@@ -357,7 +364,7 @@
     for (const a of augs) {
       if (!hasNumbers(a, rules) || chosen.some((c) => c.id === a.id)) continue;
       const m1 = Stats.evaluate(champ, 18, items, [...base, ...augStatsOf([a], rules, champ)], statOpts).m;
-      out[a.id] = { gain: valueOf(m1, num) - v0, parts: gainParts(m0, m1) };
+      out[a.id] = { gain: valueOf(m1, num) - v0, parts: gainParts(m0, m1), abs: absParts(m0, m1) };
     }
     return { gains: out, build: items };
   }
