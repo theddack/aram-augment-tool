@@ -68,12 +68,33 @@ class Expr:
         return not self.lvl and not self.ratios
 
 
+# 모드별 수치 덮어쓰기(DataValuesModeOverride) 우선순위: 칼바람 증강 모드 → 칼바람
+MODE_OVERRIDES = ("Kiwi", "ARAM")
+
+
 class Calc:
-    def __init__(self, spell, effect_amounts=None):
+    def __init__(self, spell, effect_amounts=None, modes=MODE_OVERRIDES):
         self.values = {}
         for dv in spell.get("DataValues", []) or []:
             self.values[dv["name"].lower()] = dv.get("values") or [0]
+        self.mode_used = None
+        overrides = spell.get("DataValuesModeOverride") or {}
+        for m in modes:  # 스킬 수치를 그 모드 값으로 (예: 바드 미프 주문력 계수 50% → 증강 모드 67%)
+            if m in overrides:
+                for dv in overrides[m].get("SpellDataValues", []) or []:
+                    self.values[dv["name"].lower()] = dv.get("values") or [0]
+                self.mode_used = m
+                break
         self.calcs = {k.lower(): v for k, v in (spell.get("mSpellCalculations") or {}).items()}
+        # 계산식 자체의 모드별 덮어쓰기: 이름이 해시인 칸에 {모드: {"Calculations": {...}}} 형태로 들어 있다
+        for fv in spell.values():
+            if isinstance(fv, dict) and any(isinstance(x, dict) and "Calculations" in x for x in fv.values()):
+                for m in modes:
+                    if m in fv:
+                        for name, c in (fv[m].get("Calculations") or {}).items():
+                            self.calcs[name.lower()] = c
+                        self.mode_used = self.mode_used or m
+                        break
         self.effects = effect_amounts or spell.get("mEffectAmount") or []
 
     def value(self, name, rank):
@@ -123,10 +144,17 @@ class Calc:
         if t == "ByCharLevelInterpolationCalculationPart":
             return Expr(lvl=(p.get("mStartValue", 0), p.get("mEndValue", 0)))
         if t == "ByCharLevelBreakpointsCalculationPart":
+            # 레벨마다 증가량이 더해지고, 구간(breakpoint)에서 증가량이 바뀌거나(mBonusPerLevelAtAndAfter)
+            # 그 레벨에 한 번 더해진다(mAdditionalBonusAtThisLevel). 18레벨 값까지 차례로 더한다
             start = p.get("mLevel1Value", 0)
-            end = start + p.get("mInitialBonusPerLevel", 0) * 17
-            for bp in p.get("mBreakpoints", []) or []:
-                end += bp.get("mAdditionalBonusAtThisLevel", 0) * (19 - bp.get("mLevel", 18))
+            per = p.get("mInitialBonusPerLevel", 0)
+            bps = {bp.get("mLevel", 99): bp for bp in p.get("mBreakpoints", []) or []}
+            end = start
+            for lv in range(2, 19):
+                bp = bps.get(lv)
+                if bp and "mBonusPerLevelAtAndAfter" in bp:
+                    per = bp["mBonusPerLevelAtAndAfter"]
+                end += per + (bp.get("mAdditionalBonusAtThisLevel", 0) if bp else 0)
             return Expr(lvl=(start, end))
         if t in ("SumOfSubPartsCalculationPart", "ClampSubPartsCalculationPart"):
             total = Expr()
