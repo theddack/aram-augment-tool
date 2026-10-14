@@ -24,6 +24,8 @@ main { display: grid; grid-template-columns: 280px 1fr 340px; gap: 12px; padding
 input[type=search] { width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; }
 button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 header #reset-all { margin-left: auto; }
+#changelog-link { color: var(--muted); margin-left: 8px; }
+body.mini #changelog-link { display: none; }
 #desktop-tools { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
 #desktop-tools[hidden] { display: none; }
 #desktop-tools:not([hidden]) + #reset-all { margin-left: 8px; }

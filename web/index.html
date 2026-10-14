@@ -19,6 +19,7 @@
     <label class="small"><input id="on-top" type="checkbox"> 항상 위</label>
     <button id="update-data" class="reset" title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
   </span>
+  <a id="changelog-link" class="small" href="changelog.html" title="버전마다 바뀐 점">업데이트 내역</a>
   <button id="mini-toggle" class="reset" title="게임 옆에 띄울 작은 화면 (선택지·티어·빌드만)">작게 보기</button>
   <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
 </header>
@@ -43,7 +44,7 @@
       <p class="muted small">스킬 콤보 = Q·W·E·R 각 1회 피해 합 (방어력 ${TARGET_ARMOR}·마법 저항력 ${TARGET_MR}인 대상 기준, 관통력 적용).
         평타 DPS = 공격력 × 공격 속도 × 치명타 기대값. 유효 체력 = 체력 × (1 + 방어력/100), 마법은 마법 저항력 기준.
         아이템 고유 효과·챔피언 패시브·증강 효과는 게임 데이터 수치로 계산해요(칼바람 증강 모드 전용 수치 우선).
-        쿨 반환·초기화는 스킬 가속으로, 무적·피해 감소는 그동안 받을 피해(초당 600 가정)만큼 버티는 힘으로, 골드는 1000골드당 +5%로 바꿔서 계산해요.
+        쿨 반환·초기화는 스킬 가속으로, 무적·피해 감소는 그동안 받을 피해(초당 600 가정)만큼 버티는 힘으로, 골드는 위키 골드 효율 기준 능력치(주 공격·체력·저항)로 바꿔서 계산해요.
         조건부 효과는 가동률을 가정한 기대값이에요. 증강마다 📐 계산 기준이 적혀 있어요.</p>
     </details>
 

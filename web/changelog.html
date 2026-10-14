@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>업데이트 내역 · 칼바람 증강 Addon</title>
+<style>
+:root { --bg:#0f1419; --panel:#171e26; --line:#26313d; --text:#e6e9ec; --muted:#8b96a3; --accent:#c8aa6e; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.7 -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+main { max-width:820px; margin:0 auto; padding:16px; }
+a { color:var(--accent); } h1 { color:var(--accent); font-size:22px; } h2 { margin-top:28px; border-bottom:1px solid var(--line); padding-bottom:4px; }
+h3 { font-size:15px; margin:16px 0 4px; } blockquote { margin:8px 0; padding:8px 12px; background:var(--panel); border-left:3px solid var(--accent); }
+code { background:var(--panel); padding:0 4px; border-radius:4px; } hr { border:0; border-top:1px solid var(--line); margin:24px 0; }
+.back { display:inline-block; margin-bottom:8px; }
+</style></head><body><main>
+<a class="back" href="index.html">← 칼바람 증강 Addon으로 돌아가기</a>
+<h1>업데이트 내역</h1>
+<p>칼바람 증강 Addon이 버전마다 무엇이 바뀌었는지 정리한 곳이에요. 처음 쓰는 분도 알 수 있게 쉬운 말로 적어요.</p>
+<hr>
+<h2>v0.1.2 — 정확도 대폭 개선</h2>
+<blockquote>한 줄 요약: <b>&quot;정확한 지표가 곧 재미&quot;</b> — 게임 파일과 위키에서 칼바람 증강 모드 전용 수치를 찾아 넣고, 숫자로 평가되는 증강을 77개 → 137개로 늘렸어요.</blockquote>
+<h3>✨ 새로 생긴 것</h3>
+<ul>
+<li><b>기동성 · 제어력 지표</b>: 능력치 패널에 두 칸이 생겼어요.</li>
+<ul>
+<li>기동성 = 평균 이동 속도 (조건부 이동 속도는 켜져 있는 시간 비율로)</li>
+<li>제어력 = 콤보 한 번에 거는 CC 시간 (기절·속박은 그대로, 둔화는 30%만)</li>
+</ul>
+<li><b>📐 계산 기준</b>: 숫자가 아닌 효과를 어떻게 계산했는지 증강마다 적어 둬요.</li>
+<li><b>아이템 같은 계열 안내</b>: 주문 검·히드라·치명 계열처럼 하나만 효과가 있는 아이템은 같이 추천하지 않고, 직접 고를 때도 알려 줘요.</li>
+</ul>
+<h3>🎯 더 정확해진 것</h3>
+<ul>
+<li><b>칼바람 증강 모드 전용 스킬 수치</b>를 씁니다. 예) 바드 미프 주문력 계수 50% → <b>67%</b>, 가렌 패시브 회복 → <b>2~12%</b> (패치 26.20 노트와 일치)</li>
+<li><b>증강 모드 전용 재사용 대기시간</b>: 가렌 W 22 → 18초, 크산테 W 14 → 10초, 스카너 E, 쓰레쉬 W</li>
+<li><b>증강 모드 전용 챔피언 보정 59명</b>: 일반 칼바람 보정 위에 증강 모드 보정을 덮어써요. 예) 아크샨 가하는 피해 +5% → 0%</li>
+<li><b>쿨 반환·초기화 증강을 스킬 가속으로 환산</b>: 신비한 주먹, 대마법사, 노련한 저격수, 궁극기 대변혁 등 25개</li>
+<li><b>조건부 효과를 기대값으로</b>: 윤 탈 야생화살(치명타 영구 중첩), 쇼진의 창, 나보리 명멸검, 생명선 아이템 등</li>
+<li><b>무적·피해 감소 → 버티는 힘</b>, <b>골드·모루 → 능력치</b>(위키 골드 효율 기준)</li>
+<li><b>증강 적용 스킬 목록</b>: 승리를 위한 회전은 위키에 나온 24명만 발동해요.</li>
+</ul>
+<h3>🐛 고친 것</h3>
+<ul>
+<li><b>레벨 구간 계산 버그</b>: 레벨에 따라 증가량이 바뀌는 수치를 낮게 계산하던 문제. 스킬·패시브 <b>77개</b>의 18레벨 값이 바로잡혔어요 (다리우스 패시브, 쉔 Q, 파이크 R 등).</li>
+<li><b>비활성 증강</b>: 위키에 &#x27;현재 비활성&#x27;으로 나온 <b>신발 수집가</b>를 추천에서 뺐어요 (모두 8개).</li>
+</ul>
+<h3>⚠️ 알아 두세요</h3>
+<ul>
+<li>가정값(받는 피해 초당 600, 가동률 등)은 실제 게임과 다를 수 있어요. 이상하면 알려 주세요.</li>
+<li>위키 증강 모드 보정 표는 기준 시점이 25.17로 적혀 있어 최신 패치와 조금 다를 수 있어요.</li>
+</ul>
+<hr>
+<h2>v0.1.1 — 이름 변경</h2>
+<h3>✨ 바뀐 것</h3>
+<ul>
+<li>이름이 <b>칼바람 증강 Addon</b>이 됐어요. 압축을 풀면 <code>칼바람증강Addon</code> 폴더가 나와요.</li>
+</ul>
+<h3>🐛 고친 것</h3>
+<ul>
+<li><b>맥</b>: 보조 모니터를 쓰다가 뺀 경우처럼 저장된 창 위치가 화면 밖이면 시작하다 멈추던 문제</li>
+<li>압축 파일 안의 한글 파일 이름이 깨지던 문제</li>
+</ul>
+<hr>
+<h2>v0.1.0 — 첫 공개</h2>
+<h3>✨ 기능</h3>
+<ul>
+<li><b>첫 증강 추천 → 다음 증강은 고른 증강과의 연계 순서</b>로 추천 (🔥 강력 추천 ~ 🎲 도전, ⛔ 효과 없음, 🔄 변신)</li>
+<li><b>이번 선택지</b>: 게임에 뜬 증강 3개를 넣으면 비교하고, 새로고침할 칸도 알려 줘요.</li>
+<li><b>다음에 살 아이템</b>과 <b>추천 빌드</b> (증강 몰빵 · 균형 · 변칙)</li>
+<li><b>게임 연동</b>: 챔피언·레벨·산 아이템 자동 반영</li>
+<li><b>게임 화면 표시</b> (윈도우, 창 모드·테두리 없음): 증강 카드 밑에 평가, 오른쪽 위에 다음 구매</li>
+<li><b>상점 추천 등록</b>: 챔피언이 정해지면 게임 상점 추천 칸에 우리 빌드를 넣어요.</li>
+<li><b>작게 보기</b>, <b>항상 위</b>, <b>데이터 갱신</b></li>
+</ul>
+<p style="color:var(--muted);font-size:12px">라이엇 게임즈와 무관한 팬 제작 도구입니다.</p>
+</main></body></html>

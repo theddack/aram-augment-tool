@@ -49,6 +49,14 @@
     const add = { HP: 0, AD: 0, AP: 0, ARMOR: 0, MR: 0, HASTE: 0, MANA: 0, LETHALITY: 0, MPEN: 0,
       MS: 0, AS: 0, CRIT: 0, CRITDMG: 0, MSP: 0, LS: 0, OMNIVAMP: 0, ARPEN: 0, MPENP: 0, HSP: 0 };
     for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) add[k] += v;
+    const goldAug = augStats.reduce((a, s) => a + (Number((s || {}).goldValue) || 0), 0);
+    if (goldAug) {
+      const main = (champ.magicShare ?? 0.5) >= 0.5 ? "AP" : "AD";
+      add[main] += goldAug * 0.5 / GOLD_VALUE[main];
+      add.HP += goldAug * 0.3 / GOLD_VALUE.HP;
+      add.ARMOR += goldAug * 0.1 / GOLD_VALUE.ARMOR;
+      add.MR += goldAug * 0.1 / GOLD_VALUE.MR;
+    }
     const mult = { HPmult: 0, ADmult: 0, APmult: 0, ASmult: 0, MSmult: 0, adaptiveMult: 0 };
     const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, noUlt: false };
     const conv = {};
@@ -165,7 +173,9 @@
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
   const TARGET = { ARMOR: 80, MR: 60, HP: 3000, CUR: 0.7, DPS_TAKEN: 600 };
-  const GOLD_K = 0.05; // 1000골드당 지표 +5% (전설 아이템 1개 ≈ 3000골드 ≈ +15%)
+  // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
+  // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
+  const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
 
   function metrics(champ, L, stats, opts = {}) {
@@ -281,11 +291,6 @@
     out.control = control;
     out.dps = out.autoDps + 0.3 * out.skillDps + out.augDps;  // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 30%만
     out.support = out.shield + out.heal;
-    // ---- 골드: 1000골드당 피해·버티는 힘 +5%
-    if (cv.goldValue) {
-      const g = 1 + GOLD_K * cv.goldValue / 1000;
-      for (const k of ["combo", "dps", "ehp", "autoDps", "skillDps"]) out[k] *= g;
-    }
     return out;
   }
 

@@ -592,7 +592,7 @@
       "stats": {
         "goldValue": "GoldAmount"
       },
-      "model": "골드 → 1000골드당 지표 +5%"
+      "model": "골드 → 능력치 (위키 골드 효율: 공격력 35·주문력 20·체력 2.67·방어 20골드), 주 공격 50%·체력 30%·저항 20%"
     },
     "ARAM_YowchMyCoins": {
       "generic": true,
