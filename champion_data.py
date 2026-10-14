@@ -266,8 +266,10 @@ def process_champion(cid, detail, bin_json):
 # ---------------------------------------------------------------- 위키 Lua 테이블
 def parse_lua_table(text):
     """위키 Module:ChampionData/data 의 Lua 테이블을 dict 로. (이 모듈에 필요한 문법만 지원)"""
-    text = re.sub(r"--[^\n]*", "", text)
-    tokens = re.findall(r'"(?:[^"\\]|\\.)*"|[{}\[\]=,]|-?\d+(?:\.\d+)?(?:[eE]-?\d+)?|[A-Za-z_]\w*', text)
+    # 지원: "문자열", '문자열', [[긴 문자열]], [=[긴 문자열]=], -- 주석, --[[ 긴 주석 ]]
+    text = re.sub(r"--\[\[.*?\]\]", "", text, flags=re.S)
+    tokens = [m.group(0) for m in re.finditer(r'\[(=*)\[.*?\]\1\]|"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|--[^\n]*|[{}\[\]=,;]|-?\d+(?:\.\d+)?(?:[eE]-?\d+)?|[A-Za-z_]\w*', text, flags=re.S)]
+    tokens = [t for t in tokens if not t.startswith("--")]
     pos = 0
 
     def value():
@@ -276,8 +278,12 @@ def parse_lua_table(text):
         pos += 1
         if tok == "{":
             return table()
-        if tok.startswith('"'):
-            return tok[1:-1].replace('\\"', '"')
+        if tok.startswith('"') or tok.startswith("'"):
+            return tok[1:-1].replace('\\"', '"').replace("\\'", "'")
+        lb = re.match(r"\[(=*)\[", tok)
+        if lb:  # [[ … ]] / [=[ … ]=] 긴 문자열
+            n = len(lb.group(1)) + 2
+            return tok[n:-n]
         if tok in ("true", "false"):
             return tok == "true"
         if tok == "nil":
@@ -302,7 +308,7 @@ def parse_lua_table(text):
                 d[key] = value()
             else:
                 arr.append(value())
-            if tokens[pos] == ",":
+            if tokens[pos] in (",", ";"):
                 pos += 1
         pos += 1
         return d if d or not arr else arr
