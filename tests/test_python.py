@@ -413,6 +413,12 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(self.m.match("정신 변화")[0], "정신 변환")  # 한 글자 틀림
         self.assertIsNone(self.m.match("기본 공격 시 최대 체력의")[0])  # 설명 글자는 안 맞는다
 
+    def test_english_name_maps_to_korean(self):
+        m = self.o.Matcher([("강타자", "Heavy Hitter"), ("정신 변환", "Mind to Matter"), "눈 폭발"])
+        self.assertEqual(m.match("Heavy Hitter")[0], "강타자")
+        self.assertEqual(m.match("Mind to Mater")[0], "정신 변환")  # 한 글자 틀려도
+        self.assertEqual(m.match("눈 폭발")[0], "눈 폭발")
+
     def test_merged_line_split_into_cards(self):
         W, H = 1920, 1080
         y = int(H * 0.46)

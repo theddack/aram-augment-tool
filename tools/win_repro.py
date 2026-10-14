@@ -142,8 +142,9 @@ def cards(names, gold=None):
         c.create_text(cx, int(H * 0.56), text="기본 공격 시 최대 체력의 3.5%에 해당하는 추가 물리 피해", width=int(W * 0.18),
                       fill="#dddddd", font=("Malgun Gothic", -int(H * 0.018)), tags="card")
 
-A = ["눈 폭발", "강타자", "정신 변환"]
-B = ["눈 폭발", "탱크 엔진", "정신 변환"]
+# 가상 PC 에는 한국어 글자 인식이 없어서(설치가 30분 넘게 멈춤) 영어 이름으로 띄운다 → 애드온은 한국어 이름으로 맞춰야 한다
+A = ["Snowblast", "Heavy Hitter", "Mind to Matter"]
+B = ["Snowblast", "Tank Engine", "Mind to Matter"]
 r.after(300, lambda: (r.lift(), r.focus_force()))
 r.after(15000, lambda: cards(A))             # 게임 60초: 첫 증강 선택 화면
 # 게임 66초쯤 재현 스크립트가 가운데(강타자) 카드를 클릭한다 (테두리 색은 등급이라 고른 표시가 아님)

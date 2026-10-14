@@ -553,7 +553,8 @@ def augment_names():
     try:
         m = path.stat().st_mtime
         if m != _aug_names["mtime"]:
-            names = [a["name"] for a in json.loads(path.read_text(encoding="utf-8")).get("augments", [])]
+            # 영어 이름도 같이: 한국어 글자 인식이 없는 윈도우(검증용 가상 PC 등)에서도 맞출 수 있게
+            names = [(a["name"], a.get("enName")) for a in json.loads(path.read_text(encoding="utf-8")).get("augments", [])]
             _aug_names.update(mtime=m, names=names)
     except (OSError, ValueError):
         pass

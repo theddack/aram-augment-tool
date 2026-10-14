@@ -31,7 +31,13 @@ class Matcher:
     """증강 이름 목록과 OCR 글자를 맞춘다"""
 
     def __init__(self, names):
-        self.names = {norm(n): n for n in names if norm(n)}
+        """names: 증강 이름 목록. (이름, 다른 이름…) 묶음도 받는다 → 다른 이름(영어)으로 읽혀도 이름으로 돌려준다"""
+        self.names = {}
+        for n in names:
+            main, *alts = n if isinstance(n, (tuple, list)) else (n,)
+            for a in (main, *alts):
+                if a and norm(a) and norm(a) not in self.names:
+                    self.names[norm(a)] = main
 
     def match(self, text):
         t = norm(text)
@@ -222,25 +228,67 @@ class _Ocr:
             if OcrEngine.is_language_supported(lang):
                 eng = OcrEngine.try_create_from_language(lang)
                 break
+        self.lang = "ko"
         if eng is None:
-            raise RuntimeError("윈도우 한국어 글자 인식이 없어요 (설정 > 시간 및 언어 > 언어 > 한국어 > 언어 옵션 > 광학 문자 인식)")
+            # 한국어 글자 인식이 없으면 윈도우 언어로 (영어 이름으로 맞춘다. 검증용 윈도우 가상 PC도 이 경우)
+            eng = OcrEngine.try_create_from_user_profile_languages()
+            self.lang = "윈도우 언어"
+        if eng is None:
+            raise RuntimeError("윈도우 글자 인식이 없어요 (설정 > 시간 및 언어 > 언어 > 한국어 > 언어 옵션 > 광학 문자 인식)")
         self.engine = eng
+        self._make = None  # 이미지 만들기에 성공한 방법 (한 번 찾으면 계속 쓴다)
+
+    def bitmap(self, bgra, w, h):
+        """BGRA 바이트 → SoftwareBitmap. pywinrt 버전마다 받는 인자가 달라서 되는 방법을 찾는다
+        (v0.1.12 실제 PC: 'Invalid parameter count' 로 모두 실패했음)"""
+        from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
+        from winrt.windows.storage.streams import DataWriter
+        fmt, alpha = BitmapPixelFormat.BGRA8, BitmapAlphaMode.PREMULTIPLIED
+
+        def buffer():
+            dw = DataWriter()
+            dw.write_bytes(bgra)
+            return dw.detach_buffer()
+
+        ways = [
+            ("버퍼 4인자", lambda: SoftwareBitmap.create_copy_from_buffer(buffer(), fmt, w, h)),
+            ("버퍼 5인자", lambda: SoftwareBitmap.create_copy_from_buffer(buffer(), fmt, w, h, alpha)),
+            ("빈 이미지에 복사", lambda: _copy_into(SoftwareBitmap(fmt, w, h, alpha), buffer())),
+            ("바이트 바로", lambda: SoftwareBitmap.create_copy_from_buffer(bgra, fmt, w, h)),
+        ]
+        if self._make:
+            ways = [x for x in ways if x[0] == self._make] + [x for x in ways if x[0] != self._make]
+        errors = []
+        for name, make in ways:
+            try:
+                bmp = make()
+                self._make = name
+                return bmp
+            except Exception as e:
+                errors.append(f"{name}: {str(e)[:60]}")
+        raise RuntimeError("이미지 만들기 실패 — " + " / ".join(errors))
 
     def words(self, bgra, w, h):
         import asyncio
-        from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
-        from winrt.windows.storage.streams import DataWriter
-        dw = DataWriter()
-        dw.write_bytes(bgra)
-        bmp = SoftwareBitmap.create_copy_from_buffer(dw.detach_buffer(), BitmapPixelFormat.BGRA8, w, h,
-                                                     BitmapAlphaMode.PREMULTIPLIED)
-        res = asyncio.run(self.engine.recognize_async(bmp))
+        bmp = self.bitmap(bgra, w, h)
+        try:
+            res = asyncio.run(self._recognize(bmp))
+        except Exception as e:
+            raise RuntimeError(f"글자 인식 실패 ({self._make}): {str(e)[:100]}") from None
         out = []
         for line in res.lines:
             for wd in line.words:
                 r = wd.bounding_rect
                 out.append((wd.text, r.x, r.y, r.width, r.height))
         return out
+
+    async def _recognize(self, bmp):
+        return await self.engine.recognize_async(bmp)
+
+
+def _copy_into(bmp, buf):
+    bmp.copy_from_buffer(buf)
+    return bmp
 
 
 class _Mouse:
@@ -292,6 +340,7 @@ class Reader(threading.Thread):
         except Exception as e:
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
+        self.lang = ocr.lang
         matcher, names = None, None
         while True:
             self.beat = time.time()
@@ -339,4 +388,4 @@ class Reader(threading.Thread):
             if sum(1 for t in segs if matcher.match(t)[0]) == 1:
                 self.near = " | ".join(segs)[:160]
         self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None)
-        self.status = "증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님"
+        self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
