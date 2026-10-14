@@ -30,9 +30,19 @@ class _Win:
         import ctypes
         from ctypes import wintypes
         self.ct, self.wt = ctypes, wintypes
-        self.user32 = ctypes.windll.user32
-        self.user32.FindWindowW.restype = wintypes.HWND
-        self.user32.GetForegroundWindow.restype = wintypes.HWND
+        self.user32 = u = ctypes.windll.user32
+        # 64비트 창 번호(HWND)가 int 로 잘리지 않게 인자·반환 형식을 정해 둔다
+        u.FindWindowW.restype = wintypes.HWND
+        u.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+        u.GetForegroundWindow.restype = wintypes.HWND
+        u.IsIconic.argtypes = [wintypes.HWND]
+        u.IsWindowVisible.argtypes = [wintypes.HWND]
+        u.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        u.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+        u.GetParent.restype = wintypes.HWND
+        u.GetParent.argtypes = [wintypes.HWND]
+        u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
 
     def game_rect(self):
         """롤 게임 창의 화면 좌표 (x, y, w, h) 와 맨 앞 여부. 없거나 최소화면 None"""
@@ -75,7 +85,8 @@ def read_window_mode(extra_dirs=()):
     """롤 화면 모드를 game.cfg 의 [General] WindowMode 에서 읽는다. (모드 이름, 파일 경로) 또는 (None, None)"""
     import os
     import re as _re
-    cands = list(GAME_CFG_CANDIDATES) + [os.path.join(d, "Config", "game.cfg") for d in extra_dirs]
+    # 실행 중인 게임의 설치 폴더를 먼저 본다 (기본 위치에 남은 옛 설정 파일을 잘못 읽지 않게)
+    cands = [os.path.join(d, "Config", "game.cfg") for d in extra_dirs] + list(GAME_CFG_CANDIDATES)
     for path in cands:
         try:
             with open(path, encoding="utf-8", errors="ignore") as f:
@@ -159,20 +170,24 @@ def draw(canvas, payload, w, h, scale=1.0):
             # 평가 상자 바로 밑에서부터 이유를 써 내려간다 (두 줄이 돼도 위를 덮지 않게)
             title = canvas.create_text(x, y, text=f"{c.get('icon', '')} {c.get('label', '')}".strip(),
                                        font=(font, big, "bold"), fill="#111111", anchor="n")
-            x1, y1, x2, y2 = canvas.bbox(title)
+            tb = canvas.bbox(title)  # 글자가 비면 None
+            y2 = tb[3] if tb else y
             reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=int(w * 0.18),
                                         font=(font, small), fill="#ffffff", anchor="n")
-            canvas.create_rectangle(x1 - 10, y1 - 4, x2 + 10, y2 + 4, fill=color, outline="")
-            rx1, ry1, rx2, ry2 = canvas.bbox(reason)
-            canvas.create_rectangle(rx1 - 8, ry1 - 4, rx2 + 8, ry2 + 4, fill="#111820", outline=color)
+            if tb:
+                canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline="")
+            rb = canvas.bbox(reason)
+            if rb:
+                canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=color)
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
         elif kind == "hud":
             lines = "\n".join(c)
             t = canvas.create_text(x - 10, y, text=lines, anchor="ne", font=(font, small), fill="#e6e9ec",
                                    width=int(w * 0.24))
-            x1, y1, x2, y2 = canvas.bbox(t)
-            canvas.create_rectangle(x1 - 10, y1 - 8, x2 + 10, y2 + 8, fill="#111820", outline="#c8aa6e")
+            hb = canvas.bbox(t)
+            if hb:
+                canvas.create_rectangle(hb[0] - 10, hb[1] - 8, hb[2] + 10, hb[3] + 8, fill="#111820", outline="#c8aa6e")
             canvas.tag_raise(t)
 
 
@@ -187,23 +202,38 @@ class Overlay(threading.Thread):
         self.status = "대기"
         self.mode = None  # 롤 화면 모드 (game.cfg)
         self.cfg_path = None
+        self._running = False
+        self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
+
+    # 표시 창이 돌고 있지 않으면(맥, Tk 실패) 큐에 쌓지 않고 값만 바꾼다 (끝없이 쌓이지 않게)
+    def _send(self, k, v):
+        if self._running:
+            self.q.put((k, v))
+        elif k == "payload":
+            self.payload = v or {}
+        else:
+            setattr(self, k, v)
 
     def update(self, payload):
-        self.q.put(("payload", payload))
+        self._send("payload", payload)
 
     def set_enabled(self, on):
-        self.q.put(("enabled", bool(on)))
+        self._send("enabled", bool(on))
 
     def set_preview(self, on):
-        self.q.put(("preview", bool(on)))
+        self._send("preview", bool(on))
 
     def run(self):
         if not IS_WINDOWS:
             self.status = "윈도우에서만 동작"
             return
         import tkinter as tk
-        win = _Win()
-        root = tk.Tk()
+        try:
+            win = _Win()
+            root = tk.Tk()
+        except Exception as e:  # 표시 창을 못 만들면 이유를 상태로 보여 준다
+            self.status = f"표시 창을 만들 수 없음: {str(e)[:80]}"
+            return
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         root.attributes("-transparentcolor", KEY)
@@ -214,8 +244,20 @@ class Overlay(threading.Thread):
         win.click_through(root)
         root.withdraw()
         shown, last = False, None
+        self._running = True
 
         def tick():
+            nonlocal shown, last
+            rect = None
+            try:
+                rect = step()
+            except Exception as e:  # 한 번 오류가 나도 표시 창이 멈추지 않게 (다음 tick 은 그대로 예약)
+                self.status = f"표시 오류: {str(e)[:80]}"
+            finally:
+                # 게임 창이 있으면 0.2초마다(창 이동·전환 따라가기), 없으면 1초마다만 확인
+                root.after(200 if rect else 1000, tick)
+
+        def step():
             nonlocal shown, last
             while not self.q.empty():
                 k, v = self.q.get_nowait()
@@ -227,11 +269,13 @@ class Overlay(threading.Thread):
                     self.preview = v
                 last = None  # 다시 그리기
             rect, front = win.game_rect()
-            # 게임 창이 새로 잡히면 화면 모드를 다시 읽는다 (게임 중 설정을 바꿔도 다음 게임에 반영)
-            if rect and self.mode is None:
+            # 게임 창이 새로 잡히면 화면 모드를 한 번 읽는다 (게임 중 설정을 바꿔도 다음 게임에 반영)
+            if rect and not self._mode_checked:
                 self.mode, self.cfg_path = read_window_mode(game_install_dirs())
+                self._mode_checked = True
             if not rect:
                 self.mode = None
+                self._mode_checked = False
             visible = self.enabled and rect and (front or self.preview) and self.payload and self.mode != "전체 화면"
             if not visible:
                 if shown:
@@ -254,8 +298,7 @@ class Overlay(threading.Thread):
                     root.attributes("-topmost", True)
                     shown = True
                 self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h}"
-            # 게임 창이 있으면 0.2초마다(창 이동·전환 따라가기), 없으면 1초마다만 확인
-            root.after(200 if rect else 1000, tick)
+            return rect
 
         root.after(200, tick)
         root.mainloop()

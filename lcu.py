@@ -25,6 +25,7 @@ PRODUCT_SETTINGS = r"C:\ProgramData\Riot Games\Metadata\league_of_legends.live\l
 _insecure = ssl.create_default_context()
 _insecure.check_hostname = False
 _insecure.verify_mode = ssl.CERT_NONE
+_local = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=_insecure))  # 프록시 안 거침
 
 
 def install_dirs(extra=()):
@@ -58,7 +59,7 @@ class Lcu:
         r = urllib.request.Request(self.base + path, data=data, method=method,
                                    headers={"Authorization": self.auth, "Content-Type": "application/json",
                                             "Accept": "application/json"})
-        with urllib.request.urlopen(r, timeout=5, context=_insecure) as resp:
+        with _local.open(r, timeout=5) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else None
 
@@ -101,9 +102,9 @@ class Lcu:
             "preferredItemSlots": [],
             "blocks": [{"type": b["type"], "items": [{"id": str(i), "count": 1} for i in b["items"]]} for b in blocks],
         })
-        kept = len(sets) - 1
-        before = sum(1 for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX))
-        if kept != before:  # 사용자 세트 수가 그대로인지 한 번 더 (코드 실수 방지)
+        users_before = [s.get("uid") for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX)]
+        users_after = [s.get("uid") for s in sets if not str(s.get("uid", "")).startswith(UID_PREFIX)]
+        if users_after != users_before:  # 사용자 세트가 하나도 빠지거나 바뀌지 않았는지 (코드 실수 방지)
             raise RuntimeError("사용자 세트 수가 달라져서 저장하지 않았어요")
         self.req("PUT", path, {"accountId": cur.get("accountId", account), "itemSets": sets,
                                "timestamp": int(time.time() * 1000)})
@@ -126,7 +127,14 @@ def save_backup(backup_dir, item_sets):
 
 
 def clean_item_set(champion_key, title, blocks):
-    """화면(JS)에서 받은 아이템 세트 값을 검사한다. 숫자 ID·짧은 글자만 통과."""
+    """화면(JS)에서 받은 아이템 세트 값을 검사한다. 숫자 ID·짧은 글자만 통과. 이상하면 ValueError"""
+    try:
+        return _clean_item_set(champion_key, title, blocks)
+    except (TypeError, AttributeError) as e:
+        raise ValueError(f"형식: {e}") from None
+
+
+def _clean_item_set(champion_key, title, blocks):
     key = int(champion_key)
     if not 0 < key < 100000:
         raise ValueError("챔피언 번호")
@@ -135,7 +143,10 @@ def clean_item_set(champion_key, title, blocks):
         raise ValueError("블록 수")
     out = []
     for b in blocks:
-        items = [int(i) for i in (b.get("items") or [])][:12]
+        raw = b.get("items") or []
+        if not isinstance(raw, list):
+            raise ValueError("아이템 목록")
+        items = [int(i) for i in raw][:12]
         if not all(0 < i < 10_000_000 for i in items):
             raise ValueError("아이템 ID")
         out.append({"type": str(b.get("type", ""))[:60], "items": items})

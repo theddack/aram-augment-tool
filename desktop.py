@@ -28,7 +28,7 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-APP_VERSION = "0.1.7"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
+APP_VERSION = "0.1.8"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
 RELEASES_API = "https://api.github.com/repos/theddack/aram-augment-tool/releases/latest"
 RELEASES_PAGE = "https://github.com/theddack/aram-augment-tool/releases/latest"
 
@@ -41,6 +41,13 @@ CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "ch
 def resource_dir():
     # PyInstaller 로 묶이면 sys._MEIPASS, 아니면 이 파일 위치
     return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+
+
+def atomic_write(path, text):
+    """반쯤 쓰인 파일이 남지 않게: 임시 파일에 다 쓴 뒤 한 번에 바꿔 끼운다"""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def user_dir():
@@ -62,6 +69,15 @@ def data_version(path):
         return ""
 
 
+def data_patch(path):
+    """data.json 의 (패치 버전 튜플, 데이터 형식 번호). 읽을 수 없으면 None (반쯤 쓰인 파일 등)"""
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        return version_tuple(d.get("version", "")), int(d.get("format", 1))
+    except Exception:
+        return None
+
+
 def prepare_web():
     """번들의 화면 파일은 매번 덮어쓴다. 데이터는 아래 규칙으로 복사한다."""
     src, dst = resource_dir() / "web", user_dir() / "web"
@@ -71,7 +87,10 @@ def prepare_web():
     # 데이터: 없거나, 앱에 든 데이터와 같은 패치면 앱 것으로 교체 (앱 업데이트로 데이터 형식이 바뀔 수 있어서).
     # '데이터 갱신'으로 더 최신 패치를 받아둔 경우만 그대로 둔다.
     mine, bundled = dst / "data.json", src / "data.json"
-    if not mine.exists() or data_version(mine) == data_version(bundled):
+    m, b = data_patch(mine), data_patch(bundled)
+    # 교체: 없거나 · 읽을 수 없거나(갱신 중 꺼짐) · 앱에 든 것과 같은/더 새 패치이거나 · 데이터 형식이 옛것이면
+    # 그대로: '데이터 갱신'으로 앱보다 새 패치를 받아 둔 경우만
+    if m is None or (b and (m[0] <= b[0] or m[1] < b[1])):
         shutil.copy2(bundled, mine)
         shutil.copytree(src / "icons", dst / "icons", dirs_exist_ok=True)
     return dst
@@ -104,6 +123,8 @@ SNAPSHOT_EVERY = 300  # 같은 게임에서 원본을 다시 저장하는 간격
 _insecure = ssl.create_default_context()
 _insecure.check_hostname = False
 _insecure.verify_mode = ssl.CERT_NONE
+# 이 컴퓨터 주소는 프록시를 거치지 않게 (윈도우 시스템 프록시가 127.0.0.1 까지 가로채면 게임 연동이 조용히 실패한다)
+_local = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=_insecure))
 
 
 def find_keys(obj, pattern, path=""):
@@ -138,6 +159,7 @@ def parse_live(raw):
         "championName": mine.get("championName") if mine else None,
         "level": ap.get("level"),
         "items": [str(i.get("itemID")) for i in (mine.get("items") if mine else []) if i.get("itemID")],
+        "gold": ap.get("currentGold"),  # 지금 골드 ('지금 살 것' 안내)
         "stats": ap.get("championStats") or {},
         "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),
         "augmentFields": find_keys(raw, r"augment"),
@@ -209,18 +231,27 @@ class LiveWatcher(threading.Thread):
 
     def poll(self):
         try:
-            with urllib.request.urlopen(LIVE_URL, timeout=2, context=_insecure) as r:
+            with _local.open(LIVE_URL, timeout=2) as r:
                 raw = json.loads(r.read())
+            if not isinstance(raw, dict):
+                raise ValueError("게임 데이터 형식이 아님")
         except Exception:
-            self.state = {"inGame": False}
-            self._game_key = None
+            # 한 번 끊긴 걸로 게임이 끝났다고 보지 않는다 (3번 연속 실패해야 끝, 기록 파일이 쓸데없이 늘지 않게)
+            self._fails = getattr(self, "_fails", 0) + 1
+            if self._fails >= 3:
+                self.state = {"inGame": False}
+                self._game_key = None
             return
+        self._fails = 0
         try:
             st = parse_live(raw)
         except Exception as e:
             st = {"inGame": True, "error": str(e)}
-        self.state = st
-        self.snapshot(raw, st)
+        try:
+            self.snapshot(raw, st)  # 기록 저장이 실패해도(디스크·백신 잠금) 감시는 계속
+        except Exception as e:
+            st["snapshotError"] = str(e)[:120]
+        self.state = st  # 다 채운 뒤에 내보낸다 (화면이 읽는 도중 바뀌지 않게)
 
     def snapshot(self, raw, st):
         # 게임 시작 시각으로 게임을 구분 (gameTime 이 줄어들면 새 게임)
@@ -236,19 +267,122 @@ class LiveWatcher(threading.Thread):
             st["savedSnapshot"] = name
 
 
-class LcuWatcher(threading.Thread):
-    """롤 클라이언트: 챔피언 선택 단계와 내 챔피언을 읽는다 (아이템 세트 등록 시점 판단용)"""
+# ---------------------------------------------------------------- 실측 (경기 결과)
+# 게임이 끝나면 롤 클라이언트의 경기 결과(eog-stats-block)를 저장해, 계산 가정값을 실측과 비교한다.
+# 형식은 라이엇이 문서로 보장하지 않는 클라이언트 내부 API 라서, 없는 칸은 건너뛰고 원본도 같이 남긴다.
+MEASURE_KEEP = 100
+EOG_STATS = {  # 경기 결과 칸 → (우리 이름, 단위)
+    "TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": "가한 피해(챔피언)",
+    "PHYSICAL_DAMAGE_DEALT_TO_CHAMPIONS": "물리 피해(챔피언)",
+    "MAGIC_DAMAGE_DEALT_TO_CHAMPIONS": "마법 피해(챔피언)",
+    "TRUE_DAMAGE_DEALT_TO_CHAMPIONS": "고정 피해(챔피언)",
+    "TOTAL_DAMAGE_TAKEN": "받은 피해",
+    "TOTAL_HEAL": "회복",
+    "TOTAL_DAMAGE_SHIELDED_ON_TEAMMATES": "아군 보호막",
+    "TIME_CCING_OTHERS": "CC 점수",
+    "TOTAL_TIME_CROWD_CONTROL_DEALT": "CC 건 시간(초)",
+}
+EOG_NAME_KEYS = ("summonerName", "riotIdGameName", "riotIdTagLine", "gameName", "tagLine", "puuid", "summonerId", "accountId")
 
-    def __init__(self):
+
+def redact_eog(eog):
+    """경기 결과의 이름·계정 칸을 지운다 (나는 '플레이어0', 나머지는 차례로)"""
+    names = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            out = {}
+            for k, v in o.items():
+                if k in EOG_NAME_KEYS:
+                    if isinstance(v, str) and v and k in ("summonerName", "riotIdGameName", "gameName"):
+                        names.setdefault(v, f"플레이어{len(names)}")
+                        out[k] = names[v]
+                    else:
+                        out[k] = ""
+                else:
+                    out[k] = walk(v)
+            return out
+        if isinstance(o, list):
+            return [walk(x) for x in o]
+        return o
+    lp = (eog or {}).get("localPlayer") or {}
+    for k in ("summonerName", "riotIdGameName", "gameName"):
+        if lp.get(k):
+            names[lp[k]] = "플레이어0"
+    return walk(eog)
+
+
+def eog_summary(eog):
+    """경기 결과 → 내 기록 한 줄 {분, 챔피언, 칸별 값}. 형식이 다르면 None"""
+    if not isinstance(eog, dict):
+        return None
+    lp = eog.get("localPlayer") or {}
+    stats = lp.get("stats") or {}
+    length = eog.get("gameLength") or 0
+    if not stats or length <= 60:
+        return None
+    return {"gameId": eog.get("gameId"), "mode": eog.get("gameMode"), "minutes": round(length / 60, 2),
+            "championId": lp.get("championId"), "level": lp.get("level"),
+            "stats": {k: stats[k] for k in EOG_STATS if isinstance(stats.get(k), (int, float))}}
+
+
+def measure_summary(measure_dir):
+    """저장한 경기 결과 평균 (분당). 화면 '계산 가정값' 옆 '내 실측'에 보인다"""
+    rows = []
+    for p in sorted(measure_dir.glob("eog_*.json")):
+        try:
+            s = eog_summary(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:
+            s = None
+        if s and s["stats"]:
+            rows.append(s)
+    out = {"games": len(rows), "perMinute": {}}
+    for k, label in EOG_STATS.items():
+        vals = [r["stats"][k] / r["minutes"] for r in rows if k in r["stats"]]
+        if vals:
+            out["perMinute"][k] = {"label": label, "avg": round(sum(vals) / len(vals), 1), "n": len(vals)}
+    return out
+
+
+class LcuWatcher(threading.Thread):
+    """롤 클라이언트: 챔피언 선택 단계와 내 챔피언을 읽는다 (아이템 세트 등록 시점 판단용).
+    게임이 끝나면 경기 결과를 실측 폴더에 저장한다."""
+
+    def __init__(self, measure_dir=None):
         super().__init__(daemon=True)
         self.state = {"connected": False}
         self.client = None
+        self.measure_dir = measure_dir
+        self._saved_games = set()
+
+    def save_eog(self):
+        """경기 결과 저장 (게임마다 한 번). 실패해도 다른 기능에는 영향 없게"""
+        if not self.measure_dir:
+            return
+        try:
+            eog = self.client.req("GET", "/lol-end-of-game/v1/eog-stats-block")
+        except Exception:
+            return
+        gid = (eog or {}).get("gameId") if isinstance(eog, dict) else None
+        if not gid or gid in self._saved_games or not eog_summary(eog):
+            return
+        self.measure_dir.mkdir(parents=True, exist_ok=True)
+        path = self.measure_dir / f"eog_{int(gid)}.json"
+        if not path.exists():
+            path.write_text(json.dumps(redact_eog(eog), ensure_ascii=False), encoding="utf-8")
+            files = sorted(self.measure_dir.glob("eog_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for old in files[MEASURE_KEEP:]:
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+        self._saved_games.add(gid)
 
     def run(self):
         while True:
             self.poll()
             # 챔피언 선택 중에만 3초마다 (상점 추천 등록 시점), 그 밖에는 10초마다
-            busy = self.state.get("connected") and self.state.get("phase") in ("ChampSelect", "GameStart")
+            busy = self.state.get("connected") and self.state.get("phase") in ("ChampSelect", "GameStart", "PreEndOfGame", "WaitingForStats")
             time.sleep(LIVE_INTERVAL if busy else IDLE_INTERVAL)
 
     def poll(self):
@@ -262,6 +396,8 @@ class LcuWatcher(threading.Thread):
             phase = self.client.phase()
             champ = self.client.current_champion() if phase in ("ChampSelect", "InProgress", "GameStart") else 0
             self.state = {"connected": True, "phase": phase, "championKey": champ}
+            if phase in ("EndOfGame", "PreEndOfGame", "WaitingForStats"):
+                self.save_eog()
         except Exception as e:
             self.client = None  # 클라이언트를 껐다 켜면 포트·비밀번호가 바뀐다
             self.state = {"connected": False, "error": str(e)[:120]}
@@ -278,16 +414,20 @@ class Settings:
     def get(self, k, default=None):
         return self.v.get(k, default)
 
+    _lock = threading.Lock()
+
     def set(self, **kw):
-        self.v.update(kw)
-        self.path.write_text(json.dumps(self.v, ensure_ascii=False), encoding="utf-8")
+        # 화면 함수는 호출마다 다른 스레드에서 돈다 (위치 슬라이더는 연달아 부른다) → 잠그고 임시 파일에 쓴 뒤 바꿔 끼운다
+        with self._lock:
+            self.v.update(kw)
+            atomic_write(self.path, json.dumps(self.v, ensure_ascii=False))
 
 
 class Api:
     """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들
 
     pywebview 는 이 객체의 밑줄 없는 속성을 재귀적으로 전부 JS 에 내보낸다 (속성 객체의 메서드까지).
-    그래서 내부 객체(설정·창·롤 클라이언트 등)는 반드시 밑줄 이름으로 둔다. 밑줄 없는 건 아래 메서드 15개뿐이어야 한다.
+    그래서 내부 객체(설정·창·롤 클라이언트 등)는 반드시 밑줄 이름으로 둔다. 밑줄 없는 건 아래 메서드뿐이어야 한다.
     (예전에는 settings.path.write_text, lcu.client.req 같은 함수까지 500개 넘게 노출됐다)
     """
 
@@ -384,6 +524,10 @@ class Api:
         self._settings.set(mini=bool(on))
         return bool(on)
 
+    def get_measurements(self):
+        """내 실측: 저장한 경기 결과의 분당 평균 (데이터 출처 → 계산 가정값 옆에 보임)"""
+        return measure_summary(user_dir() / "measure")
+
     def check_app_update(self):
         """새 프로그램 버전이 있는지만 알려 준다 (받기는 공식 릴리스 페이지에서 직접).
 
@@ -440,7 +584,7 @@ def main():
     ov = overlay.Overlay()
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
-    lw = LcuWatcher()
+    lw = LcuWatcher(user_dir() / "measure")
     lw.start()
     api = Api(settings, watcher, ov, lw)
     geo = settings.get("geometry") or {}
