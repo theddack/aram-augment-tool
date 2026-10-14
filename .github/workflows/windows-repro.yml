@@ -21,6 +21,9 @@ jobs:
           # 기본(가벼운 모드)
           - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr
+          # 기본 + 게임 중 애드온 창 내려 두기 (메모리·갱신)
+          - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
+            check: --check-ocr --minimize
           # 전체 모드 (증강 칸 아이콘 읽기 포함)
           - settings: '{"light": false, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr

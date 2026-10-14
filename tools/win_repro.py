@@ -183,6 +183,7 @@ def main():
     ap.add_argument("--seconds", type=int, default=150)
     ap.add_argument("--settings", default="{}", help="시작 전 settings.json (예: '{\"geometry\": {\"w\": 420}}')")
     ap.add_argument("--check-ocr", action="store_true", help="증강 인식 결과까지 확인 (애드온 창이 게임을 가리지 않을 때)")
+    ap.add_argument("--minimize", action="store_true", help="게임이 시작되면 애드온 창을 내린다 (내려 둔 동안 메모리·갱신 확인)")
     a = ap.parse_args()
     OUT.mkdir(exist_ok=True)
 
@@ -241,6 +242,13 @@ def main():
                     hung_since = None
                 elif lag > 0.5:
                     log(f"애드온 창 응답 느림 {lag:.2f}초 (단계 {phase()})")
+            if a.minimize and hwnd and phase() == "InProgress" and not getattr(main, "_minimized", False):
+                u32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+                main._minimized = True
+                log("애드온 창 내림")
+                game_hwnd = u32.FindWindowW(None, GAME_TITLE)
+                if game_hwnd:
+                    u32.SetForegroundWindow(game_hwnd)
             if not clicked and now() >= 66:  # 가운데 카드 클릭 (가짜 게임 창 1024x700 이 0,0 에 있음)
                 u32.SetCursorPos(512, 280)
                 u32.mouse_event(0x0002, 0, 0, 0, 0)  # 왼쪽 누름
@@ -297,6 +305,14 @@ def main():
                 for e in ev:
                     kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
                 print(f"---- 한 판 기록 {g.name}: {kinds} · 그림 {sorted(p.name for p in g.glob('*.png'))}")
+                # 선택지를 읽은 순간 → 게임 화면에 카드 표시를 보낸 순간 (창을 내려도 제때 뜨는지)
+                for i, e in enumerate(ev):
+                    if e["kind"] != "offers" or not any(e.get("offers") or []):
+                        continue
+                    want_names = [n for n in e["offers"] if n]
+                    shown = next((x for x in ev[i + 1:] if x["kind"] == "shown" and x.get("cards")
+                                  and all(any(c and c.startswith(n) for c in x["cards"]) for n in want_names)), None)
+                    log(f"카드 표시까지 {round(shown['t'] - e['t'], 1) if shown else '안 뜸'}초 ({' / '.join(want_names)})")
         for f in ("diag.log",):
             src = udir / "logs" / f
             if src.exists():
