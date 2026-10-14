@@ -228,3 +228,4 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 .owned-parts b { color: var(--text); font-weight: 500; }
 .verdict { grid-column: 1 / -1; }
 .verdict b { font-weight: 500; }
+.enemy-advice { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }

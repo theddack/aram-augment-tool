@@ -559,3 +559,11 @@ class DataFolder(unittest.TestCase):
         self.assertEqual((new / "logs" / "game_1.json").read_text(encoding="utf-8"), "old")
         self.assertEqual((new / "logs" / "diag.log").read_text(encoding="utf-8"), "new", "새 위치에 있는 건 덮어쓰지 않는다")
         self.assertTrue((new / "web" / "data.json").exists())
+
+
+class LiveEnemies(unittest.TestCase):
+    def test_enemies_from_other_team(self):
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        st = desktop.parse_live(raw)
+        self.assertEqual(st["champion"], "MissFortune")
+        self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER

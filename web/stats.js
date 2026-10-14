@@ -409,7 +409,9 @@
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
-    out.ehp = (out.ehpPhys + out.ehpMag) / 2;
+    // 받는 피해의 마법 비율: 게임 중이면 적 구성(라이엇 주 피해 유형)으로, 모르면 반반
+    const mag = opts && typeof opts.enemyMagic === "number" ? opts.enemyMagic : 0.5;
+    out.ehp = out.ehpPhys * (1 - mag) + out.ehpMag * mag;
     // ---- 기동성: 평균 이동 속도 (궁극기 후 가속 영역 등 가동률 반영)
     out.mobility = t.MS * (1 + (cv.ultTriggerMs || 0) * ultUptime(cv.ultTriggerDur));
     // ---- 제어력: 콤보 한 번에 거는 CC 시간 (스킬·패시브 + 증강·아이템)

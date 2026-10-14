@@ -273,3 +273,23 @@ test("고른 증강을 못 정해도 게임 화면 카드 표시는 지운다", 
   p.w.applyLive({ enabled: true, inGame: true, champion: "DrMundo", level: 4, items: [] });  // 다시 그려도
   assert.equal(sent.at(-1).cards.filter(Boolean).length, 0);
 });
+
+test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산에 반영된다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const base = { enabled: true, inGame: true, champion: "Darius", level: 9, items: [] };
+  p.w.applyLive({ ...base, enemies: [] });
+  assert.equal(p.w.enemyInfo(), null, "적을 모르면 반반(기본값)");
+  const before = p.text("#next-buy");
+  // 마법 위주 + 회복 많은 + 탱커 많은 적
+  p.w.applyLive({ ...base, enemies: ["Lux", "Vladimir", "Soraka", "Malphite", "Sejuani"] });
+  assert.ok(p.w.enemyInfo().magic >= 0.6);
+  const adv = p.text("#next-buy");
+  assert.match(adv, /적 피해: 마법 \d+%/);
+  assert.match(adv, /적 탱커 많음/);
+  assert.notEqual(adv, before);
+  p.w.sendOverlay();
+  assert.match(sent.at(-1).hud.join("\n"), /적 피해: 마법/);
+  assert.deepEqual(p.errors, []);
+});

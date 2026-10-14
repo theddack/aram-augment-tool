@@ -202,10 +202,12 @@ def parse_live(raw):
     me = ap.get("riotId") or ap.get("summonerName")
     players = raw.get("allPlayers") or []
     mine = next((p for p in players if me and (p.get("riotId") == me or p.get("summonerName") == me)), None)
-    champ_id = None
-    if mine:
-        m = re.search(r"displayname_(\w+)", mine.get("rawChampionName") or "", re.I)
-        champ_id = m.group(1) if m else None
+    def cid(p):
+        m = re.search(r"displayname_(\w+)", p.get("rawChampionName") or "", re.I)
+        return m.group(1) if m else None
+    champ_id = cid(mine) if mine else None
+    # 적 챔피언: 팀이 다른 사람 (적 구성에 맞춘 추천용. 연습 모드처럼 혼자면 빈 목록)
+    enemies = [c for c in (cid(p) for p in players if mine and p.get("team") and p.get("team") != mine.get("team")) if c]
     gd = raw.get("gameData") or {}
     return {
         "inGame": True,
@@ -217,6 +219,7 @@ def parse_live(raw):
         "stats": ap.get("championStats") or {},
         "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),
         "augmentFields": find_keys(raw, r"augment"),
+        "enemies": enemies,
     }
 
 

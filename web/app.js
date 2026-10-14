@@ -7,8 +7,59 @@ const state = {
   gold: null, inventory: [],  // 게임 연동: 지금 골드, 가방 속 아이템 전체(부품 포함)
 };
 const REROLL_PCT = 0.4; // 같은 등급 안에서 하위 40% 이하면 새로고침 권장
-const statOpts = () => ({ aram: state.aram });
+// 받는 피해의 마법 비율은 게임 중 적 구성으로 (모르면 계산 쪽 기본값 반반). 0.1 단위로 맞춰 기억(memo)이 잘 맞게
+const statOpts = () => {
+  const e = enemyInfo();
+  // 적이 전부 마법이어도 0.8 까지만: 끝까지 밀면 다음 구매가 마법 저항 탱템뿐이라 딜템이 사라졌다 (반영 60%)
+  return e ? { aram: state.aram, enemyMagic: Math.round((0.5 + (e.magic - 0.5) * 0.6) * 10) / 10 } : { aram: state.aram };
+};
 const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ);
+
+// 적 구성 (게임 중 데이터): 주 피해 유형 비율, 회복 많은 적, 탱커
+function enemyInfo() {
+  const list = state.enemies || [];
+  if (!list.length) return null;
+  const share = { magic: 1, physical: 0, mixed: 0.5 };
+  const magic = list.reduce((a, c) => a + (share[c.damageType] ?? 0.5), 0) / list.length;
+  // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
+  const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
+    + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
+  const healers = list.filter((c) => heals(c) >= 2);
+  const tanks = list.filter((c) => (c.tags || []).includes("Tank"));
+  return { list, magic, healers, tanks };
+}
+
+// 적 구성 조언 (게임 화면 상자·애드온): 받는 피해 쪽 방어, 회복 많으면 치유 감소, 탱커 많으면 관통
+function enemyAdvice() {
+  const e = enemyInfo();
+  if (!e || !state.champ) return [];
+  const out = [];
+  const pct = Math.round(e.magic * 100);
+  out.push(`적 피해: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
+  const items = state.data.items.filter((i) => i.kind === "legendary");
+  const mineType = state.champ.damageType === "magic" ? "magic" : "physical";
+  // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것
+  const critOk = state.champ.tags.includes("Marksman") || !state.champ.melee || ((state.champ.traits || {}).CRIT || 0) > 0;
+  const hasCrit = (i) => (i.tags.CRIT || 0) >= 0.5 || (i.stats && !Array.isArray(i.stats) && "CRIT" in i.stats);
+  const fits = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  if (e.healers.length >= 2) {
+    // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
+    let gw = items.filter((i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처") && fits(i)).map((i) => i.name);
+    // 맞는 완성 아이템이 없으면(치명타를 못 살리는 전사 등) 치유 감소 부품을 (처형인의 대검 · 망각의 구 · 덤불 조끼)
+    if (!gw.length) {
+      const want = mineType === "magic" ? ["망각의 구"] : ["처형인의 대검"];
+      if (state.champ.tags.includes("Tank")) want.push("덤불 조끼");
+      gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
+    }
+    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
+  }
+  if (e.tanks.length >= 2) {
+    const pen = items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
+      : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name).slice(0, 2);
+    out.push(`적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
+  }
+  return out;
+}
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
 const TRIGGER_LABEL = { cast: "스킬마다", onhit: "기본 공격마다", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
@@ -264,7 +315,7 @@ let tierCache = { key: null, value: null };
 // 첫 증강은 챔피언 기준(종합), 고른 뒤에는 고른 증강과의 연계 기준. 버튼으로 바꿀 수 있다
 const tierMode = () => (state.tierMode === "auto" ? (state.chosen.length ? "synergy" : "total") : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, statOpts()]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -554,7 +605,7 @@ function topAugs(per = 2) {
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
   if (!state.champ || !state.items.length) return [];
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, statOpts()]);
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
@@ -586,6 +637,7 @@ function sendOverlay() {
   }
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
+  hud.push(...enemyAdvice());
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
@@ -841,6 +893,8 @@ function renderNextBuy(rows) {
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}">
       <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
+  const adv = enemyAdvice();
+  if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
   state.nextTop = pick.length ? pick[0].item : null;
   renderBuyNow();
@@ -959,7 +1013,7 @@ function applyLive(L) {
   if (!L || !L.enabled) { el.textContent = ""; return; }
   if (!L.inGame) {
     el.textContent = "게임 대기 중";
-    if (state.gold != null) { state.gold = null; state.inventory = []; renderBuyNow(); }
+    if (state.gold != null) { state.gold = null; state.inventory = []; state.enemies = []; renderBuyNow(); }
     if (liveLast) { liveLast = ""; liveEnded = true; }  // 게임이 끝남 → 다음 게임은 새로 시작
     return;
   }
@@ -987,7 +1041,10 @@ function applyLive(L) {
   const goldChanged = state.gold !== (L.gold ?? null) || JSON.stringify(state.inventory) !== JSON.stringify(L.items || []);
   state.gold = L.gold ?? null;
   state.inventory = (L.items || []).map(String);
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id)]);
+  const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);
+  const enemyKey = enemies.map((c) => c.id).sort().join(",");
+  if (enemyKey !== (state.enemies || []).map((c) => c.id).sort().join(",")) state.enemies = enemies;
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey]);
   if (key === liveLast) {
     if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay(); }
     return;
