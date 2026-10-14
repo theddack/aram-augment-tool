@@ -9,6 +9,7 @@ web/data.json 과 web/icons/ 를 만든다. 원본 응답은 .cache/ 에 저장�
 """
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -36,9 +37,11 @@ MODE_PATH = "Maps/Shipping/Map12/Modes/KIWI"
 REFRESH = "--refresh" in sys.argv
 
 
+DATA_FORMAT = 2  # data.json 형식 번호: 화면이 기대하는 칸이 바뀌면 올린다 (프로그램이 옛 형식의 받아 둔 데이터를 교체)
 SAFE_ID = re.compile(r"[A-Za-z0-9_]{1,80}")  # 외부 데이터의 id 검사 (HTML 속성·파일 이름에 그대로 쓰인다)
 UA = "aram-augment-tool (+https://github.com/theddack/aram-augment-tool)"  # 누가 받는지 밝힌다
-FETCHED = {}  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
+FETCHED = {}
+WIKI_FAILED = []  # 이번에 못 받은 위키 자료 (확인 이슈에 올림)  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
 
 
 def fetch(url, name):
@@ -48,10 +51,30 @@ def fetch(url, name):
     if path.exists() and not REFRESH:
         return path.read_bytes()
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        data = r.read()
-    path.write_bytes(data)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = r.read()
+    except Exception as e:
+        if path.exists():  # 받기 실패 → 전에 받아 둔 것으로 (갱신 전체가 멈추지 않게)
+            print(f"  [받기 실패 → 이전 파일 사용] {name}: {e}")
+            return path.read_bytes()
+        raise
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")  # 받다 끊긴 파일이 캐시에 남지 않게
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
     return data
+
+
+def fetch_wiki(url, name, parse=None, empty=None):
+    """위키는 보강 자료라, 받기·해석에 실패해도 갱신 전체를 멈추지 않는다 (빈 값 + 경고)"""
+    try:
+        text = fetch(url, name).decode("utf-8")
+        return parse(text) if parse else text
+    except Exception as e:
+        print(f"  [위키 실패 → 없이 진행] {name}: {e}")
+        WIKI_FAILED.append(name)
+        return empty
 
 
 def fetch_json(url, name):
@@ -754,6 +777,7 @@ def review_report(version, new, changed, mismatch, rule_warn, auto_rules, no_num
     sec("패치 노트 대조", [f"{label[r['status']]} — **{x['name']}**: {r['line']}" + (f" ({r['note']})" if r.get("note") else "")
                        for x, r in mismatch])
     sec("🔧 규칙 수치 경고 (값 이름이 사라짐 등)", rule_warn)
+    sec("🌐 이번에 못 받은 위키 자료 (그 부분 없이 만듦)", WIKI_FAILED)
     return "\n".join(out) if len(out) > 4 else ""
 
 
@@ -806,6 +830,7 @@ def main():
     cd_version = fetch_json(f"{CDRAGON}/content-metadata.json", "content-metadata.json")["version"]
     print("패치 버전:", version, "/ 게임 데이터:", cd_version)
     champs = fetch_json(f"{DDRAGON}/cdn/{version}/data/ko_KR/champion.json", "champion.json")["data"]
+    champs = {k: v for k, v in champs.items() if SAFE_ID.fullmatch(k)}  # id 가 캐시 파일 경로에 쓰이므로 먼저 거른다
     items = fetch_json(f"{DDRAGON}/cdn/{version}/data/ko_KR/item.json", "item.json")["data"]
     map12 = fetch_json(f"{CDRAGON}/game/data/maps/shipping/map12/map12.bin.json", "map12.bin.json")
     kiwi = fetch_json(f"{CDRAGON}/game/maps/modespecificdata/kiwi.bin.json", "kiwi.bin.json")
@@ -818,9 +843,9 @@ def main():
     # 위키 증강 이름(영어)과 짝짓기용 영어 문자열
     strings_en = fetch_json(f"{CDRAGON}/game/en_us/data/menu/en_us/lol.stringtable.json",
                             "lol.stringtable.en.json")["entries"]
-    wiki_aug_text = fetch(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua").decode("utf-8")
-    wiki_items = parse_lua_table(fetch(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua").decode("utf-8"))
-    wiki_mayhem_page = fetch(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt").decode("utf-8")
+    wiki_aug_text = fetch_wiki(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua", empty="")
+    wiki_items = fetch_wiki(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua", parse_lua_table, {})
+    wiki_mayhem_page = fetch_wiki(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt", empty="")
     pn_url, pn_patch = patch_notes_url(version)
     try:
         patch = parse_mayhem_patch(fetch(pn_url, f"patchnotes_{pn_patch}.html").decode("utf-8"))
@@ -834,9 +859,13 @@ def main():
         for en in g["entries"]:
             if en["name"]:
                 patch_lines[en["name"]] = en["lines"]
-    wiki = parse_lua_table(fetch(f"{WIKI}/Module:ChampionData/data?action=raw",
-                                 "wiki_championdata.lua").decode("utf-8"))
-    wiki_augs = wiki_mayhem_augments(wiki_aug_text, wiki)
+    wiki = fetch_wiki(f"{WIKI}/Module:ChampionData/data?action=raw", "wiki_championdata.lua", parse_lua_table, {})
+    try:
+        wiki_augs = wiki_mayhem_augments(wiki_aug_text, wiki) if wiki_aug_text else {}
+    except Exception as e:
+        print("  [위키 증강 해석 실패 → 없이 진행]", e)
+        WIKI_FAILED.append("wiki_mayhemaugments.lua")
+        wiki_augs = {}
     item_wiki = {str(v.get("id")): k for k, v in wiki_items.items() if isinstance(v, dict) and v.get("id")}
     item_limit = {str(v.get("id")): v["itemlimit"] for v in wiki_items.values()
                   if isinstance(v, dict) and v.get("itemlimit") and v.get("id")}
@@ -893,7 +922,22 @@ def main():
                 {"label": "위키", "url": wiki_page(item_wiki[iid])} if iid in item_wiki else None,
             ] if r],
             "passiveHtml": passive_html, "modeValues": mode_used,
+            "from": [c for c in it.get("from", []) if c.isdigit()],  # 하위 부품 (지금 골드로 살 것 안내)
         })
+
+    # 부품: 완성 아이템의 하위 부품 전체 (이름·가격·그 아래 부품). 게임 중 '지금 골드로 살 것' 계산에 쓴다
+    parts = {}
+
+    def add_part(pid):
+        p = items.get(pid)
+        if not p or pid in parts or not pid.isdigit():
+            return
+        parts[pid] = {"name": p["name"], "gold": p["gold"]["total"], "from": [c for c in p.get("from", []) if c.isdigit()]}
+        for c in parts[pid]["from"]:
+            add_part(c)
+    for i in out_items:
+        for c in i["from"]:
+            add_part(c)
 
     # --- 증강
     kiwi_names = next(g["augmentList"] for g in aug_lists if g["modeName"] == MODE)
@@ -961,8 +1005,14 @@ def main():
     (CACHE / "champion").mkdir(exist_ok=True)
 
     def detail(cid):
-        return fetch_json(f"{DDRAGON}/cdn/{version}/data/ko_KR/champion/{cid}.json",
-                          f"champion/{cid}.json")["data"][cid]
+        for attempt in range(3):  # 챔피언 173명을 동시에 받아서 가끔 끊긴다
+            try:
+                return fetch_json(f"{DDRAGON}/cdn/{version}/data/ko_KR/champion/{cid}.json",
+                                  f"champion/{cid}.json")["data"][cid]
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(2)
 
     (CACHE / "bins").mkdir(exist_ok=True)
 
@@ -1042,8 +1092,8 @@ def main():
     # --- 아이콘
     jobs = [(f"{DDRAGON}/cdn/{version}/img/champion/{c['id']}.png", ICONS / "champion" / f"{c['id']}.png")
             for c in out_champs]
-    jobs += [(f"{DDRAGON}/cdn/{version}/img/item/{i['id']}.png", ICONS / "item" / f"{i['id']}.png")
-             for i in out_items]
+    jobs += [(f"{DDRAGON}/cdn/{version}/img/item/{i}.png", ICONS / "item" / f"{i}.png")
+             for i in [x["id"] for x in out_items] + list(parts)]
     jobs += [(f"{CDRAGON}/game/{a['_icon']}", ICONS / "augment" / f"{a['id']}.png")
              for a in out_augs if a["_icon"]]
     jobs = [(u, p) for u, p in jobs if REFRESH or not (p.exists() or p.with_suffix(".webp").exists())]
@@ -1062,6 +1112,9 @@ def main():
     with ThreadPoolExecutor(16) as ex:
         list(ex.map(dl, jobs))
     icon_ext = optimize_icons(ICONS)
+    # PNG 로 받는 경우(Pillow 없음)에도 PNG 받기에 실패해 WebP 만 남은 아이콘은 WebP 로 보여 준다
+    webp_only = sorted(f"{p.parent.name}/{p.stem}" for p in ICONS.rglob("*.webp")
+                       if not p.with_suffix(".png").exists()) if icon_ext == "png" else []
     for a in out_augs:
         a["icon"] = any((ICONS / "augment" / f"{a['id']}.{x}").exists() for x in ("png", "webp"))
         del a["_icon"]
@@ -1117,10 +1170,13 @@ def main():
     (WEB / "review.md").write_text(report, encoding="utf-8")
     sources = build_sources(FETCHED, pn_url if patch else None)
     data = {"version": version, "dataVersion": cd_version, "sources": sources, "patchNotes": patch,
-            "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "iconExt": icon_ext, "tags": TAGS, "rules": rules,
+            "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "iconExt": icon_ext, "iconWebpOnly": webp_only,
+            "format": DATA_FORMAT, "tags": TAGS, "rules": rules,
             "disabled": disabled,
-            "champions": out_champs, "items": out_items, "augments": out_augs}
-    (WEB / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            "champions": out_champs, "items": out_items, "parts": parts, "augments": out_augs}
+    tmp = WEB / "data.json.tmp"  # 쓰다 꺼져도 반쯤 쓰인 data.json 이 남지 않게
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, WEB / "data.json")
 
     n_leg = sum(i["kind"] == "legendary" for i in out_items)
     n_boots = sum(i["kind"] == "boots" for i in out_items)
