@@ -867,6 +867,34 @@ async function applyLcu(api, L) {
   }
 }
 
+// 증강 인식 (윈도우): 게임의 증강 선택 화면에서 읽은 선택지를 채우고, 화면이 닫히면 고른 증강을 넣는다
+let augSeq = 0, augPickSeq = 0;
+function applyAug(A) {
+  if (!A || !state.champ) return;
+  const byName = (n) => (n ? state.data.augments.find((a) => a.name === n) || null : null);
+  if (A.offers && A.seq !== augSeq) {
+    augSeq = A.seq;
+    if (state.chosen.length < 4) {
+      state.offers = A.offers.map(byName);
+      renderOffers();
+    }
+  }
+  if (A.pickSeq && A.pickSeq !== augPickSeq) {
+    augPickSeq = A.pickSeq;
+    const a = byName(A.picked);
+    if (a) {
+      if (state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      clearOffers();
+      renderAll();
+    } else if (A.pickedFrom) {
+      // 어느 카드였는지 못 정함 → 선택지를 그대로 두고 '이걸로 선택'을 누르게 한다
+      state.offers = A.pickedFrom.map(byName);
+      renderOffers();
+      $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
+    }
+  }
+}
+
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
 let liveEnded = false;
@@ -972,7 +1000,8 @@ window.addEventListener("pywebviewready", async () => {
   setInterval(async () => applyLcu(api, await api.get_lcu()), 3000);
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
-  setInterval(async () => applyLive(await api.get_live()), 3000);
+  // 1초마다: 증강 선택 화면을 읽으면 바로 카드 평가가 떠야 해서 (같은 값이면 다시 그리지 않아 가볍다)
+  setInterval(async () => { const L = await api.get_live(); applyLive(L); applyAug(L && L.aug); }, 1000);
   const btn = $("#update-data");
   btn.addEventListener("click", async () => {
     btn.disabled = true;

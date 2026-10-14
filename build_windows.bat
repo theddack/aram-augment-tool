@@ -9,7 +9,7 @@ if not exist .venv python -m venv .venv
 if not exist web\data.json .venv\Scripts\python build_data.py
 .venv\Scripts\pyinstaller --noconfirm --windowed --name 칼바람증강Addon ^
   --add-data "web;web" --add-data "rules.json;." ^
-  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import patch_check --hidden-import overlay --exclude-module PIL ^
+  --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --collect-all winrt --exclude-module PIL ^
   desktop.py
 echo 완료: dist\칼바람증강Addon\칼바람증강Addon.exe
 pause

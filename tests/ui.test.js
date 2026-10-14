@@ -192,3 +192,28 @@ test("쉽게 보기 '전체 보기'는 챔피언을 바꾸면 다시 15개", asy
   p.pickChamp("Lux");
   assert.equal(p.qa(".aug").length, 15);
 });
+
+test("증강 인식: 읽은 선택지를 채우고 게임 화면 카드에 보내며, 닫히면 고른 증강을 넣는다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Poppy", level: 6, items: ["3084"] });
+  const offers = ["눈 폭발", "강타자", "정신 변환"];
+  p.w.applyAug({ offers, seq: 1, picked: null, pickSeq: 0 });
+  assert.deepEqual(p.qa("#offers input[type=search]").map((e) => e.value), offers);
+  const cards = sent.at(-1).cards;
+  assert.equal(cards.filter(Boolean).length, 3, "카드 3장 모두 게임 화면 표시");
+  assert.ok(cards.every((c) => c.label), "평가 글자가 있다");
+  // 같은 seq 는 다시 그리지 않는다 (직접 지운 걸 덮어쓰지 않게)
+  p.click(p.q("#reset-offers"));
+  p.w.applyAug({ offers, seq: 1, picked: null, pickSeq: 0 });
+  assert.equal(p.qa("#offers input[type=search]")[0].value, "");
+  // 선택 화면이 닫힘 → 고른 증강
+  p.w.applyAug({ offers: null, seq: 1, picked: "강타자", pickedFrom: offers, pickSeq: 1 });
+  assert.match(p.text("#chosen"), /강타자/);
+  assert.deepEqual(p.qa("#offers input[type=search]").map((e) => e.value), ["", "", ""]);
+  // 못 정했으면 선택지를 남기고 직접 누르게 한다
+  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], pickSeq: 2 });
+  assert.match(p.text("#offer-result"), /이걸로 선택/);
+  assert.deepEqual(p.errors, []);
+});

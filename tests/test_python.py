@@ -386,3 +386,62 @@ class DataIds(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AugOcr(unittest.TestCase):
+    """증강 선택 화면 읽기: 글자 맞추기·카드 나누기·고른 카드 정하기 (윈도우 없이 확인되는 부분)"""
+
+    def setUp(self):
+        import augocr
+        self.o = augocr
+        names = [a["name"] for a in json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))["augments"]]
+        self.m = augocr.Matcher(names)
+
+    def test_match_with_ocr_errors(self):
+        self.assertEqual(self.m.match("강 타 자")[0], "강타자")  # 한국어 OCR 은 글자마다 띄우기도 한다
+        self.assertEqual(self.m.match("정신 변환")[0], "정신 변환")
+        self.assertEqual(self.m.match("정신 변화")[0], "정신 변환")  # 한 글자 틀림
+        self.assertIsNone(self.m.match("기본 공격 시 최대 체력의")[0])  # 설명 글자는 안 맞는다
+
+    def test_merged_line_split_into_cards(self):
+        W, H = 1920, 1080
+        y = int(H * 0.46)
+        words = [("눈", 560, y, 30, 30), ("폭발", 595, y, 60, 30), ("강타자", 900, y, 90, 30),
+                 ("정신", 1250, y, 60, 30), ("변환", 1315, y, 60, 30), ("저항", 1290, y + 40, 40, 20)]
+        offers = self.o.find_offers(words, W, H, self.m)
+        self.assertEqual(self.o.slots(offers, W), ["눈 폭발", "강타자", "정신 변환"])
+        # 두 장만 읽혔으면 화면 위치로 칸을 정한다
+        two = self.o.find_offers(words[2:], W, H, self.m)
+        self.assertEqual(self.o.slots(two, W), [None, "강타자", "정신 변환"])
+        # 이름 줄 밖(위쪽 글자)은 무시
+        self.assertEqual(self.o.find_offers([(t, x, 50, w, h) for t, x, _, w, h in words], W, H, self.m), [])
+
+    def test_gold_frame(self):
+        gold = lambda x, y: (240, 210, 150)  # noqa: E731
+        silver = lambda x, y: (200, 205, 210)  # noqa: E731
+        self.assertGreater(self.o.gold_score(gold, 500, 300, 1920), 0.25)
+        self.assertLess(self.o.gold_score(silver, 500, 300, 1920), 0.05)
+
+    def test_tracker_offers_then_pick(self):
+        t = self.o.Tracker()
+        offers = ["눈 폭발", "강타자", "정신 변환"]
+        t.feed(offers, {"눈 폭발": 0.0, "강타자": 0.02, "정신 변환": 0.0})
+        self.assertEqual(t.state["offers"], offers)
+        seq = t.state["seq"]
+        t.feed(offers, {"눈 폭발": 0.0, "강타자": 0.4, "정신 변환": 0.01})  # 강타자에 마우스
+        self.assertEqual(t.state["seq"], seq)  # 같은 선택지는 다시 안 보낸다
+        t.feed(None, {})
+        self.assertEqual(t.state["pickSeq"], 0)  # 한 번 못 읽은 걸로는 닫힘 아님
+        t.feed(None, {})
+        self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("강타자", 1, None))
+
+    def test_tracker_ambiguous_and_reroll(self):
+        t = self.o.Tracker()
+        t.feed(["눈 폭발", "강타자", "정신 변환"], {"눈 폭발": 0.4, "강타자": 0.38})
+        t.feed(["눈 폭발", "탱크 엔진", "정신 변환"], {})  # 새로고침 → 새 선택지
+        self.assertEqual(t.state["seq"], 2)
+        t.feed(None, {})
+        t.feed(None, {})
+        self.assertIsNone(t.state["picked"])  # 금색이 안 보였으면 정하지 않는다
+        self.assertEqual(t.state["pickedFrom"], ["눈 폭발", "탱크 엔진", "정신 변환"])
+

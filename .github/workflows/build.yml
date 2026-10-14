@@ -31,14 +31,15 @@ jobs:
         run: python -m pip install -r requirements-build.txt
 
       - name: 모듈 확인
-        run: python -c "import desktop, build_data, champion_data, lol_calc, lcu, overlay, webview, tkinter; print('ok')"
+        run: python -c "import desktop, build_data, champion_data, lol_calc, lcu, overlay, augocr, webview, tkinter; import winrt.windows.media.ocr; print('ok')"
 
       - name: 빌드
         run: >
           pyinstaller --noconfirm --windowed --name 칼바람증강Addon
           --add-data "web;web" --add-data "rules.json;."
           --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
-          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --exclude-module PIL
+          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr
+          --collect-all winrt --exclude-module PIL
           desktop.py
 
       - name: 결과 확인·압축
@@ -78,7 +79,7 @@ jobs:
           --osx-bundle-identifier io.github.theddack.aramaugment
           --add-data "web:web" --add-data "rules.json:."
           --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
-          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --exclude-module PIL
+          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --exclude-module PIL
           desktop.py
 
       - name: 이름·서명

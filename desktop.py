@@ -24,6 +24,7 @@ from pathlib import Path
 
 import webview
 
+import augocr
 import lcu
 import overlay
 
@@ -418,8 +419,10 @@ class Diag(threading.Thread):
     CHECK = 5  # 초
     MAX_BYTES = 512 * 1024  # 넘으면 diag.old.log 로 돌린다
 
-    def __init__(self, path, beats, status=None):
-        super().__init__(daemon=True)
+    def __init__(self, path, beats, status=None, aug=None):
+        super().__init__(daemon=True, name="진단")
+        self.aug = aug  # 증강 인식 상태를 돌려주는 함수 (선택지·고른 증강·인식 상태가 바뀌면 남긴다)
+        self._last_aug = {}
         self.path = path
         self.beats = beats  # {이름: (마지막 시각을 돌려주는 함수, 멈춤으로 볼 초)}
         self.status = status  # 게임 화면 표시 상태를 돌려주는 함수
@@ -463,6 +466,14 @@ class Diag(threading.Thread):
             if st != self._last_status:
                 self.write(f"게임 화면 표시: {st}")
                 self._last_status = st
+        a = (self.aug() if self.aug else None) or {}
+        if a.get("status") != self._last_aug.get("status"):
+            self.write(f"증강 인식: {a.get('status')}" + (f" ({a.get('ms')}ms)" if a.get("ms") else ""))
+        if a.get("seq") != self._last_aug.get("seq") and a.get("offers"):
+            self.write("증강 선택지: " + " / ".join(n or "?" for n in a["offers"]))
+        if a.get("pickSeq") != self._last_aug.get("pickSeq") and a.get("pickSeq"):
+            self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
+        self._last_aug = a
 
     def run(self):
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}")
@@ -477,6 +488,22 @@ class Diag(threading.Thread):
 def platform_name():
     import platform
     return f"{platform.system()} {platform.release()} {platform.version()}"
+
+
+_aug_names = {"mtime": None, "names": []}
+
+
+def augment_names():
+    """증강 이름 목록 (데이터를 갱신하면 다시 읽는다). 증강 인식이 화면 글자와 맞춰 본다"""
+    path = user_dir() / "web" / "data.json"
+    try:
+        m = path.stat().st_mtime
+        if m != _aug_names["mtime"]:
+            names = [a["name"] for a in json.loads(path.read_text(encoding="utf-8")).get("augments", [])]
+            _aug_names.update(mtime=m, names=names)
+    except (OSError, ValueError):
+        pass
+    return _aug_names["names"]
 
 
 class Settings:
@@ -507,8 +534,10 @@ class Api:
     (예전에는 settings.path.write_text, lcu.client.req 같은 함수까지 500개 넘게 노출됐다)
     """
 
-    def __init__(self, settings, watcher=None, ov=None, lcu_watcher=None):
+    def __init__(self, settings, watcher=None, ov=None, lcu_watcher=None, reader=None):
         self._settings = settings
+        self._reader = reader
+        self._update = None  # 데이터 받기 별도 실행 (subprocess.Popen)
         self._window = None
         self._watcher = watcher
         self._ov = ov
@@ -566,12 +595,15 @@ class Api:
         if not self._watcher:
             return {"inGame": False, "disabled": True}
         return {**self._watcher.state, "enabled": self._watcher.enabled, "logDir": str(self._watcher.log_dir),
-                "overlayStatus": self._ov.status if self._ov else None}
+                "overlayStatus": self._ov.status if self._ov else None,
+                "aug": self._reader.state if self._reader else None}
 
     def set_live(self, on):
         if self._watcher:
             self._watcher.enabled = bool(on)
             self._settings.set(live=bool(on))
+        if self._reader:
+            self._reader.enabled = bool(on)  # 증강 인식도 게임 연동을 따른다
         return bool(on)
 
     def get_state(self):
@@ -668,7 +700,13 @@ def main():
     lw = LcuWatcher(user_dir() / "measure")
     lw.name = "롤 클라이언트"
     lw.start()
-    api = Api(settings, watcher, ov, lw)
+    reader = None
+    if overlay.IS_WINDOWS:
+        win = overlay._Win()
+        reader = augocr.Reader(win.game_rect, augment_names)
+        reader.enabled = watcher.enabled
+        reader.start()
+    api = Api(settings, watcher, ov, lw, reader)
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,
@@ -684,7 +722,8 @@ def main():
         "롤 클라이언트": (lambda: lw.beat, 60),
         "게임 화면 표시": (lambda: ov.beat, 15),
         "애드온 화면": (lambda: api._ui_beat, 90),
-    }, status=lambda: ov.status).start()
+        "증강 인식": (lambda: reader.beat if reader else None, 30),
+    }, status=lambda: ov.status, aug=lambda: reader.state if reader else None).start()
 
     def on_closing():
         try:
