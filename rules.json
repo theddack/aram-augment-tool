@@ -288,6 +288,22 @@
       "requires": "immobilize",
       "tags": {
         "CC": 1
+      },
+      "stats": {
+        "adaptive": {
+          "dv": "AdaptiveForce",
+          "times": 6
+        }
+      },
+      "basis": {
+        "calc": "이동 불가 CC마다 적응형 10 (영구 중첩, 사망 시 절반 잃음) × 평균 6중첩 = 60",
+        "assume": [
+          {
+            "what": "게임 중반 평균 6중첩",
+            "why": "CC를 자주 걸지만 죽으면 절반을 잃어서",
+            "noData": true
+          }
+        ]
       }
     },
     "ARAM_Cruelty": {
@@ -309,6 +325,22 @@
       "tags": {
         "CC": 1,
         "HP": 0.8
+      },
+      "stats": {
+        "HP": {
+          "dv": "HealthGainPerStack",
+          "times": 15
+        }
+      },
+      "basis": {
+        "calc": "이동 불가 CC마다 최대 체력 20 (영구) × 15번 = 300",
+        "assume": [
+          {
+            "what": "게임 중반까지 CC 15번",
+            "why": "CC 스킬 재사용마다 걸린다고 보고 10분 기준으로 잡았어요",
+            "noData": true
+          }
+        ]
       }
     },
     "ARAM_Impassable": {
@@ -714,7 +746,20 @@
       "generic": true
     },
     "VeilOfWarding": {
-      "generic": true
+      "generic": true,
+      "stats": {
+        "selfHeal": 396
+      },
+      "basis": {
+        "calc": "30초마다 적 스킬 한 번을 막음 → 막은 피해만큼 버티는 힘. 스킬 한 방 피해 396 = 전 챔피언 18레벨 추천 빌드의 스킬 한 방 피해 중앙값(기준 상대)",
+        "assume": [
+          {
+            "what": "한타마다 1번 막는다",
+            "why": "재사용 30초라 한타 한 번에 한 번이에요",
+            "noData": false
+          }
+        ]
+      }
     },
     "ARAM_DivineIntervention": {
       "generic": true,
@@ -763,6 +808,22 @@
       "tags": {
         "AD": 0.3,
         "AP": 0.3
+      },
+      "stats": {
+        "dmgDealtMult": {
+          "calc18": "Calc_Damage_Amp",
+          "times": 2
+        }
+      },
+      "basis": {
+        "calc": "스킬 적중마다 6초 동안 피해량 5% (중첩) × 콤보 중 평균 2중첩 = 10%",
+        "assume": [
+          {
+            "what": "콤보 중 평균 2중첩",
+            "why": "콤보 처음엔 0중첩이라 4번 적중 중 평균 2중첩이에요",
+            "noData": true
+          }
+        ]
       }
     },
     "Ability_SelfAOE_DoubleCast": {
@@ -1402,6 +1463,217 @@
           }
         ]
       }
+    },
+    "ARAM_MindtoMatter": {
+      "stats": {
+        "manaToHP": 0.5
+      }
+    },
+    "ARAM_Erosion": {
+      "stats": {
+        "ARPEN": {
+          "dv": "Shred",
+          "times": 10
+        },
+        "MPENP": {
+          "dv": "Shred",
+          "times": 10
+        }
+      },
+      "basis": {
+        "calc": "중첩당 방어력·마법 저항력 1.5% 감소 × 평균 10중첩 = 15% 관통으로 계산",
+        "assume": [
+          {
+            "what": "평균 10중첩 (최대 20)",
+            "why": "피해를 줄 때마다 1중첩이고 4초 유지라, 한타 중 절반 정도 쌓여 있다고 봤어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_SustainingStrike": {
+      "stats": {
+        "skillVamp": "Lifesteal"
+      }
+    },
+    "ARAM_ShrinkRay": {
+      "stats": {
+        "ehpMult": {
+          "dv": "DamageReduction",
+          "times": 0.5
+        }
+      },
+      "basis": {
+        "calc": "기본 공격한 적의 피해량 15% 감소 → 받는 피해 7.5% 감소로 계산",
+        "assume": [
+          {
+            "what": "나를 때리는 적 중 절반에게 걸려 있다",
+            "why": "내가 기본 공격으로 때린 적에게만 걸려서",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "WardingWeapon": {
+      "stats": {
+        "ARMOR": {
+          "calc18": "Calc_Resists",
+          "times": 1.5
+        },
+        "MR": {
+          "calc18": "Calc_Resists",
+          "times": 1.5
+        }
+      },
+      "basis": {
+        "calc": "스킬 적중마다 6초 동안 방어력 또는 마법 저항력 7~12 (18레벨 12) × 콤보 중 3번 적중 → 반은 방어력, 반은 마법 저항력",
+        "assume": [
+          {
+            "what": "콤보 중 스킬 3번 적중, 피해 유형 반반",
+            "why": "대상의 피해 유형에 따라 둘 중 하나만 올라서 반반으로 나눴어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_MasterofDuality": {
+      "stats": {
+        "AP": {
+          "calc18": "APGained",
+          "times": 3
+        },
+        "AD": {
+          "calc18": "ADGained",
+          "times": 2
+        }
+      },
+      "basis": {
+        "calc": "기본 공격마다 주문력 6~18, 스킬 피해마다 공격력 3~9 (5초, 무한 중첩) × 평균 기본 공격 3번·스킬 2번 분량 = 주문력 54·공격력 18 (18레벨)",
+        "assume": [
+          {
+            "what": "한타 중 평균 기본 공격 3번·스킬 2번 분량 유지",
+            "why": "5초 안에 이어 쓴 만큼만 남아서, 콤보 4초 기준으로 잡았어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_TankEngine": {
+      "stats": {
+        "HPmult": {
+          "dv": "MaxHPIncrement",
+          "times": 5
+        }
+      },
+      "basis": {
+        "calc": "처치 관여마다 최대 체력 5% (사망 시 65% 잃음) × 평균 5중첩 = 25%",
+        "assume": [
+          {
+            "what": "평균 5중첩",
+            "why": "축소 엔진과 같은 기준 (처치 관여로 쌓고 사망하면 65%를 잃음)",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_PhenomenalEvil": {
+      "stats": {
+        "AP": {
+          "dv": "APPerProc",
+          "times": 60
+        }
+      },
+      "basis": {
+        "calc": "스킬로 챔피언에게 피해를 줄 때마다 주문력 1 (영구) × 60번 = 60",
+        "assume": [
+          {
+            "what": "게임 중반까지 스킬 적중 60번",
+            "why": "1분에 약 6번 × 10분으로 잡았어요 (스킬마다 3초 간격 제한)",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_ImTheJuggernaut": {
+      "stats": {
+        "adaptive": {
+          "calc18": "Calc_AF"
+        },
+        "ARMOR": {
+          "calc18": "Calc_Defenses"
+        },
+        "MR": {
+          "calc18": "Calc_Defenses"
+        }
+      },
+      "basis": {
+        "calc": "전쟁기계 10중첩마다 적응형 25~75·방어력·마법 저항력 5~10 → 1단계(10중첩) 유지로 18레벨 적응형 75·방어 10·마저 10",
+        "assume": [
+          {
+            "what": "한타 중 10중첩(1단계) 유지",
+            "why": "때리거나 맞을 때마다 1중첩이라 한타에서 금방 차지만, 많을수록 빨리 사라져서 1단계로 잡았어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "ARAM_CircleofDeath": {
+      "stats": {
+        "healToDamage": "HealToDamageConversion"
+      }
+    },
+    "BurstingTeeth": {
+      "stats": {
+        "LETHALITY": {
+          "calc18": "LethalityPerTooth",
+          "stacks": 5
+        },
+        "MPEN": {
+          "calc18": "MPenPerTooth",
+          "stacks": 5
+        }
+      },
+      "basis": {
+        "calc": "이빨 하나에 물리·마법 관통력 3 × 평균 5개 = 15",
+        "assume": [
+          {
+            "what": "게임 중반 이빨 5개",
+            "why": "2.5초 안에 체력 25% 이상 피해를 줄 때만 떨어져서 보수적으로 잡았어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "DoubleDefense": {
+      "stats": {
+        "shieldMult": {
+          "dv": "BonusRatioMax",
+          "times": 0.5
+        }
+      },
+      "basis": {
+        "calc": "스킬 보호막이 대상 잃은 체력에 비례해 최대 60% 강화 → 평균 30%",
+        "assume": [
+          {
+            "what": "보호막 받는 대상의 잃은 체력 평균 절반",
+            "why": "체력 30%일 때 최대라, 평소엔 그 절반쯤으로 봤어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "EndlessDecimation": {
+      "effects": [
+        {
+          "calc": "FullDamage",
+          "kind": "physical",
+          "trigger": {
+            "type": "time",
+            "sec": "Cooldown"
+          },
+          "from": "8초마다 자동 사용"
+        }
+      ]
     }
   },
   "items": {
@@ -1664,6 +1936,143 @@
           {
             "what": "광풍 가동률 50%",
             "why": "6초 지속·30초 재사용인데 기본 공격으로 재사용 대기시간이 줄어서",
+            "noData": true
+          }
+        ]
+      }
+    }
+  },
+  "_챔피언": "champions: 중첩형 패시브·스킬. stats=게임 중반 평균 중첩일 때 능력치(중첩당 값은 설명 수치), stacks=스킬 피해의 '중첩당' 계산에 넣을 평균 중첩 수. basis 에 평균 중첩을 정한 이유",
+  "champions": {
+    "Veigar": {
+      "stats": {
+        "AP": 120
+      },
+      "basis": {
+        "calc": "극악 1중첩당 주문력 1 (설명) × 평균 120중첩",
+        "assume": [
+          {
+            "what": "게임 중반(12분) 평균 120중첩",
+            "why": "스킬 적중마다 1, 처치 관여마다 3 (설명). 칼바람은 한타가 잦아 1분에 약 10중첩으로 잡았어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Thresh": {
+      "stats": {
+        "ARMOR": 40,
+        "AP": 40
+      },
+      "basis": {
+        "calc": "영혼 1개당 방어력·주문력 1 (설명) × 평균 40개",
+        "assume": [
+          {
+            "what": "게임 중반 영혼 40개",
+            "why": "칼바람은 미니언·챔피언이 한곳에서 많이 죽어 영혼을 자주 먹어요 (1분에 약 3~4개)",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Senna": {
+      "stats": {
+        "AD": 30,
+        "CRIT": 0.2
+      },
+      "basis": {
+        "calc": "안개 1개당 공격력 0.75, 20개마다 치명타 확률 10% (설명) × 평균 40개 = 공격력 30·치명타 20%",
+        "assume": [
+          {
+            "what": "게임 중반 안개 40개",
+            "why": "챔피언에게 기본 공격·스킬 두 번 + 죽은 적 영혼으로 모아요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Chogath": {
+      "stats": {
+        "HP": 960
+      },
+      "basis": {
+        "calc": "포식(R) 1중첩당 최대 체력 80/120/160 (설명, 18레벨은 3단계 160) × 평균 6중첩",
+        "assume": [
+          {
+            "what": "게임 중반 6중첩",
+            "why": "미니언·일반 몬스터로는 6중첩까지만 쌓이고, 챔피언 처치로 그 이상 쌓여요. 6중첩은 금방 채워서",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Sion": {
+      "stats": {
+        "HP": 360
+      },
+      "basis": {
+        "calc": "W 기본 지속 효과: 유닛 처치마다 최대 체력 3, 처치 관여·대형 미니언마다 8 (설명) → 미니언 80 × 3 + 15 × 8 = 360",
+        "assume": [
+          {
+            "what": "게임 중반 유닛 처치 80·처치 관여(대형 포함) 15",
+            "why": "칼바람 미니언 웨이브가 계속 와서 마무리를 자주 해요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Swain": {
+      "stats": {
+        "HP": 375
+      },
+      "basis": {
+        "calc": "영혼 조각 1개당 최대 체력 15 (설명) × 평균 25개",
+        "assume": [
+          {
+            "what": "게임 중반 영혼 조각 25개",
+            "why": "제국의 눈·속박명령·챔피언 사망마다 얻어요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Kindred": {
+      "stats": {
+        "AS": 0.1
+      },
+      "stacks": 4,
+      "basis": {
+        "calc": "표식 1개당 화살 세례 후 공격 속도 5%·늑대의 광기 피해 1% (설명) × 평균 4개, 공격 속도는 화살 세례 뒤에만이라 절반",
+        "assume": [
+          {
+            "what": "게임 중반 표식 4개",
+            "why": "사냥 대상을 처치하는 데 관여할 때만 쌓여요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Nasus": {
+      "stacks": 150,
+      "basis": {
+        "calc": "흡수의 일격(Q) 피해 + 중첩당 1 (설명) × 평균 150중첩",
+        "assume": [
+          {
+            "what": "게임 중반 150중첩",
+            "why": "Q로 유닛을 처치할 때마다 쌓이고, 칼바람은 웨이브가 계속 와요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Smolder": {
+      "stacks": 125,
+      "basis": {
+        "calc": "용 훈련 중첩당 Q 추가 피해 (설명) × 평균 125중첩 (Q 2단계 진화)",
+        "assume": [
+          {
+            "what": "게임 중반 125중첩",
+            "why": "스킬로 챔피언을 맞힐 때마다 1중첩. 칼바람은 스킬을 자주 맞혀서 일반 협곡보다 빨라요",
             "noData": true
           }
         ]

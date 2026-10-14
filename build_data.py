@@ -542,6 +542,22 @@ def resolve_rule_stats(rules, aug_spells):
                     warn.append(f"{aid}.{key}: 데이터 값 '{v}' 없음")
                     continue
                 out[key] = -val if neg else val
+            elif isinstance(v, dict) and "dv" in v:  # 게임 데이터 값 × 배수 (평균 중첩 같은 가정은 basis 에 이유)
+                val = calc.value(v["dv"], 1)
+                if val is None:
+                    warn.append(f"{aid}.{key}: 데이터 값 '{v['dv']}' 없음")
+                    continue
+                out[key] = round(val * v.get("times", 1), 6)
+            elif isinstance(v, dict) and "calc18" in v:  # 계산식의 18레벨 값 (중첩 계수는 stacks 개) × 배수
+                e, _ = calc.calc(v["calc18"], 1)
+                if e is None:
+                    warn.append(f"{aid}.{key}: 계산식 '{v['calc18']}' 해석 실패")
+                    continue
+                if not hasattr(e, "ratios"):  # 곱셈 식은 여기서 숫자 하나로 못 줄인다
+                    warn.append(f"{aid}.{key}: 계산식 '{v['calc18']}' 은 곱셈 식이라 18레벨 값으로 못 씀")
+                    continue
+                val = e.base + (e.lvl[1] if e.lvl else 0) + e.ratios.get("STACKS", 0) * v.get("stacks", 0)
+                out[key] = round(val * v.get("times", 1), 6)
             elif isinstance(v, dict) and "calc" in v:
                 e, _ = calc.calc(v["calc"], 1)
                 if e is None:
@@ -559,6 +575,25 @@ def resolve_rule_stats(rules, aug_spells):
                 out[key] = sub
         r["statsResolved"] = out
     return warn
+
+
+def rule_effects(rules, aug_spells, out_augs, warn):
+    """rules.json effects: 설명에서 자동으로 못 뽑은 피해 효과를 게임 계산식 이름으로 붙인다 (패치 수치를 따라감)"""
+    by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():
+        if not r.get("effects") or aid not in by_id or aid not in aug_spells:
+            continue
+        calc = Calc(aug_spells[aid])
+        for spec in r["effects"]:
+            e, _ = calc.calc(spec["calc"], 1)
+            if e is None:
+                warn.append(f"{aid}: 효과 계산식 '{spec['calc']}' 해석 실패")
+                continue
+            trig = dict(spec.get("trigger") or {"type": "once"})
+            if isinstance(trig.get("sec"), str):
+                trig["sec"] = calc.value(trig["sec"], 1) or 0
+            trig["from"] = spec.get("from", "rules.json")
+            by_id[aid]["effects"].append({"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig})
 
 
 # 자동 규칙: rules.json 에 없는 증강(새 증강 등)은 설명의 '조건 없는 능력치 문장'만 능력치로 읽는다.
@@ -621,7 +656,8 @@ STAT_LABEL = {
     "fearPerCast": "스킬당 공포(초)", "selfHeal": "생명선 회복", "ehpPhysMult": "받는 물리 피해 감소",
     "ehpMagFlat": "마법 보호막", "bonusMANAtoAP": "추가 마나 → 주문력", "itemHPbonus": "아이템 체력 추가",
     "bonusResistMult": "추가 방어·마법 저항", "onhitRemainingPct": "남은 재사용 대기시간 감소",
-    "refundAll": "모든 스킬에 반환 적용", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "critToHaste": "치명타 → 스킬 가속",
+    "refundAll": "모든 스킬에 반환 적용", "manaToHP": "최대 마나 → 체력", "skillVamp": "스킬 피해 → 회복",
+    "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "critToHaste": "치명타 → 스킬 가속",
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
 }
@@ -629,7 +665,7 @@ STAT_LABEL = {
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
             "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
-            "bonusMANAtoAP", "ultTriggerMs"}
+            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN"}
 
 
 def _fmt_val(v, key=None):
@@ -661,6 +697,11 @@ def rule_basis(rule, resolved, desc_html, warn, who):
         val = resolved.get(k, v)
         if isinstance(v, str):
             out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 데이터 값 '{v.lstrip('-')}'"})
+        elif isinstance(v, dict) and "dv" in v:
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 데이터 값 '{v['dv']}'" + (f" × {v['times']:g}" if v.get("times", 1) != 1 else "")})
+        elif isinstance(v, dict) and "calc18" in v:
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 계산식 '{v['calc18']}' 18레벨 값"
+                        + (f" (중첩 {v['stacks']}개)" if v.get("stacks") else "") + (f" × {v['times']:g}" if v.get("times", 1) != 1 else "")})
         elif isinstance(v, dict) and "calc" in v:
             out.append({"t": "game", "text": f"{label} — 게임 계산식 '{v['calc']}'"})
         elif isinstance(v, dict):
@@ -710,6 +751,17 @@ def wiki_check(stats, wiki_text):
             nums.update(round(float(x), 2) for x in re.findall(r"\d+(?:\.\d+)?", text[max(0, m.start() - 40):m.start()]))
         out[k] = want in nums
     return out
+
+
+def augment_category(plain):
+    """숫자로 비교하기 어려운 증강의 종류 (화면에서 '왜 숫자가 없는지' 보여 주기)"""
+    if re.search(r"퀘스트\s*:|조건\s*:.*보상\s*:", plain):
+        return "quest"
+    if re.search(r"무작위[^.]{0,12}(증강|영혼)|증강[^.]{0,8}무작위|일정 확률로 능력치 모루", plain):
+        return "random"
+    if re.search(r"소환사 주문|점멸 사용 가능 횟수|사용 시 커서 방향으로 돌진", plain):
+        return "spell"
+    return None
 
 
 def augment_history(prev, out_augs, version):
@@ -968,9 +1020,11 @@ def main():
             continue
         wiki_desc[name] = wa.get("description", "")
         spell = kiwi.get(a.get("RootSpell", ""), {}).get("mSpell", {})
-        raw = strings.get((a.get("AugmentTooltipTra") or "").lower()) \
-            or strings.get((a.get("DescriptionTra") or "").lower()) or ""
-        raw = expand_templates(raw, strings)
+        raw = expand_templates(strings.get((a.get("AugmentTooltipTra") or "").lower()) or "", strings)
+        # 툴팁이 다른 문구를 참조하는데 그 문구가 비어 있으면(가속 추구·위력 추구·압력솥·초장거리 저격) 기본 설명을 쓴다
+        body = re.sub(r"<flavorText>.*?</flavorText>|<[^>]+>|\s+", "", raw, flags=re.S | re.I)
+        if len(body) < 15:
+            raw = expand_templates(strings.get((a.get("DescriptionTra") or "").lower()) or "", strings) or raw
         text, unresolved = resolve_values(raw, spell)
         ko_name = strings.get((a.get("NameTra") or "").lower(), "")
         # 패치 노트 대조: 게임 데이터가 아직 이전 값이고 자리가 확실하면 패치 노트 값으로 다시 계산
@@ -996,6 +1050,7 @@ def main():
             "rarityName": rarity_name.get(a.get("rarity", 0), "?"),
             "desc": html,
             "tags": tag_text(plain, names),
+            "category": augment_category(plain),
             "unresolved": len(unresolved),
             "_icon": icon,
             "_raw": raw,
@@ -1087,6 +1142,28 @@ def main():
         })
     for c in out_champs:  # 패치 노트 대조 (모드 보정·재사용 대기시간은 확실하면 패치 노트 값으로)
         c["patchCheck"] = check_champion(c, c["patch"]) if c["patch"] else None
+    # 챔피언 스킬·패시브의 '중첩당' 계수는 챔피언 중첩(CSTACKS)으로 (증강의 중첩과 섞이지 않게)
+    def to_cstacks(o):
+        if isinstance(o, dict):
+            for key in ("ratios", "r"):
+                if isinstance(o.get(key), dict) and "STACKS" in o[key]:
+                    o[key]["CSTACKS"] = o[key].pop("STACKS")
+            for v in o.values():
+                to_cstacks(v)
+        elif isinstance(o, list):
+            for v in o:
+                to_cstacks(v)
+    rules_champs = json.loads((ROOT / "rules.json").read_text(encoding="utf-8")).get("champions", {})
+    stack_warn = []
+    for c in out_champs:
+        to_cstacks(c["spells"])
+        to_cstacks(c["passive"]["effects"])
+        rc = rules_champs.get(c["id"])
+        if rc:  # 중첩형 패시브·스킬: 게임 중반 평균 중첩
+            c["stackStats"] = rc.get("stats") or {}
+            c["stacks"] = rc.get("stacks", 0)
+            text = c["passive"]["desc"] + " ".join(sp["tooltip"] for sp in c["spells"])
+            c["stackBasis"] = rule_basis(rc, c["stackStats"], text, stack_warn, c["name"])
     out_champs.sort(key=lambda c: c["name"])
 
     # --- 아이콘
@@ -1129,6 +1206,7 @@ def main():
             if n not in item_names:
                 print("  [규칙] 없는 아이템:", aid, n)
     rule_warn = resolve_rule_stats(rules, aug_spells)
+    rule_effects(rules, aug_spells, out_augs, rule_warn)
     auto_rules = {}  # rules.json 에 능력치 규칙이 없는 증강 → 설명에서 자동 추정
     for a in out_augs:
         if (rules["augments"].get(a["id"]) or {}).get("stats"):

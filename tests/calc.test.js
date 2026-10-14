@@ -116,3 +116,33 @@ test("검을 뽑아라(근접 전환)는 추천 빌드에도 반영된다", () =
   const m = St.evaluate(melee, 18, b.pick.map((p) => p.item), S.augStatsOf([dys], d.rules, c)).m;
   assert.ok(Math.abs(b.final.dps - m.dps) < 0.5, `빌드 ${b.final.dps} vs 근접 ${m.dps}`);
 });
+
+test("대체 버전은 하나만: 트페 W 카드 1장, 렝가 강화 Q 제외, 리 신 Q1+Q2", () => {
+  const vals = (id, slot) => St.evaluate(champ(id), 18, [], []).m.spells.find((s) => s.slot === slot).values
+    .filter((v) => ["magic", "physical", "true"].includes(v.kind)).map((v) => v.name);
+  assert.equal(vals("TwistedFate", "W").length, 1);
+  assert.ok(!vals("Rengar", "Q").some((n) => /empowered/i.test(n)));
+  assert.deepEqual(vals("LeeSin", "Q").sort(), ["initialdamage", "recastdamage"]);
+});
+
+test("곱셈 식(닐라 Q)은 치명타 확률이 오르면 피해도 오른다", () => {
+  const c = champ("Nilah");
+  const q = (items) => St.evaluate(c, 18, items, []).m.spells.find((s) => s.slot === "Q").values[0].value;
+  assert.ok(q([item("무한의 대검")]) > q([]));
+});
+
+test("중첩형: 나서스 Q 는 평균 중첩만큼, 베이가는 주문력 중첩", () => {
+  const nasus = champ("Nasus");
+  assert.ok(nasus.stacks > 0 && nasus.stackBasis.some((b) => b.t === "assume"));
+  const t = St.computeStats(champ("Veigar"), 18, [], []).total;
+  assert.ok(t.AP >= champ("Veigar").stackStats.AP);
+});
+
+test("새로 숫자로 계산되는 증강: 흡수(스킬 피해 회복), 죽음의 순환(회복 → 피해)", () => {
+  const lux = champ("Lux");
+  const heal = (augs) => St.evaluate(lux, 18, [], S.augStatsOf(augs, d.rules, lux)).m.heal;
+  assert.ok(heal([aug("ARAM_SustainingStrike")]) > heal([]));
+  const sor = champ("Soraka");
+  const combo = (augs) => St.evaluate(sor, 18, [], S.augStatsOf(augs, d.rules, sor)).m.combo;
+  assert.ok(combo([aug("ARAM_CircleofDeath")]) > combo([]));
+});

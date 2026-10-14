@@ -181,7 +181,7 @@ function renderChampCard() {
     <div><span class="muted small">가중치</span> ${top.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}</div>
     <div><span class="muted small">스킬 특성</span> ${traits.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}
       ${feats.map((f) => `<span class="chip on">${esc(featLabel[f] || f)}</span>`).join("")}</div>
-    ${aramChips(c)}${patchChip(c.patch, c.patchCheck)}${refLinks(c.refs)}</div>`;
+    ${aramChips(c)}${patchChip(c.patch, c.patchCheck)}${c.stackBasis ? `<div class="small">중첩형 패시브·스킬은 게임 중반 평균 중첩으로 계산해요 ${basisBlock(c.stackBasis)}</div>` : ""}${refLinks(c.refs)}</div>`;
 }
 
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
@@ -339,6 +339,20 @@ const PATCH_STATUS = {
   differ: ["❔", "이 수치를 데이터에서 찾지 못해 대조하지 못했어요"],
   unknown: ["", "숫자 비교가 없는 변경이에요 (삭제·신규·설명 변경)"],
 };
+// 숫자로 비교하지 않는 증강은 왜 그런지 종류로 보여 준다 (숫자로 계산되는 증강에는 붙이지 않는다)
+const CATEGORY = {
+  quest: ["📜 퀘스트", "조건을 채우면 보상을 받는 증강이라, 보상 전까지는 효과가 없어요. 숫자로 비교하지 않아요."],
+  random: ["🎰 무작위", "결과가 무작위라 미리 숫자로 비교할 수 없어요."],
+  spell: ["✨ 소환사 주문", "소환사 주문을 바꾸거나 늘리는 증강이라 피해·체력 같은 숫자로 비교하지 않아요."],
+};
+function categoryChip(r) {
+  const a = r.aug;
+  if (S.hasNumbers(a, state.data.rules)) return "";
+  const c = CATEGORY[a.category];
+  if (c) return `<span class="chip" title="${esc(c[1])}">${c[0]}</span>`;
+  return r.unclassified ? `<span class="chip" title="설명에서 효과 종류를 정하지 못했어요. 숫자 없이 기본 점수로 비교해요.">효과 분류 안 됨</span>` : "";
+}
+
 function patchChip(lines, checks) {
   if (!lines || !lines.length) return "";
   const rows = lines.map((ln, i) => {
@@ -559,7 +573,7 @@ function renderAugs() {
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
         ${basisBlock([...(((state.data.rules.augments[r.aug.id] || {}).basisView) || []), ...effectBasis(r.aug.effects)])}
         ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
-        <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${r.unclassified ? `<span class="chip">효과 분류 안 됨</span>` : ""}${r.parts.map((p) =>
+        <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${categoryChip(r)}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
           ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
         ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
