@@ -14,7 +14,11 @@ env:
   PYTHONIOENCODING: utf-8  # 한글 파일 이름 출력 (윈도우 콘솔 기본 인코딩은 한글을 못 씀)
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   windows:
+    needs: test  # 테스트가 통과해야 빌드
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -54,6 +58,7 @@ jobs:
           retention-days: 30
 
   mac:
+    needs: test
     runs-on: macos-14
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

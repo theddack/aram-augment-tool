@@ -1,0 +1,29 @@
+# 테스트: 화면 흐름·계산 엔진·받은 파일 확인 페이지(node --test) + 파이썬(패치 대조·자동 추정·기록·아이템 세트 보호)
+# PR 마다 돌고, main 에 올리면 빌드(build.yml)·사이트 배포(pages.yml)가 먼저 불러서 돌린다. 매일 갱신(refresh.yml)도 새 데이터로 돌린다.
+name: test
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: 화면·계산 테스트
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+      - name: 파이썬 테스트
+        run: python -m unittest discover -s tests -v

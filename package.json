@@ -1,0 +1,11 @@
+{
+  "name": "aram-augment-tool-tests",
+  "private": true,
+  "description": "칼바람 증강 Addon 화면·계산 테스트 (node --test). 프로그램 실행에는 필요 없다.",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}

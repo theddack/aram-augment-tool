@@ -17,7 +17,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test  # 테스트가 통과해야 사이트에 올린다
     runs-on: ubuntu-latest
     environment:
       name: github-pages

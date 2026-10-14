@@ -37,6 +37,16 @@ jobs:
           python build_data.py --refresh
           python tools/changelog.py html
 
+      # 새 데이터로 테스트: 데이터 형식이 바뀌어 화면이 깨지면 반영·배포하지 않는다
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - name: 새 데이터로 테스트
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          python -m unittest discover -s tests
+
       - name: 바뀌었는지 확인
         id: diff
         run: |
