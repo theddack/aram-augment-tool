@@ -223,3 +223,6 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 #buy-now { margin: 6px 0 2px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 #buy-now:empty { display: none; }
 #buy-now img { width: 20px; height: 20px; vertical-align: middle; border-radius: 3px; }
+
+.owned-parts { grid-column: 1 / -1; margin-top: 2px; }
+.owned-parts b { color: var(--text); font-weight: 500; }

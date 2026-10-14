@@ -234,3 +234,11 @@ test("챔피언 선택 중: 롤에서 고른 챔피언을 따라가고, 대기�
   assert.match(p.text("#champ-card"), /징크스/, "롤 챔피언이 그대로면 덮어쓰지 않는다");
   assert.deepEqual(p.errors, []);
 });
+
+test("게임에서 산 부품도 고른 아이템 밑에 보인다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Nami", level: 3, items: ["2052", "1001", "1042"], gold: 500 });
+  assert.match(p.text("#chosen-items"), /게임에서 산 부품: 장화 · 단검/);
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Nami", level: 3, items: ["2052", "1001", "1042", "1052"], gold: 100 });
+  assert.match(p.text("#chosen-items"), /증폭의 고서/, "골드·부품만 바뀌어도 갱신");
+});

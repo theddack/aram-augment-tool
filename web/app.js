@@ -644,11 +644,19 @@ function addItem(id) {
   renderAll();
 }
 
+function ownedParts() {
+  const parts = (state.inventory || []).map((id) => (state.data.parts || {})[id]).filter(Boolean);
+  if (!parts.length) return "";
+  return `<div class="owned-parts small muted">게임에서 산 부품: ${parts.map((p) => `<b>${esc(p.name)}</b>`).join(" · ")}</div>`;
+}
+
 function renderChosenItems() {
   const slots = Array.from({ length: S.SLOTS }, (_, i) => state.items[i]);
   $("#chosen-items").innerHTML = slots.map((it) => it
     ? `<div class="islot" data-id="${it.id}" title="${esc(it.name)} (해제)"><img src="${icon("item", it.id)}" alt=""></div>`
-    : `<div class="islot muted">빈 칸</div>`).join("");
+    : `<div class="islot muted">빈 칸</div>`).join("")
+    // 게임에서 산 부품도 보이게: 완성 아이템만 칸에 들어가서, 초반엔 산 게 하나도 안 보였다 (2026-10-14 지적)
+    + ownedParts();
   $("#chosen-items").querySelectorAll(".islot[data-id]").forEach((el) => el.addEventListener("click", () => {
     state.items = state.items.filter((i) => i.id !== el.dataset.id);
     renderAll();
@@ -920,7 +928,9 @@ function applyLive(L) {
   el.textContent = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
     + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "")
     // 게임 화면 위 표시가 안 보일 때 이유를 바로 보이게 (윈도우)
-    + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "");
+    + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "")
+    // 증강 인식이 안 되면 이유가 바로 보이게 (v0.1.12 는 기록 파일을 열어야만 알 수 있었다)
+    + (L.aug && L.aug.status ? ` · 증강 인식: ${L.aug.status}` : "");
   el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
   // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다
@@ -929,7 +939,7 @@ function applyLive(L) {
   state.inventory = (L.items || []).map(String);
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id)]);
   if (key === liveLast) {
-    if (goldChanged) { renderBuyNow(); sendOverlay(); }
+    if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay(); }
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
