@@ -2,7 +2,7 @@
 
 > **어떤 증강도 재밌게.** 서포터가 원딜처럼, 탱커가 근접 딜러처럼 — 고른 증강에 맞춰 다음 증강과 아이템을 안내하는 칼바람 증강 모드(아수라장) 도우미예요.
 
-**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/aram-augment-tool/releases/latest)** · **[🌐 웹에서 바로 보기](https://theddack.github.io/aram-augment-tool/)** · [📖 사용 설명서](사용설명서.md) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/aram-augment-tool/sources.html)
+**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/aram-augment-tool/releases/latest)** · [✅ 받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html) · **[🌐 웹에서 바로 보기](https://theddack.github.io/aram-augment-tool/)** · [📖 사용 설명서](사용설명서.md) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/aram-augment-tool/sources.html)
 
 ![칼바람 증강 Addon 화면](docs/screenshot.png)
 
@@ -23,7 +23,7 @@
 
 ## 3단계로 시작
 
-1. [릴리스](https://github.com/theddack/aram-augment-tool/releases/latest)에서 `KalbaramAddon-Windows.zip`(또는 Mac)을 받아 압축을 풀고 실행해요.
+1. [릴리스](https://github.com/theddack/aram-augment-tool/releases/latest)에서 `KalbaramAddon-Windows.zip`(또는 Mac)을 받아요. 압축을 풀기 전에 **[받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html)**에 끌어다 놓아 ✅인지 보고, 압축을 풀고 실행해요.
 2. 롤 설정 → 비디오 → 창 모드를 **테두리 없음**으로 바꿔요.
 3. 프로그램에서 **게임 연동**과 **게임 화면 표시**를 켜고 게임을 시작해요.
 
@@ -58,7 +58,7 @@
 
 ## 보안
 
-공식 [릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만 쓰세요. 코드 서명이 없어서 경고가 뜨는데, 다른 곳에서 받은 파일은 경고를 넘기지 마세요. 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명이 있어요. 프로그램이 하는 일과 막아 둔 것은 [SECURITY.md](SECURITY.md)에 있어요.
+공식 [릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만 쓰세요. 코드 서명이 없어서 경고가 뜨니, 경고를 넘기기 전에 **[받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html)**에서 ✅ 공식 파일인지 확인하세요 (파일은 업로드되지 않고 브라우저에서 GitHub 공식 지문과 비교). 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명이 있어요. 프로그램이 하는 일과 막아 둔 것은 [SECURITY.md](SECURITY.md)에 있어요.
 
 ## 데이터와 수집 원칙
 

@@ -5,6 +5,7 @@
 
 ## 받는 파일
 - **[공식 릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만** 쓰세요. 코드 서명(유료 인증서)이 없어서 윈도우·맥 경고가 뜨는데, 다른 곳에서 받은 파일은 경고를 넘기지 마세요.
+- **[받은 파일 확인 페이지](https://theddack.github.io/aram-augment-tool/verify.html)**: 받은 zip을 끌어다 놓으면 브라우저가 SHA-256을 계산해 GitHub가 릴리스 파일마다 서버에서 계산해 공개한 지문(`digest`)과 비교해요. 파일은 업로드되지 않아요.
 - 릴리스마다 `SHA256SUMS.txt`와 GitHub 빌드 출처 증명(attestation)이 있어요. `gh attestation verify <파일> -R theddack/aram-augment-tool` 로 이 저장소의 빌드 워크플로가 만든 파일인지 확인할 수 있어요.
 - 프로그램은 스스로 새 버전을 받아 바꾸지 않아요. 새 버전이 있으면 알려 주기만 해요.
 
@@ -19,5 +20,5 @@
 | 데이터 수집 | 허용된 출처만 하루 1번 (데이터 출처 페이지 참고) |
 
 ## 아직 안 된 것
-- **코드 서명**: 윈도우(Authenticode)·맥(Apple 공증) 모두 유료 인증서가 필요해서 아직 없어요. 그래서 경고를 넘기는 절차가 남아 있고, 체크섬·출처 증명으로 보완하고 있어요.
+- **코드 서명**: 윈도우(Authenticode)·맥(Apple 공증) 모두 유료 인증서가 필요해서 아직 없어요. 그래서 경고를 넘기는 절차가 남아 있고, 받은 파일 확인 페이지·체크섬·출처 증명으로 보완하고 있어요. Overwolf로 옮기면 Overwolf 플랫폼 서명으로 바꿀 예정이에요.
 - pywebview 등 빌드 도구의 하위 의존성은 버전만 고정하지 않았어요 (해시 고정 미적용).
