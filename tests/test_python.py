@@ -567,3 +567,73 @@ class LiveEnemies(unittest.TestCase):
         st = desktop.parse_live(raw)
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
+
+
+
+try:
+    import numpy  # noqa: F401
+    import PIL  # noqa: F401
+    HAS_IMG = True
+except ImportError:
+    HAS_IMG = False
+
+
+@unittest.skipUnless(HAS_IMG, "numpy·Pillow 없음 (윈도우 빌드에만 들어감)")
+class HudIcons(unittest.TestCase):
+    """증강 칸 아이콘 읽기: 실제 게임 화면(2026-10-14 나피리 판)에서 고른 증강을 찾는다"""
+
+    @classmethod
+    def setUpClass(cls):
+        import hudicons
+        cls.h = hudicons
+        cls.names = {a["id"]: a["name"] for a in json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
+        cls.tpl = hudicons.Templates(str(ROOT / "web" / "icons" / "augment"), cls.names)
+
+    def test_real_hud_capture(self):
+        import numpy as np
+        from PIL import Image
+        img = np.asarray(Image.open(ROOT / "tests" / "data" / "hud_naafiri_goldrend_endlesshunt.png").convert("RGB"))
+        r = self.h.HudReader(self.tpl)
+        r.scan(img, 1359)
+        groups = r.scan(img, 1359)
+        named = [sorted(self.names[i] for i in g) for g in groups]
+        self.assertEqual(named, [["골드 강탈"], ["돌진", "앙파상"]])
+        import augocr
+        ids, unsure = augocr.resolve_groups(groups, self.names, {"방출 역장", "초월 의식", "앙파상", "골드 강탈"})
+        self.assertEqual([self.names[i] for i in ids], ["골드 강탈", "앙파상"], "같은 그림 묶음은 선택지에 떴던 이름으로")
+        self.assertEqual(unsure, [])
+        ids, unsure = augocr.resolve_groups(groups, self.names, set())
+        self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
+
+    def test_empty_screen_finds_nothing(self):
+        import numpy as np
+        rng = np.random.default_rng(0)
+        img = (rng.random((300, 900, 3)) * 70 + 25).astype("uint8")
+        r = self.h.HudReader(self.tpl)
+        r.scan(img, 900)
+        self.assertEqual(r.scan(img, 900), [])
+
+    def test_short_name_one_letter_off(self):
+        import augocr
+        m = augocr.Matcher([a for a in self.names.values()])
+        self.assertEqual(m.match("양파상")[0], "앙파상")  # 실제 diag.log 에 남은 글자
+
+
+class ShopBox(unittest.TestCase):
+    """게임 화면 상자는 상점 창이 열려 있을 때만, 상점 옆에 (평소엔 게임을 가리지 않게)"""
+
+    def test_find_shop_and_layout(self):
+        import augocr
+        import overlay
+        W, H = 1600, 900
+        words = [("추천", 560, 170, 40, 20), ("모든", 700, 170, 40, 20), ("아이템", 745, 170, 60, 20),
+                 ("아이템", 880, 170, 60, 20), ("세트", 945, 170, 40, 20)]
+        shop = augocr.find_shop(words, W, H)
+        self.assertAlmostEqual(shop["left"], 560 / W, places=3)
+        self.assertIsNone(augocr.find_shop([("모든", 700, 170, 40, 20), ("공격", 760, 170, 40, 20)], W, H))
+        payload = {"cards": [None] * 3, "hud": ["다음 구매: 크라켄 학살자"]}
+        self.assertEqual(overlay.layout(payload, W, H), [], "상점이 안 열려 있으면 상자를 띄우지 않는다")
+        items = overlay.layout({**payload, "shop": shop}, W, H)
+        kind, x, y, (lines, anchor) = items[0]
+        self.assertEqual((kind, anchor), ("hud", "ne"))
+        self.assertLess(x, 560, "상점 창 왼쪽 바깥")

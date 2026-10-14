@@ -589,18 +589,6 @@ function pushOverlay(rows) {
   }
   sendOverlay();
 }
-// 증강 추천 TOP (등급별 2개): 게임 카드에 직접 못 붙여도(인식 실패) 이름을 보고 고를 수 있게 게임 화면 상자에 띄운다.
-// 처음엔 챔피언 기준, 고른 뒤엔 고른 증강과의 연계 기준 (getTiers 가 알아서 바꾼다)
-const RARITY_NAME = ["실버", "골드", "프리즘"];
-function topAugs(per = 2) {
-  if (!state.champ || state.chosen.length >= 4) return [];
-  const tiers = getTiers();
-  const ok = (a) => tiers[a.id] && !noEffect(tiers[a.id]) && ["S", "A"].includes(tiers[a.id].tier) && !state.chosen.some((c) => c.id === a.id);
-  const rank = (x, y) => TIER_ORDER[tiers[x.id].tier] - TIER_ORDER[tiers[y.id].tier] || (tiers[y.id].gain ?? -1) - (tiers[x.id].gain ?? -1);
-  return [0, 1, 2].map((r) => ({ rarity: RARITY_NAME[r], augs: state.data.augments.filter((a) => a.rarity === r && ok(a)).sort(rank).slice(0, per) }))
-    .filter((g) => g.augs.length);
-}
-
 // 산 아이템 평가: 이 챔피언(+고른 증강)에 잘 맞는지. 그 아이템을 빼고 다시 순위를 매겨서 몇 등인지로 판단
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
@@ -630,11 +618,6 @@ function sendOverlay() {
   if (!api || !api.set_overlay || !state.champ) return;
   const hud = [];
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
-  // 카드에 평가가 안 붙었을 때(선택지 모름) 대신 볼 추천 증강
-  if (!overlayCards.some(Boolean)) {
-    const top = topAugs();
-    if (top.length) hud.push((state.chosen.length ? "연계 좋은 증강 — " : "첫 증강 추천 — ") + top.map((g) => `${g.rarity}: ${g.augs.map((a) => a.name).join("·")}`).join(" / "));
-  }
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   hud.push(...enemyAdvice());
@@ -980,6 +963,13 @@ let augSeq = 0, augPickSeq = 0;
 function applyAug(A) {
   if (!A || !state.champ) return;
   const byName = (n) => (n ? state.data.augments.find((a) => a.name === n) || null : null);
+  // 게임 증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭으로 짐작한 건 틀릴 수 있었다: 2026-10-14 나피리 판)
+  const hud = (A.hudPicked || []).map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean).slice(0, 4);
+  if (hud.length && hud.map((a) => a.id).join() !== state.chosen.map((a) => a.id).join()) {
+    state.chosen = hud;
+    clearOffers();
+    renderAll();
+  }
   if (A.offers && A.seq !== augSeq) {
     augSeq = A.seq;
     if (state.chosen.length < 4) {

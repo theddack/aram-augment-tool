@@ -26,4 +26,6 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
       - name: 파이썬 테스트
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pip install numpy==2.3.3 pillow==12.3.0
+          python -m unittest discover -s tests -v

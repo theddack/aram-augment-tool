@@ -16,6 +16,7 @@ import time
 
 IS_WINDOWS = sys.platform == "win32"
 NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다 (게임 창 높이 비율)
+SHOP_BAND = (0.04, 0.45)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
@@ -55,6 +56,11 @@ class Matcher:
         if inside:
             k = max(inside, key=len)
             return self.names[k], 0.9
+        # 짧은 이름(3~5글자)은 한 글자만 틀려도 비율이 확 떨어진다 → 한 글자 차이까지 같은 이름 ('양파상' → 앙파상, 2026-10-14 실제)
+        if 3 <= len(t) <= 5:
+            near = [k for k in self.names if len(k) == len(t) and sum(a != b for a, b in zip(k, t)) == 1]
+            if len(near) == 1:
+                return self.names[near[0]], 0.8
         best, score = None, 0.0
         for k, n in self.names.items():
             if abs(len(k) - len(t)) > 3:
@@ -65,12 +71,9 @@ class Matcher:
         return (best, score) if score >= MIN_RATIO else (None, score)
 
 
-def segments(words, gap):
-    """OCR 단어들 [(글자, x, y, w, h)] → 같은 줄에서 간격이 gap 보다 크면 나눈 덩어리 [(글자, 가운데 x, y)]
-    세 카드 이름이 한 줄로 합쳐져 나와도 카드별로 나눈다"""
-    out = []
-    # 같은 줄 = 세로 가운데가 가까운 단어끼리 (글자 높이로 나누면 'Heavy'·'Hitter'·'to' 처럼 높이가 다른 단어가
-    # 서로 다른 줄로 갈라졌다: 2026-10-14 윈도우 가상 PC 실측)
+def rows_of(words):
+    """같은 줄 = 세로 가운데가 가까운 단어끼리 (글자 높이로 나누면 'Heavy'·'Hitter'·'to' 처럼 높이가 다른 단어가
+    서로 다른 줄로 갈라졌다: 2026-10-14 윈도우 가상 PC 실측)"""
     rows = []
     for wd in sorted(words, key=lambda r: r[2] + r[4] / 2):
         cy = wd[2] + wd[4] / 2
@@ -80,7 +83,27 @@ def segments(words, gap):
             row["h"] = max(row["h"], wd[4])
         else:
             rows.append({"cy": cy, "h": wd[4], "words": [wd]})
-    for row in (r["words"] for r in rows):
+    return [r["words"] for r in rows]
+
+
+def find_shop(words, width, height):
+    """상점 창이 열려 있으면 위쪽 탭 줄의 위치 {left, right, top} (게임 창 비율), 아니면 None.
+    탭 글자 '모든 아이템' 과 '아이템 세트'(또는 '추천')가 한 줄에 있으면 상점"""
+    for row in rows_of(words):
+        text = norm("".join(w[0] for w in sorted(row, key=lambda r: r[1])))
+        if "모든아이템" in text and ("아이템세트" in text or "추천" in text):
+            x0 = min(w[1] for w in row)
+            x1 = max(w[1] + w[3] for w in row)
+            y0 = min(w[2] for w in row)
+            return {"left": round(x0 / width, 4), "right": round(x1 / width, 4), "top": round(y0 / height, 4)}
+    return None
+
+
+def segments(words, gap):
+    """OCR 단어들 [(글자, x, y, w, h)] → 같은 줄에서 간격이 gap 보다 크면 나눈 덩어리 [(글자, 가운데 x, y)]
+    세 카드 이름이 한 줄로 합쳐져 나와도 카드별로 나눈다"""
+    out = []
+    for row in rows_of(words):
         row.sort(key=lambda r: r[1])
         cur = [row[0]]
         for r in row[1:]:
@@ -146,6 +169,23 @@ def card_at(pos, x, y):
         if cx is not None and abs(x - cx) <= CARD_HALF_W:
             return i
     return None
+
+
+def resolve_groups(groups, id_names, offered):
+    """증강 칸에서 읽은 그림 묶음들 → (정한 증강 id 목록, 못 정한 묶음 [이름 목록]).
+    그림이 같은 증강이 여럿이면(돌진=앙파상) 이번 게임 선택 화면에 떴던 이름으로 가린다"""
+    ids, unsure = [], []
+    for g in groups:
+        g = list(g)
+        if len(g) == 1:
+            ids.append(g[0])
+            continue
+        seen = [a for a in g if id_names.get(a) in offered]
+        if len(seen) == 1:
+            ids.append(seen[0])
+        else:
+            unsure.append([id_names.get(a, a) for a in (seen or g)])
+    return ids, unsure
 
 
 class Tracker:
@@ -352,10 +392,28 @@ class Reader(threading.Thread):
         self.beat = None
         self.last_ms = None
         self.near = None  # 반쯤 읽은 글자 (진단 기록용)
+        self.shop = None  # 상점 창 위치 (열려 있을 때만)
+        self.hud = None  # 증강 칸 아이콘 읽기 (hudicons.HudReader). numpy·Pillow 가 없으면 None
+        self.hud_ids = []  # 증강 칸에서 읽은 고른 증강 id (칸 순서)
+        self.icon_dir = None
+        self.offered = set()  # 이번 게임 선택 화면에서 본 증강 이름 (같은 그림 묶음을 가릴 때)
+        self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
 
     @property
     def state(self):
-        return {**self.tracker.state, "status": self.status, "ms": self.last_ms, "near": self.near}
+        return {**self.tracker.state, "status": self.status, "ms": self.last_ms, "near": self.near, "shop": self.shop,
+                "hudPicked": list(self.hud_ids), "hudUnsure": [list(g) for g in self.hud_unsure]}
+
+    def scan_hud(self, cap, rect):
+        import numpy as np
+        import hudicons
+        gx, gy, gw, gh = rect
+        l, t, r, b = hudicons.REGION
+        x0, y0, x1, y1 = int(gw * l), int(gh * t), int(gw * r), int(gh * b)
+        raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
+        rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]]
+        groups = self.hud.scan(rgb, gh, (x0, y0))
+        self.hud_ids, self.hud_unsure = resolve_groups(groups, self.id_names(), self.offered)
 
     def run(self):
         if not IS_WINDOWS:
@@ -367,6 +425,12 @@ class Reader(threading.Thread):
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
         self.lang = ocr.lang
+        if self.icon_dir:
+            try:
+                import hudicons
+                self.hud = hudicons.HudReader(hudicons.Templates(self.icon_dir, self.id_names()))
+            except Exception as e:  # numpy·Pillow 가 없거나 아이콘을 못 읽으면 이 기능만 끈다
+                self.hud_error = str(e)[:120]
         matcher, names = None, None
         while True:
             self.beat = time.time()
@@ -377,6 +441,7 @@ class Reader(threading.Thread):
                     self.status = "게임 창 기다리는 중" if self.enabled else "꺼짐"
                     if rect is None:
                         self.tracker.feed(None)
+                        self.shop = None
                     time.sleep(INTERVAL)
                     continue
                 cur = self.names_fn()
@@ -388,6 +453,18 @@ class Reader(threading.Thread):
             except Exception as e:
                 self.status = f"읽기 오류: {str(e)[:120]}"
             self.wait_clicks(mouse, rect)
+
+    def new_game(self):
+        """새 게임: 증강 칸에서 읽은 것을 비운다 (게임 창을 내렸다 올린 것만으로는 비우지 않는다)"""
+        if self.hud:
+            self.hud.reset()
+        self.hud_ids = []
+        self.hud_unsure = []
+        self.offered = set()
+
+    def id_names(self):
+        """{증강 id: 이름} (아이콘 파일 이름이 id)"""
+        return getattr(self, "_id_names", {}) or {}
 
     def wait_clicks(self, mouse, rect):
         """다음 읽기까지 쉬는 동안, 선택 화면이 떠 있으면 클릭한 카드를 기록한다"""
@@ -408,6 +485,7 @@ class Reader(threading.Thread):
         img = cap.grab(gx, gy + n0, gw, n1 - n0)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         words = [(t, x, y + n0, w, h) for t, x, y, w, h in ocr.words(img, gw, n1 - n0)]
         offers = find_offers(words, gw, gh, matcher)
+        self.offered.update(n for n, _, _ in offers)
         partial = False
         if not offers:
             # 이름이 하나라도 (일부라도) 맞으면 선택 화면이 아직 떠 있는 것 → 읽은 글자를 기록에 남긴다
@@ -417,3 +495,13 @@ class Reader(threading.Thread):
                 self.near = " | ".join(segs)[:160]
         self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
+        if offers or partial:
+            return
+        # 상점 창: 열려 있을 때만 게임 화면 상자를 그 옆에 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적)
+        s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
+        sw = [(t, x, y + s0, w, h) for t, x, y, w, h in ocr.words(cap.grab(gx, gy + s0, gw, s1 - s0), gw, s1 - s0)]
+        self.shop = find_shop(sw, gw, gh)
+        # 증강 칸 아이콘 (고른 증강의 정답): 5번에 한 번 (무거워서)
+        self._hud_n = getattr(self, "_hud_n", 0) + 1
+        if self.hud and self._hud_n % 5 == 1:
+            self.scan_hud(cap, rect)

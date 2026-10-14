@@ -319,6 +319,8 @@ class LiveWatcher(threading.Thread):
         now = time.time()
         # 증강 칸이 새로 보이면 바로 저장 (게임 데이터에 고른 증강이 들어오는지 확인용, 5분을 기다리지 않게)
         aug = tuple(st.get("augmentFields") or ())
+        if key != self._game_key and getattr(self, "on_new_game", None):
+            self.on_new_game()  # 새 게임: 증강 칸 읽기 초기화
         if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY or aug != getattr(self, "_last_aug", ()):
             self._last_aug = aug
             self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -495,6 +497,8 @@ class Diag(threading.Thread):
         except OSError:
             pass
 
+    names_of = staticmethod(lambda ids: [augment_id_names().get(i, i) for i in ids])
+
     def stacks(self):
         names = {t.ident: t.name for t in threading.enumerate()}
         out = []
@@ -528,6 +532,13 @@ class Diag(threading.Thread):
             self.write("증강 선택지: " + " / ".join(n or "?" for n in a["offers"]))
         if a.get("near") and a.get("near") != self._last_aug.get("near"):
             self.write(f"증강 인식 못 맞춘 글자: {a['near']}")
+        if bool(a.get("shop")) != bool(self._last_aug.get("shop")):
+            self.write("상점 창: " + ("열림 → 옆에 상자 표시" if a.get("shop") else "닫힘"))
+        if a.get("hudPicked") != self._last_aug.get("hudPicked") or a.get("hudUnsure") != self._last_aug.get("hudUnsure"):
+            names = self.names_of(a.get("hudPicked") or [])
+            unsure = " / ".join(" 또는 ".join(g) for g in a.get("hudUnsure") or [])
+            if names or unsure:
+                self.write("증강 칸: " + ", ".join(names) + (f" (못 정함: {unsure})" if unsure else ""))
         if a.get("pickSeq") != self._last_aug.get("pickSeq") and a.get("pickSeq"):
             self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
         self._last_aug = a
@@ -562,6 +573,14 @@ class Diag(threading.Thread):
 def platform_name():
     import platform
     return f"{platform.system()} {platform.release()} {platform.version()}"
+
+
+def augment_id_names():
+    """{증강 id: 이름} (진단 기록용)"""
+    try:
+        return {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
+    except (OSError, ValueError, KeyError):
+        return {}
 
 
 _aug_names = {"mtime": None, "names": []}
@@ -626,6 +645,8 @@ class Api:
             payload = dict(payload or {})
             payload["pos"] = self._settings.get("overlay_pos") or overlay.DEFAULT_POS
             # 증강 인식이 카드 위치를 읽었으면 그 자리에 붙인다 (짐작한 비율·블리츠 같은 다른 표시와 안 겹치게)
+            # 상점 창이 열려 있으면 그 옆에 상자를 (평소엔 상자를 안 띄운다: 게임을 가린다)
+            payload["shop"] = self._reader.state.get("shop") if self._reader else None
             cards = (self._reader.state.get("pos") if self._reader else None)
             if cards:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME}
@@ -820,6 +841,13 @@ def main():
         win = overlay._Win()
         reader = augocr.Reader(win.game_rect, augment_names)
         reader.enabled = watcher.enabled
+        # 증강 칸 아이콘 읽기: 받은 데이터의 증강 아이콘과 비교 (고른 증강의 정답)
+        reader.icon_dir = str(user_dir() / "web" / "icons" / "augment")
+        try:
+            reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
+        except (OSError, ValueError, KeyError):
+            reader._id_names = {}
+        watcher.on_new_game = reader.new_game
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
     geo = settings.get("geometry") or {}

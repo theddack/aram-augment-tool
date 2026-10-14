@@ -160,8 +160,14 @@ def layout(payload, w, h):
         cx = round(w * xs[i]) if xs and i < len(xs) and xs[i] is not None else int(w * (0.5 + (i - 1) * pos["spread"]))
         items.append(("card", cx, cy, card))
     hud = payload.get("hud") or []
-    if hud:
-        items.append(("hud", w - 16, 56, hud))
+    shop = payload.get("shop")
+    # 상자는 상점 창이 열려 있을 때만, 상점 창 왼쪽 바깥에 (오른쪽 위에 늘 띄우면 게임을 가렸다. 2026-10-14 지적)
+    # 상점이 화면 왼쪽에 붙어 있으면 오른쪽 바깥에
+    if hud and shop:
+        if shop["left"] > 0.22:
+            items.append(("hud", int(w * shop["left"]) - 12, int(h * shop["top"]), (hud, "ne")))
+        else:
+            items.append(("hud", int(w * shop["right"]) + 12, int(h * shop["top"]), (hud, "nw")))
     return items
 
 
@@ -187,9 +193,10 @@ def draw(canvas, payload, w, h, scale=1.0):
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
         elif kind == "hud":
-            lines = "\n".join(c)
-            t = canvas.create_text(x - 10, y, text=lines, anchor="ne", font=(font, small), fill="#e6e9ec",
-                                   width=int(w * 0.24))
+            lines_list, anchor = c if isinstance(c, tuple) else (c, "ne")
+            lines = "\n".join(lines_list)
+            t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, y, text=lines, anchor=anchor, font=(font, small),
+                                   fill="#e6e9ec", width=int(w * 0.22))
             hb = canvas.bbox(t)
             if hb:
                 canvas.create_rectangle(hb[0] - 10, hb[1] - 8, hb[2] + 10, hb[3] + 8, fill="#111820", outline="#c8aa6e")

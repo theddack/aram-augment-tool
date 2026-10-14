@@ -243,14 +243,14 @@ test("게임에서 산 부품도 고른 아이템 밑에 보인다", async () =>
   assert.match(p.text("#chosen-items"), /증폭의 고서/, "골드·부품만 바뀌어도 갱신");
 });
 
-test("게임 화면 상자: 카드 평가가 없으면 추천 증강 TOP, 산 아이템 평가", async () => {
+test("게임 화면 상자(상점 옆): 산 아이템 평가, 증강 TOP 은 넣지 않음", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Irelia", level: 6, items: ["3153"] });  // 몰락한 왕의 검
   p.w.sendOverlay();
   const hud = sent.at(-1).hud.join("\n");
-  assert.match(hud, /첫 증강 추천 — 실버: .+ \/ 골드: .+ \/ 프리즘: /);
+  assert.doesNotMatch(hud, /첫 증강 추천/, "상점 옆 상자엔 증강 TOP 을 넣지 않는다 (게임을 덜 가리게)");
   assert.match(hud, /산 아이템: 몰락한 왕의 검 (✅|👍)/);
   p.w.applyLive({ enabled: true, inGame: true, champion: "Irelia", level: 7, items: ["3153", "3089"] });  // 라바돈
   p.w.sendOverlay();
@@ -292,4 +292,15 @@ test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산�
   p.w.sendOverlay();
   assert.match(sent.at(-1).hud.join("\n"), /적 피해: 마법/);
   assert.deepEqual(p.errors, []);
+});
+
+test("증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭 짐작보다 우선)", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Naafiri", level: 9, items: [] });
+  p.w.applyAug({ offers: null, seq: 1, picked: "골드 강탈", pickedFrom: ["골드 강탈", "신성한 눈덩이", "거인"], pickSeq: 1 });
+  assert.match(p.text("#chosen"), /골드 강탈/);
+  const giant = p.data.augments.find((a) => a.name === "거인");
+  p.w.applyAug({ offers: null, seq: 1, picked: "골드 강탈", pickSeq: 1, hudPicked: [giant.id] });
+  assert.match(p.text("#chosen"), /거인/);
+  assert.doesNotMatch(p.text("#chosen"), /골드 강탈/, "증강 칸에 실제로 있는 것으로 바꾼다");
 });

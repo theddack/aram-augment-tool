@@ -10,3 +10,6 @@ winrt-Windows.Globalization==3.2.1; sys_platform == "win32"
 winrt-Windows.Graphics.Imaging==3.2.1; sys_platform == "win32"
 winrt-Windows.Media.Ocr==3.2.1; sys_platform == "win32"
 winrt-Windows.Storage.Streams==3.2.1; sys_platform == "win32"
+# 증강 칸 아이콘 읽기 (hudicons.py). 윈도우에서만
+numpy==2.3.3; sys_platform == "win32"
+pillow==12.3.0; sys_platform == "win32"
