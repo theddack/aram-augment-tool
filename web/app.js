@@ -177,6 +177,7 @@ function setTargetChamp(id) {
 
 function renderChamps() {
   const q = $("#champ-search").value.trim();
+  document.body.classList.toggle("searching", !!q);
   const list = state.data.champions.filter((c) => !q || c.name.includes(q) || c.id.toLowerCase().includes(q.toLowerCase()));
   $("#champ-grid").innerHTML = list.map((c) => `
     <div class="champ ${state.champ && state.champ.id === c.id ? "on" : ""}" data-id="${c.id}">
@@ -1002,6 +1003,8 @@ let liveLast = "";
 let liveEnded = false;
 function applyLive(L) {
   const el = $("#live-status");
+  // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
+  document.body.classList.toggle("ingame", !!(L && L.enabled && L.inGame));
   if (!L || !L.enabled) { el.textContent = ""; return; }
   if (!L.inGame) {
     el.textContent = "게임 대기 중";

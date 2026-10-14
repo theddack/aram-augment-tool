@@ -229,3 +229,6 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 .verdict { grid-column: 1 / -1; }
 .verdict b { font-weight: 500; }
 .enemy-advice { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+/* 게임 중엔 챔피언 목록을 접는다 (검색 중이면 보임) */
+body.ingame #champ-grid { display: none; }
+body.ingame.searching #champ-grid { display: grid; }

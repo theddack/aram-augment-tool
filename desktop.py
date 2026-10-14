@@ -558,6 +558,7 @@ class Diag(threading.Thread):
         self._last_aug = a
 
     FREEZE_AFTER = 45  # 초. 진단 스레드조차 이만큼 못 돌면 프로그램 전체가 멈춘 것
+    TRIM_EVERY = 120  # 초. 안 쓰는 메모리를 윈도우에 돌려주는 간격 (메모리 최소화)
 
     def run(self):
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}")
@@ -574,6 +575,9 @@ class Diag(threading.Thread):
             if fh:
                 faulthandler.dump_traceback_later(self.FREEZE_AFTER, repeat=False, file=fh)  # 다시 부르면 앞 예약은 취소된다
             time.sleep(self.CHECK)
+            self._n = getattr(self, "_n", 0) + 1
+            if self._n % (self.TRIM_EVERY // self.CHECK) == 0:
+                trim_memory()
             try:
                 self.check()
                 size = fpath.stat().st_size if fpath.exists() else 0
@@ -854,7 +858,9 @@ def lower_priority():
 
 # 화면 엔진(WebView2) 설정: 애드온 화면은 글자·아이콘뿐이라 GPU 가 필요 없다. GPU 프로세스를 끄면 메모리가 줄고
 # 게임이 쓰는 GPU 를 나눠 쓰지 않는다. 화면 프로세스도 하나로 (메모리 최소화 요청 2026-10-14)
-WEBVIEW2_ARGS = "--disable-gpu --disable-gpu-compositing --renderer-process-limit=1 --disable-features=msSmartScreenProtection"
+WEBVIEW2_ARGS = ("--disable-gpu --disable-gpu-compositing --in-process-gpu --renderer-process-limit=1 "
+                 "--enable-low-end-device-mode --disable-background-networking --disable-component-update "
+                 "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter")
 
 
 def trim_memory():
