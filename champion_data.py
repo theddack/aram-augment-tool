@@ -66,7 +66,7 @@ def sentence_at(text, idx):
     return re.sub(r"<[^>]+>", "", text[start + 1:end])  # {{ 자리표시자 }}는 남겨서 나중에 숫자로 채운다
 
 
-def resolve_tooltip(tooltip, calc, ranks, other_spell=None, infer=False):
+def resolve_tooltip(tooltip, calc, ranks, other_spell=None, infer=False, hp_pct=False):
     """자리표시자를 랭크별 수치로 채우고, 효과 목록을 뽑는다."""
     effects, unresolved = [], []
     out = []
@@ -120,10 +120,10 @@ def resolve_tooltip(tooltip, calc, ranks, other_spell=None, infer=False):
         before = re.sub(r"<[^>]+>", "", tooltip[max(0, m.start() - 40):m.start()])
         ctx = sentence_at(tooltip, m.start())
         # 상대 체력 % 피해: '최대 체력의 2%에 해당하는 마법 피해' → 계수 TGT_MAXHP 0.02
-        if followed_by_pct and infer:
+        if followed_by_pct and (infer or hp_pct):  # 챔피언 스킬은 이 체력 % 판정만 쓴다 (hp_pct)
             hp = re.search(r"(최대|현재|잃은)\s*체력의\s*$", before.strip() + "")
             # '…%에 해당하는 피해를 입히면' 은 발동 조건이지 피해가 아니다 (폭풍 쇄도 등)
-            is_condition = re.search(r"^%?[^.]{0,20}(입히면|입힐 경우|이상|미만|아래)", after)
+            is_condition = re.search(r"^%?[^.]{0,20}(입히면|입힐 경우|이상|미만|아래|소모|소비|가 되|입[지습]|받)", after)  # 소모 = 체력 비용
             if hp and not is_condition and all(e.is_number() for e in exprs):
                 hkind = kind or next((k for k, pat in PCT_KIND if pat.search(after)), None)
                 if hkind:
@@ -265,9 +265,19 @@ def process_champion(cid, detail, bin_json):
         ranks = sp.get("maxrank", 5)
         calc = Calc(spell)
         text, effects, unresolved = resolve_tooltip(sp["tooltip"], calc, ranks,
-                                                    lambda sid: find_spell(bin_json, sid))
+                                                    lambda sid: find_spell(bin_json, sid), hp_pct=True)
         for e in effects:
             e.pop("_ctx", None)
+        # 상대 체력 % 피해가 같은 종류로 둘 이상이면(기본/최대, 다른 스킬 참조 중복) 큰 것 하나만
+        tgt = {}
+        for e in effects:
+            k = next((k for k in e.get("ratios", {}) if k.startswith("TGT_")), None)
+            if k:
+                cur = tgt.get((e["kind"], k))
+                if not cur or max(e["ratios"][k]) > max(cur["ratios"][k]):
+                    tgt[(e["kind"], k)] = e
+        effects = [e for e in effects if not any(k.startswith("TGT_") for k in e.get("ratios", {}))
+                   or e in tgt.values()]
         unresolved_total += len(unresolved)
         cd = (spell.get("cooldownTime") or [])[1:ranks + 1] or sp.get("cooldown", [])
         cost = (spell.get("mana") or [])[1:ranks + 1] or sp.get("cost", [])

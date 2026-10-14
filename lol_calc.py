@@ -7,7 +7,7 @@
 import re
 
 # 계산식의 mStat 번호 → (키, 표시 이름).
-# 173명 스킬에서 번호별 사용처를 뽑아 실제 계수와 대조해 확정했다 (README 참고).
+# 173명 스킬에서 번호별 사용처를 뽑아 실제 계수와 대조해 확정했다 (docs/개발자_문서.md 참고).
 STAT = {
     0: ("AP", "주문력"), 1: ("ARMOR", "방어력"), 2: ("AD", "공격력"), 4: ("AS", "공격 속도"),
     6: ("MR", "마법 저항력"), 7: ("MS", "이동 속도"), 8: ("CRIT", "치명타 확률"),
@@ -174,6 +174,8 @@ class Calc:
             if a.is_number():
                 return b.scale(a.base)
             return None
+        if t == "BuffCounterByCoefficientCalculationPart":  # 게임 중 쌓는 중첩 × 계수 → '중첩당 N' (계산에는 0중첩)
+            return Expr(ratios={"STACKS": p.get("mCoefficient", 0)})
         if "mSpellCalculationKey" in p:  # 다른 계산식 참조
             return self.calc(p["mSpellCalculationKey"], rank, depth + 1)[0]
         return None
@@ -240,7 +242,12 @@ def fmt_expr_ranks(exprs, pct=False):
         for key in e.ratios:
             if key not in keys:
                 keys.append(key)
+    if keys == ["STACKS"] and not parts and abs(exprs[-1].ratios["STACKS"] - 1) < 1e-9:
+        return "(게임 중 집계)"  # 중첩 수 그대로 = 플레이 중 누적값 (드레이븐 획득 골드 등)
     for key in keys:
+        if key == "STACKS":
+            parts.append(f"중첩당 {fmt_num(exprs[-1].ratios[key] * k)}{unit}")
+            continue
         vals = [fmt_num(e.ratios.get(key, 0) * 100) for e in exprs]
         uniq = list(dict.fromkeys(vals))
         parts.append(f"{'/'.join(vals) if len(uniq) > 1 else uniq[0]}% {stat_label(key)}")
