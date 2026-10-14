@@ -25,8 +25,8 @@ import webview
 import lcu
 import overlay
 
-APP = "AramAugment"
-TITLE = "칼바람 증강 계산기"
+APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
+TITLE = "칼바람 증강 Addon"
 CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css")
 
 
@@ -347,7 +347,8 @@ def main():
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,
-        width=geo.get("w", 1400), height=geo.get("h", 900), x=geo.get("x"), y=geo.get("y"),
+        # 위치(x, y)는 창이 뜬 뒤에 옮긴다. 만들 때 넘기면 맥에서 화면이 정해지기 전에 옮기려다 멈춘다
+        width=geo.get("w", 1400), height=geo.get("h", 900),
         min_size=(420, 500), on_top=bool(settings.get("on_top", False)),
     )
     api.window = window
@@ -359,6 +360,21 @@ def main():
             pass
 
     window.events.closing += on_closing
+
+    def on_shown():
+        # 저장된 위치가 지금 연결된 화면 안일 때만 옮긴다 (보조 모니터를 뺐으면 기본 위치 그대로)
+        x, y = geo.get("x"), geo.get("y")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+            return
+        try:
+            inside = any(sc.x - 40 <= x < sc.x + sc.width - 80 and sc.y - 40 <= y < sc.y + sc.height - 80
+                         for sc in webview.screens)
+            if inside:
+                window.move(int(x), int(y))
+        except Exception:
+            pass
+
+    window.events.shown += on_shown
     # http_server: 로컬 파일을 http 로 서빙해야 화면의 fetch("data.json") 이 동작한다
     webview.start(http_server=True, debug="--debug" in sys.argv)
 

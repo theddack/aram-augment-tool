@@ -1,4 +1,4 @@
-# 칼바람 증강 계산기
+# 칼바람 증강 Addon
 
 > 라이엇 게임즈와 무관한 팬 제작 도구입니다. League of Legends 및 관련 이미지·데이터는 Riot Games, Inc.의 자산입니다.
 
@@ -16,9 +16,9 @@
 
 | OS | 빌드 | 결과 |
 |---|---|---|
-| 맥 | `./build_mac.sh` | `dist/AramAugment.app` |
+| 맥 | `./build_mac.sh` | `dist/칼바람증강Addon.app` |
 | 릴리스 | `git tag v0.x.y && git push origin v0.x.y` | GitHub Actions 가 윈도우·맥을 빌드해 릴리스에 zip 업로드 |
-| 윈도우 | `build_windows.bat` 더블클릭 (Python 3.12 + WebView2 필요) | `dist\AramAugment\AramAugment.exe` |
+| 윈도우 | `build_windows.bat` 더블클릭 (Python 3.12 + WebView2 필요) | `dist\칼바람증강Addon\칼바람증강Addon.exe` |
 
 개발 중 실행: `.venv/bin/python desktop.py` (`--debug` 로 개발자 도구)
 
