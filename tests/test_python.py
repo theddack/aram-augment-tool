@@ -416,6 +416,22 @@ class AugOcr(unittest.TestCase):
         # 이름 줄 밖(위쪽 글자)은 무시
         self.assertEqual(self.o.find_offers([(t, x, 50, w, h) for t, x, _, w, h in words], W, H, self.m), [])
 
+    def test_card_pos_for_overlay(self):
+        import overlay
+        W, H = 1920, 1080
+        offers = [("눈 폭발", 620, 497), ("강타자", 945, 497), ("정신 변환", 1300, 497)]
+        pos = self.o.card_pos(offers, W, H)
+        self.assertEqual(pos["xs"], [round(620 / W, 4), round(945 / W, 4), round(1300 / W, 4)])
+        self.assertAlmostEqual(pos["nameY"], 497 / H, places=3)
+        # 두 장만 읽혀도 빈 칸은 간격으로 채운다
+        two = self.o.card_pos([offers[0], offers[2]], W, H)
+        self.assertAlmostEqual(two["xs"][1], (620 + 1300) / 2 / W, places=3)
+        # 게임 화면 표시는 읽은 카드 자리에 붙는다
+        items = overlay.layout({"cards": [{"label": "a"}] * 3, "pos": {**overlay.DEFAULT_POS, "xs": pos["xs"],
+                                                                          "y": pos["nameY"] + overlay.BELOW_NAME}}, W, H)
+        self.assertEqual([x for _, x, _, _ in items], [620, 945, 1300])
+        self.assertEqual(items[0][2], int(H * (497 / H + overlay.BELOW_NAME)))
+
     def test_gold_frame(self):
         gold = lambda x, y: (240, 210, 150)  # noqa: E731
         silver = lambda x, y: (200, 205, 210)  # noqa: E731

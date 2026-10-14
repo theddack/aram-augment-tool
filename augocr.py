@@ -88,12 +88,29 @@ def find_offers(words, width, height, matcher):
 
 def slots(offers, width):
     """[(이름, x, y)] → 왼쪽·가운데·오른쪽 3칸. 3개면 순서대로, 2개면 화면 위치(3등분)로"""
+    return [o[0] if o else None for o in _slot_items(offers, width)]
+
+
+def _slot_items(offers, width):
     if len(offers) == 3:
-        return [o[0] for o in offers]
+        return list(offers)
     out = [None, None, None]
-    for n, x, _ in offers:
-        out[min(2, max(0, int(x / width * 3)))] = n
+    for o in offers:
+        out[min(2, max(0, int(o[1] / width * 3)))] = o
     return out
+
+
+def card_pos(offers, width, height):
+    """게임 화면 표시가 카드에 정확히 붙도록: 칸별 카드 가운데 x, 이름 줄 y (게임 창 비율). 못 읽은 칸은 옆 칸 간격으로 추정"""
+    items = _slot_items(offers, width)
+    xs = [o[1] / width if o else None for o in items]
+    known = [(i, x) for i, x in enumerate(xs) if x is not None]
+    if len(known) >= 2:
+        (i0, x0), (i1, x1) = known[0], known[-1]
+        step = (x1 - x0) / (i1 - i0)
+        xs = [x if x is not None else x0 + (i - i0) * step for i, x in enumerate(xs)]
+    ys = [o[2] / height for o in offers]
+    return {"xs": [round(x, 4) for x in xs], "nameY": round(sum(ys) / len(ys), 4)}
 
 
 def gold_score(pixel_at, cx, frame_y, width):
@@ -131,9 +148,11 @@ class Tracker:
         self._gold = []
         self._last = None
 
-    def feed(self, offers3, gold):
+    def feed(self, offers3, gold, pos=None):
         if offers3:
             self._miss = 0
+            if pos and pos != self.state.get("pos"):
+                self.state = {**self.state, "pos": pos}
             self._gold = (self._gold + [gold])[-3:]
             if offers3 != self._last:  # 새 선택지 (새로고침 포함)
                 self._last = offers3
@@ -144,7 +163,7 @@ class Tracker:
         self._miss += 1
         if self._miss >= self.CLOSE_AFTER:
             p = picked(self._gold)
-            self.state = {**self.state, "offers": None, "picked": p, "pickedFrom": self._last,
+            self.state = {**self.state, "offers": None, "pos": None, "picked": p, "pickedFrom": self._last,
                           "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._gold, self._miss = None, [], 0
 
@@ -294,5 +313,5 @@ class Reader(threading.Thread):
             i = (y * gw + x) * 4
             return img[i + 2], img[i + 1], img[i]
         gold = {n: gold_score(pixel_at, x, y - gh * FRAME_ABOVE, gw) for n, x, y in offers}
-        self.tracker.feed(slots(offers, gw) if offers else None, gold)
+        self.tracker.feed(slots(offers, gw) if offers else None, gold, card_pos(offers, gw, gh) if offers else None)
         self.status = "증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님"

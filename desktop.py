@@ -602,6 +602,10 @@ class Api:
         if self._ov:
             payload = dict(payload or {})
             payload["pos"] = self._settings.get("overlay_pos") or overlay.DEFAULT_POS
+            # 증강 인식이 카드 위치를 읽었으면 그 자리에 붙인다 (짐작한 비율·블리츠 같은 다른 표시와 안 겹치게)
+            cards = (self._reader.state.get("pos") if self._reader else None)
+            if cards:
+                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME}
             self._ov.update(payload)
         return True
 

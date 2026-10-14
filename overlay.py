@@ -21,6 +21,9 @@ TIER_COLORS = {"S": "#ff7043", "A": "#ffb300", "B": "#9ccc65", "C": "#90a4ae", "
 # 기본 위치: 위키의 칼바람 증강 선택 화면 스크린샷 기준 추정 (카드 안 설명 밑 빈 곳, 카드 간격 ≈ 화면 폭 25%).
 # 실제 화면에서 '위치 맞추기' 슬라이더로 조정한다
 DEFAULT_POS = {"y": 0.70, "spread": 0.246}
+# 증강 인식으로 카드 이름 줄 위치를 알면: 이름 줄 + 이만큼 (게임 창 높이 비율) 밑에 붙인다.
+# 실제 화면(2026-10-14): 이름 0.46 · 설명 0.53~0.57 · 빈 곳 0.59~0.69 · 블리츠 배지 0.70~ → 설명 밑 빈 곳 위쪽
+BELOW_NAME = 0.15
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -150,10 +153,11 @@ def layout(payload, w, h):
     pos = {**DEFAULT_POS, **(payload.get("pos") or {})}
     items = []
     cy = int(h * pos["y"])
+    xs = pos.get("xs")
     for i, card in enumerate((payload.get("cards") or [None] * 3)[:3]):
         if not card:
             continue
-        cx = int(w * (0.5 + (i - 1) * pos["spread"]))
+        cx = round(w * xs[i]) if xs and i < len(xs) and xs[i] is not None else int(w * (0.5 + (i - 1) * pos["spread"]))
         items.append(("card", cx, cy, card))
     hud = payload.get("hud") or []
     if hud:
