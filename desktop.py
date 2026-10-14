@@ -17,6 +17,7 @@ import ssl
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -27,7 +28,14 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html", "sources.html")
+APP_VERSION = "0.1.5"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
+RELEASES_API = "https://api.github.com/repos/theddack/aram-augment-tool/releases/latest"
+RELEASES_PAGE = "https://github.com/theddack/aram-augment-tool/releases/latest"
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3])
+CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html", "sources.html", "sources.js")
 
 
 def resource_dir():
@@ -71,7 +79,25 @@ def prepare_web():
 
 # ---------------------------------------------------------------- 게임 연동
 # 롤 게임 중 데이터 API: 게임 중에만 내 PC(127.0.0.1:2999)에서 열린다. 자체 서명 인증서라 검증을 끈다.
-LIVE_URL = os.environ.get("ARAM_LIVE_URL", "https://127.0.0.1:2999/liveclientdata/allgamedata")
+LIVE_URL_DEFAULT = "https://127.0.0.1:2999/liveclientdata/allgamedata"
+
+
+def live_url():
+    """게임 중 데이터 주소. 시험용 ARAM_LIVE_URL 은 이 컴퓨터(127.0.0.1·localhost) 주소만 받는다.
+
+    인증서 검증을 끄고 접속하므로(롤이 자체 서명 인증서를 씀) 다른 컴퓨터 주소로는 보내지 않는다.
+    """
+    url = os.environ.get("ARAM_LIVE_URL")
+    if url:
+        host = urllib.parse.urlsplit(url).hostname
+        if host in ("127.0.0.1", "localhost", "::1"):
+            return url
+        print("ARAM_LIVE_URL 무시: 이 컴퓨터 주소가 아님 →", host)
+    return LIVE_URL_DEFAULT
+
+
+LIVE_URL = live_url()
+LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
 LIVE_INTERVAL = 3  # 초
 SNAPSHOT_EVERY = 300  # 같은 게임에서 원본을 다시 저장하는 간격(초). 증강 필드 확인용
 _insecure = ssl.create_default_context()
@@ -117,6 +143,51 @@ def parse_live(raw):
     }
 
 
+NAME_KEYS = ("riotId", "riotIdGameName", "riotIdTagLine", "summonerName", "riotIdTagline")
+
+
+def redact_names(raw):
+    """기록 파일용: 소환사 이름(라이엇 ID)을 '플레이어0'(나)·'플레이어1'… 로 바꾼다. 같은 사람은 같은 번호.
+
+    riotId("이름#태그")·summonerName 은 번호로, riotIdGameName 은 같은 번호로, 태그는 지운다.
+    이벤트 목록의 KillerName 같은 다른 칸에 이름이 나와도 같은 번호로 바꾼다.
+    """
+    ap = raw.get("activePlayer") or {}
+    order = [ap.get("riotId") or ap.get("summonerName")]
+    order += [p.get("riotId") or p.get("summonerName") for p in raw.get("allPlayers") or []]
+    names = {}
+    for n in order:
+        if n and n not in names:
+            names[n] = f"플레이어{len(names)}"
+    for full, label in list(names.items()):  # '이름#태그' 의 이름만 나오는 칸
+        names.setdefault(full.split("#")[0], label)
+
+    def walk(o, key=None):
+        if isinstance(o, dict):
+            return {k: walk(v, k) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(x) for x in o]
+        if isinstance(o, str):
+            if key in ("riotIdTagLine", "riotIdTagline"):
+                return ""
+            if o in names:
+                return names[o]
+            if key in NAME_KEYS:
+                return "플레이어?"
+        return o
+    return walk(raw)
+
+
+def prune_logs(log_dir, keep):
+    """오래된 게임 기록 지우기 (최근 keep 개만)"""
+    files = sorted(log_dir.glob("game_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in files[keep:]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 class LiveWatcher(threading.Thread):
     """프로그램이 켜져 있는 동안 게임 중 데이터를 주기적으로 읽는다. 게임마다 원본을 logs/ 에 저장."""
 
@@ -157,7 +228,8 @@ class LiveWatcher(threading.Thread):
         if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
-            (self.log_dir / name).write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+            (self.log_dir / name).write_text(json.dumps(redact_names(raw), ensure_ascii=False, indent=1), encoding="utf-8")
+            prune_logs(self.log_dir, LOG_KEEP)
             self._game_key, self._last_snap = key, now
             st["savedSnapshot"] = name
 
@@ -208,96 +280,119 @@ class Settings:
 
 
 class Api:
-    """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들"""
+    """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들
+
+    pywebview 는 이 객체의 밑줄 없는 속성을 재귀적으로 전부 JS 에 내보낸다 (속성 객체의 메서드까지).
+    그래서 내부 객체(설정·창·롤 클라이언트 등)는 반드시 밑줄 이름으로 둔다. 밑줄 없는 건 아래 메서드 15개뿐이어야 한다.
+    (예전에는 settings.path.write_text, lcu.client.req 같은 함수까지 500개 넘게 노출됐다)
+    """
 
     def __init__(self, settings, watcher=None, ov=None, lcu_watcher=None):
-        self.settings = settings
-        self.window = None
-        self.watcher = watcher
-        self.ov = ov
-        self.lcu = lcu_watcher
+        self._settings = settings
+        self._window = None
+        self._watcher = watcher
+        self._ov = ov
+        self._lcu = lcu_watcher
         self._lock = threading.Lock()
 
     # ---- 게임 화면 표시 (윈도우)
     def set_overlay(self, payload):
-        if self.ov:
+        if self._ov:
             payload = dict(payload or {})
-            payload["pos"] = self.settings.get("overlay_pos") or overlay.DEFAULT_POS
-            self.ov.update(payload)
+            payload["pos"] = self._settings.get("overlay_pos") or overlay.DEFAULT_POS
+            self._ov.update(payload)
         return True
 
     def set_overlay_enabled(self, on):
-        if self.ov:
-            self.ov.set_enabled(on)
-        self.settings.set(overlay=bool(on))
+        if self._ov:
+            self._ov.set_enabled(on)
+        self._settings.set(overlay=bool(on))
         return bool(on)
 
     def set_overlay_pos(self, y, spread):
-        self.settings.set(overlay_pos={"y": float(y), "spread": float(spread)})
+        self._settings.set(overlay_pos={"y": float(y), "spread": float(spread)})
         return True
 
     def set_overlay_preview(self, on):
-        if self.ov:
-            self.ov.set_preview(on)
+        if self._ov:
+            self._ov.set_preview(on)
         return bool(on)
 
     def overlay_status(self):
-        return {"supported": overlay.IS_WINDOWS, "status": self.ov.status if self.ov else "꺼짐"}
+        return {"supported": overlay.IS_WINDOWS, "status": self._ov.status if self._ov else "꺼짐"}
 
     # ---- 롤 클라이언트 (아이템 세트)
     def get_lcu(self):
-        return self.lcu.state if self.lcu else {"connected": False}
+        return self._lcu.state if self._lcu else {"connected": False}
 
     def write_item_set(self, champion_key, title, blocks):
         """상점 추천 칸에 우리 빌드 등록. 게임 시작 전(챔피언 선택 중)에 해야 상점에 반영된다"""
-        if not self.lcu or not self.lcu.client:
+        if not self._lcu or not self._lcu.client:
             return {"ok": False, "error": "롤 클라이언트에 연결되지 않았어요"}
         try:
-            n = self.lcu.client.write_item_set(champion_key, title, blocks)
+            champion_key, title, blocks = lcu.clean_item_set(champion_key, title, blocks)
+        except ValueError as e:
+            return {"ok": False, "error": f"잘못된 아이템 세트: {e}"}
+        try:
+            n = self._lcu.client.write_item_set(champion_key, title, blocks, backup_dir=str(user_dir() / "itemset_backup"))
             return {"ok": True, "blocks": n}
         except Exception as e:
             return {"ok": False, "error": str(e)[:200]}
 
     def get_live(self):
         """게임 연동 상태 (화면이 몇 초마다 부른다)"""
-        if not self.watcher:
+        if not self._watcher:
             return {"inGame": False, "disabled": True}
-        return {**self.watcher.state, "enabled": self.watcher.enabled, "logDir": str(self.watcher.log_dir)}
+        return {**self._watcher.state, "enabled": self._watcher.enabled, "logDir": str(self._watcher.log_dir)}
 
     def set_live(self, on):
-        if self.watcher:
-            self.watcher.enabled = bool(on)
-            self.settings.set(live=bool(on))
+        if self._watcher:
+            self._watcher.enabled = bool(on)
+            self._settings.set(live=bool(on))
         return bool(on)
 
     def get_state(self):
-        return {"onTop": bool(self.settings.get("on_top", False)), "desktop": True,
-                "live": bool(self.settings.get("live", True)),
-                "overlay": bool(self.settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
-                "overlayPos": self.settings.get("overlay_pos") or overlay.DEFAULT_POS,
-                "itemSets": bool(self.settings.get("item_sets", True))}
+        return {"onTop": bool(self._settings.get("on_top", False)), "desktop": True,
+                "live": bool(self._settings.get("live", True)),
+                "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
+                "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
+                "itemSets": bool(self._settings.get("item_sets", True))}
 
     def set_item_sets(self, on):
-        self.settings.set(item_sets=bool(on))
+        self._settings.set(item_sets=bool(on))
         return bool(on)
 
     def set_on_top(self, on):
-        self.window.on_top = bool(on)
-        self.settings.set(on_top=bool(on))
+        self._window.on_top = bool(on)
+        self._settings.set(on_top=bool(on))
         return bool(on)
 
     def set_mini(self, on):
         """작게 보기: 창 크기를 줄이고(게임 옆에 띄우기), 끄면 원래 크기로"""
         if on:
-            if not self.settings.get("mini"):
-                self.settings.set(full_size=[self.window.width, self.window.height])
-            w, h = self.settings.get("mini_size") or (440, 760)
-            self.window.resize(int(w), int(h))
+            if not self._settings.get("mini"):
+                self._settings.set(full_size=[self._window.width, self._window.height])
+            w, h = self._settings.get("mini_size") or (440, 760)
+            self._window.resize(int(w), int(h))
         else:
-            w, h = self.settings.get("full_size") or (1400, 900)
-            self.window.resize(int(w), int(h))
-        self.settings.set(mini=bool(on))
+            w, h = self._settings.get("full_size") or (1400, 900)
+            self._window.resize(int(w), int(h))
+        self._settings.set(mini=bool(on))
         return bool(on)
+
+    def check_app_update(self):
+        """새 프로그램 버전이 있는지만 알려 준다 (받기는 공식 릴리스 페이지에서 직접).
+
+        프로그램이 스스로 파일을 받아 바꾸지 않는다: 코드 서명이 없어서, 자동 교체는 변조된 파일을 실행하는 통로가 된다.
+        """
+        try:
+            req = urllib.request.Request(RELEASES_API, headers={"User-Agent": APP, "Accept": "application/vnd.github+json"})
+            rel = json.loads(urllib.request.urlopen(req, timeout=8).read())
+            latest = str(rel.get("tag_name", "")).lstrip("v")
+        except Exception as e:
+            return {"current": APP_VERSION, "latest": None, "error": str(e)[:120]}
+        newer = bool(latest) and version_tuple(latest) > version_tuple(APP_VERSION)
+        return {"current": APP_VERSION, "latest": latest, "newer": newer, "url": RELEASES_PAGE}
 
     def check_update(self):
         """설치된 데이터 패치 버전과 최신 패치 버전 비교"""
@@ -327,7 +422,7 @@ class Api:
         finally:
             self._lock.release()
         if ok:
-            self.window.evaluate_js("location.reload()")
+            self._window.evaluate_js("location.reload()")
         return {"ok": ok, "log": buf.getvalue()[-2000:]}
 
 
@@ -351,7 +446,7 @@ def main():
         width=geo.get("w", 1400), height=geo.get("h", 900),
         min_size=(420, 500), on_top=bool(settings.get("on_top", False)),
     )
-    api.window = window
+    api._window = window
 
     def on_closing():
         try:

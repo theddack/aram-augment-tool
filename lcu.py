@@ -3,6 +3,7 @@
 - LCU 는 라이엇이 '서드파티 공식 지원 아님'으로 둔 클라이언트 내부 API다. 블리츠·OP.GG 등도 아이템 세트에 쓴다.
 - 접속 정보는 클라이언트 설치 폴더의 lockfile (이름:pid:포트:비밀번호:프로토콜) 에 있다. 클라이언트가 켜져 있을 때만 있다.
 - 우리가 만든 세트만 uid 접두어로 구분해서 교체한다. 사용자가 직접 만든 세트는 건드리지 않는다.
+  목록을 못 읽으면 저장하지 않고, 저장 전 목록은 사용자 폴더 itemset_backup/ 에 남긴다.
 """
 import base64
 import json
@@ -75,12 +76,23 @@ class Lcu:
         s = self.req("GET", "/lol-summoner/v1/current-summoner")
         return s.get("summonerId"), s.get("accountId")
 
-    def write_item_set(self, champion_key, title, blocks, map_id=12):
-        """우리 세트를 교체 등록한다. blocks = [{"type": 블록 이름, "items": [아이템 ID, …]}]"""
+    def write_item_set(self, champion_key, title, blocks, map_id=12, backup_dir=None):
+        """우리 세트를 교체 등록한다. blocks = [{"type": 블록 이름, "items": [아이템 ID, …]}]
+
+        LCU 는 세트 목록을 통째로 저장(PUT)하는 방식이라, 지금 목록을 읽어 우리 세트만 바꿔 끼운다.
+        읽기에 실패했거나 응답이 이상하면 저장하지 않는다 (빈 목록으로 저장하면 사용자 세트가 전부 지워진다).
+        저장 전 목록은 backup_dir 에 남긴다 (최근 10개).
+        """
         sid, account = self.summoner_id()
-        path = f"/lol-item-sets/v1/item-sets/{sid}/sets"
-        cur = self.req("GET", path) or {}
-        sets = [s for s in cur.get("itemSets", []) if not str(s.get("uid", "")).startswith(UID_PREFIX)]
+        if not sid:
+            raise RuntimeError("소환사 정보를 못 읽어서 저장하지 않았어요")
+        path = f"/lol-item-sets/v1/item-sets/{int(sid)}/sets"
+        cur = self.req("GET", path)
+        if not isinstance(cur, dict) or not isinstance(cur.get("itemSets"), list):
+            raise RuntimeError("지금 아이템 세트 목록을 못 읽어서 저장하지 않았어요 (사용자 세트 보호)")
+        if backup_dir:
+            save_backup(backup_dir, cur)
+        sets = [s for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX)]
         sets.insert(0, {
             "uid": f"{UID_PREFIX}{champion_key}",
             "title": title,
@@ -89,6 +101,42 @@ class Lcu:
             "preferredItemSlots": [],
             "blocks": [{"type": b["type"], "items": [{"id": str(i), "count": 1} for i in b["items"]]} for b in blocks],
         })
+        kept = len(sets) - 1
+        before = sum(1 for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX))
+        if kept != before:  # 사용자 세트 수가 그대로인지 한 번 더 (코드 실수 방지)
+            raise RuntimeError("사용자 세트 수가 달라져서 저장하지 않았어요")
         self.req("PUT", path, {"accountId": cur.get("accountId", account), "itemSets": sets,
                                "timestamp": int(time.time() * 1000)})
         return len(blocks)
+
+
+def save_backup(backup_dir, item_sets):
+    """저장하기 전 아이템 세트 목록 (되돌릴 때 쓰기). 최근 10개만 남긴다."""
+    os.makedirs(backup_dir, exist_ok=True)
+    name = os.path.join(backup_dir, time.strftime("itemsets_%Y%m%d_%H%M%S.json"))
+    with open(name, "w", encoding="utf-8") as f:
+        json.dump(item_sets, f, ensure_ascii=False)
+    files = sorted((os.path.join(backup_dir, x) for x in os.listdir(backup_dir) if x.startswith("itemsets_")),
+                   key=os.path.getmtime, reverse=True)
+    for old in files[10:]:
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+
+
+def clean_item_set(champion_key, title, blocks):
+    """화면(JS)에서 받은 아이템 세트 값을 검사한다. 숫자 ID·짧은 글자만 통과."""
+    key = int(champion_key)
+    if not 0 < key < 100000:
+        raise ValueError("챔피언 번호")
+    title = str(title)[:60]
+    if not isinstance(blocks, list) or not 0 < len(blocks) <= 10:
+        raise ValueError("블록 수")
+    out = []
+    for b in blocks:
+        items = [int(i) for i in (b.get("items") or [])][:12]
+        if not all(0 < i < 10_000_000 for i in items):
+            raise ValueError("아이템 ID")
+        out.append({"type": str(b.get("type", ""))[:60], "items": items})
+    return key, title, out
