@@ -529,12 +529,29 @@ class Diag(threading.Thread):
             self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
         self._last_aug = a
 
+    FREEZE_AFTER = 45  # 초. 진단 스레드조차 이만큼 못 돌면 프로그램 전체가 멈춘 것
+
     def run(self):
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}")
+        # 프로그램 전체가 멈추면(파이썬 잠금 교착) 이 스레드도 못 돌아서 위의 '멈춤' 기록을 못 남긴다 (v0.1.12 실제 PC:
+        # 20:21:06 뒤로 한 줄도 없음). faulthandler 는 파이썬 잠금 없이 도는 감시라, 다시 못 맞추면 모든 스레드 위치를 쓴다
+        import faulthandler
+        fpath = self.path.with_name("freeze_stack.txt")
+        try:
+            fh = open(fpath, "a", encoding="utf-8")
+        except OSError:
+            fh = None
+        seen = fpath.stat().st_size if fpath.exists() else 0
         while True:
+            if fh:
+                faulthandler.dump_traceback_later(self.FREEZE_AFTER, repeat=False, file=fh)  # 다시 부르면 앞 예약은 취소된다
             time.sleep(self.CHECK)
             try:
                 self.check()
+                size = fpath.stat().st_size if fpath.exists() else 0
+                if size > seen:
+                    self.write(f"전체 멈춤이 있었어요 ({self.FREEZE_AFTER}초 넘게) → 그때 위치는 logs/freeze_stack.txt")
+                    seen = size
             except Exception as e:
                 self.write(f"진단 오류: {str(e)[:120]}")
 
