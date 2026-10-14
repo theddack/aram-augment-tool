@@ -83,6 +83,10 @@
       if ((champ.magicShare ?? 0.5) >= 0.5) AP *= 1 + mult.adaptiveMult;
       else bonusAD *= 1 + mult.adaptiveMult;
     }
+    // 적응형 능력치(고정값): 마법 위주면 주문력, 아니면 추가 공격력 (적응형 1 = 공격력 0.6)
+    if (conv.adaptive) {
+      if ((champ.magicShare ?? 0.5) >= 0.5) AP += conv.adaptive; else bonusAD += conv.adaptive * 0.6;
+    }
     if (conv.bonusADtoAP) { AP += bonusAD * conv.bonusADtoAP; bonusAD = 0; }
     if (conv.APtoBonusAD) { bonusAD += AP * conv.APtoBonusAD; AP = 0; }
     t.AD = (base.AD + bonusAD) * (1 + mult.ADmult);
@@ -98,14 +102,15 @@
     t.bonusMANA = champ.partype === "마나" ? add.MANA : 0;
     if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
-    const bonusAS = base.asLevelBonus + add.AS;
+    let bonusAS = base.asLevelBonus + add.AS;
+    if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     t.AS = Math.min(AS_CAP, (base.AS + bonusAS * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     t.CRIT = Math.min(1, add.CRIT);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
     t.MS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP) * (1 + mult.MSmult);
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
     t.RANGE = base.RANGE;
-    return { total: t, base, flags, aram, effects };
+    return { total: t, base, flags, aram, effects, conv };
   }
 
   // 레벨 L 에서의 스킬 랭크 (궁극기 6/11/16, 기본 스킬은 남는 포인트를 Q→W→E 순으로 균등 배분)
@@ -158,7 +163,9 @@
 
   // 기준 상대: 칼바람 18레벨 평균 정도의 방어력·마법 저항력·체력 (비교용 고정값)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
-  const TARGET = { ARMOR: 80, MR: 60, HP: 3000, CUR: 0.7 };
+  // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
+  const TARGET = { ARMOR: 80, MR: 60, HP: 3000, CUR: 0.7, DPS_TAKEN: 600 };
+  const GOLD_K = 0.05; // 1000골드당 지표 +5% (전설 아이템 1개 ≈ 3000골드 ≈ +15%)
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
 
   function metrics(champ, L, stats, opts = {}) {
@@ -168,11 +175,32 @@
     const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY);
     const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN);
     const ranks = ranksAt(L, champ.spells);
+    const cv = stats.conv || {};
     const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0 };
+    // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
+    const ranged = !champ.melee;
+    const refund = (h) => {  // 쿨의 f% 를 확률 p 로 돌려받음 → 가속 100 × (1/(1-pf) - 1)
+      if (!cv.refundPct) return 0;
+      const pc = ranged ? (cv.refundChanceRanged ?? 1) : (cv.refundChanceMelee ?? 1);
+      return 100 * (1 / (1 - Math.min(0.9, cv.refundPct * pc)) - 1);
+    };
+    const rIdx = champ.spells.findIndex((sp) => sp.slot === "R");
+    const rSp = champ.spells[rIdx];
+    const rRank = ranks[rIdx] || 1;
+    const rBaseCd = rSp ? rSp.cooldown[Math.max(0, Math.min(rRank, rSp.cooldown.length) - 1)] || 100 : 100;
+    const ultHaste = t.HASTE + flags.ultHaste * 1.5 + (cv.ultHasteAdd || 0)
+      + (cv.ultRefundEvery ? 100 * rBaseCd / cv.ultRefundEvery : 0) + (cv.refundAll ? refund() : 0);
+    const rCd = rBaseCd * 100 / (100 + ultHaste);
+    const ultUptime = (dur) => Math.min(1, (dur || 0) / Math.max(rCd, 1));
+    const basicHaste = t.HASTE + (cv.basicHaste || 0) + 100 * t.AS * (cv.onhitCdr || 0)
+      + 60 * t.AS * ((cv.onhitRemainingPct || 0) / 0.15) + (cv.critToHaste || 0) * t.CRIT * 100
+      + ((champ.features || []).includes("dash") ? (cv.dashHaste || 0) / 3 : 0)
+      + (cv.ultTriggerHaste || 0) * ultUptime(cv.ultTriggerDur) + refund();
+    out.haste = { basic: basicHaste, ult: ultHaste };
     champ.spells.forEach((sp, i) => {
       const rank = ranks[i];
       const disabled = rank === 0 || (flags.noUlt && sp.slot === "R");
-      const haste = t.HASTE + (flags.slotHaste[sp.slot] || 0) + (sp.slot === "R" ? flags.ultHaste * 1.5 : 0);
+      const haste = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
       const cdBase = sp.cooldown[Math.max(0, Math.min(rank, sp.cooldown.length) - 1)] || 0;
       const cd = cdBase * 100 / (100 + haste);
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
@@ -227,7 +255,7 @@
       const kind = e.kind === "adaptive" ? ((champ.magicShare ?? 0.5) >= 0.5 ? "magic" : "physical") : e.kind;
       row.kind = kind;
       const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
-      const hit = v * mit * dealt * (1 + flags.trueBonus);
+      const hit = v * mit * dealt * (1 + flags.trueBonus) * (e.src !== "패시브" ? 1 + (cv.effectDmgMult || 0) : 1);
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
@@ -238,11 +266,26 @@
     out.combo += out.augCombo;
     const critMul = 1 + t.CRIT * (t.CRITDMG - 1);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus);
-    out.ehpPhys = t.HP * (1 + t.ARMOR / 100) / taken;
-    out.ehpMag = t.HP * (1 + t.MR / 100) / taken;
+    // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
+    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
+    out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
+    out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     out.ehp = (out.ehpPhys + out.ehpMag) / 2;
+    // ---- 기동성: 평균 이동 속도 (궁극기 후 가속 영역 등 가동률 반영)
+    out.mobility = t.MS * (1 + (cv.ultTriggerMs || 0) * ultUptime(cv.ultTriggerDur));
+    // ---- 제어력: 콤보 한 번에 거는 CC 시간 (스킬·패시브 + 증강·아이템)
+    let control = (champ.passive && champ.passive.cc) || 0;
+    for (const sp of out.spells) if (!sp.disabled) control += (champ.spells.find((x) => x.slot === sp.slot) || {}).cc || 0;
+    control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * casts;
+    if (cv.fearPerCast) for (const sp of out.spells) if (!sp.disabled) control += Math.min(cv.fearPerCast, sp.cd / (cv.fearCdDiv || 20));
+    out.control = control;
     out.dps = out.autoDps + 0.3 * out.skillDps + out.augDps;  // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 30%만
     out.support = out.shield + out.heal;
+    // ---- 골드: 1000골드당 피해·버티는 힘 +5%
+    if (cv.goldValue) {
+      const g = 1 + GOLD_K * cv.goldValue / 1000;
+      for (const k of ["combo", "dps", "ehp", "autoDps", "skillDps"]) out[k] *= g;
+    }
     return out;
   }
 

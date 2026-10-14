@@ -40,7 +40,7 @@
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
   const NUM_K = 4;
   const TAG_K = 0.4;
-  const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600 };
+  const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
 
   // 빌드 컨셉: 챔피언 가중치와 증강 태그를 섞는 비율
   const CONCEPTS = [
@@ -241,6 +241,8 @@
       dps: (iw.AS || 0) + (iw.CRIT || 0) + 0.5 * (iw.ONHIT || 0) + 0.3 * (iw.AD || 0),
       ehp: ((iw.HP || 0) + (iw.ARMOR || 0) + (iw.MR || 0)) / 2,
       support: iw.HEALSHIELD || 0,
+      mobility: 0.4 * (iw.MS || 0),  // 기동성은 피해·생존보다 덜 중요하게
+      control: 0.8 * (iw.CC || 0),
     };
     const sum = Object.values(mw).reduce((a, b) => a + b, 0) || 1;
     for (const k of Object.keys(mw)) mw[k] /= sum;

@@ -242,6 +242,22 @@ def passive_spell(bin_json, cid):
     return spell, keys.get("keyTooltip") or keys.get("keySummary")
 
 
+# 스킬 CC 시간: 'N초 동안 기절' 류. 둔화는 강제력이 약해서 30%만 인정 (제어력 지표)
+HARD_CC = r"기절|속박|공중으로|에어본|도발|매혹|공포|변이|제압|침묵|끌어당|띄워"
+CC_RE = re.compile(r"([\d.]+(?:/[\d.]+)*)\s*초\s*동안[^.]{0,25}?(" + HARD_CC + r"|둔화)")
+
+
+def spell_cc_seconds(plain):
+    """스킬 설명에서 CC 시간 합 (최대 랭크 기준, 둔화 ×0.3)"""
+    total = 0.0
+    for nums, kind in CC_RE.findall(plain):
+        v = float(nums.split("/")[-1])
+        if v > 5:  # 지속 효과 시간(장판 등)은 CC 로 보지 않는다
+            continue
+        total += v * (0.3 if kind == "둔화" else 1.0)
+    return round(total, 2)
+
+
 def process_champion(cid, detail, bin_json):
     spells, unresolved_total = [], 0
     for i, sp in enumerate(detail["spells"]):
@@ -256,6 +272,7 @@ def process_champion(cid, detail, bin_json):
         cd = (spell.get("cooldownTime") or [])[1:ranks + 1] or sp.get("cooldown", [])
         cost = (spell.get("mana") or [])[1:ranks + 1] or sp.get("cost", [])
         spells.append({
+            "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", text)),
             "slot": SLOTS[i], "name": sp["name"], "ranks": ranks,
             "cooldown": [round(c, 2) for c in cd], "cost": [round(c, 1) for c in cost],
             "tooltip": text, "effects": effects, "unresolved": unresolved,

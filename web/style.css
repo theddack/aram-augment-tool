@@ -137,7 +137,7 @@ body.mini #mini-build { display: block; }
 #stat-panel summary { cursor: pointer; font-weight: 600; }
 .controls { gap: 16px; margin: 8px 0; font-size: 13px; }
 .controls input[type=range] { width: 160px; vertical-align: middle; }
-#metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+#metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
 .tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .tile .big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .up { color: var(--syn); } .down { color: #ff8a80; }

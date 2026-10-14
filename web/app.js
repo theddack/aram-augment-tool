@@ -12,8 +12,8 @@ const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko
 const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
 const TRIGGER_LABEL = { cast: "스킬마다", onhit: "기본 공격마다", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
-const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막" };
-const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막" };
+const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막", mobility: "기동성", control: "제어력" };
+const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
 // 받침 따라 조사 고르기 (이/가, 을/를, 와/과)
 function josa(word, withBatchim, without) {
   const c = String(word).trim().slice(-1).charCodeAt(0);
@@ -159,7 +159,9 @@ function renderStats() {
   $("#metrics").innerHTML = tile("스킬 한 바퀴 피해 (콤보)", m.combo, base.combo, `방어 적용 전 ${fmt(m.comboRaw)}`)
     + tile("평타 초당 피해 (DPS)", m.autoDps, base.autoDps, `공속 ${fmt(e2.AS, 2)} · 치명 ${fmt(e2.CRIT * 100)}%`)
     + tile("버티는 힘 (유효 체력)", m.ehp, base.ehp, `물리 ${fmt(m.ehpPhys)} · 마법 ${fmt(m.ehpMag)}`)
-    + tile("회복·보호막 (스킬 1회)", m.support, base.support, `보호막 ${fmt(m.shield)} · 회복 ${fmt(m.heal)}`);
+    + tile("회복·보호막 (스킬 1회)", m.support, base.support, `보호막 ${fmt(m.shield)} · 회복 ${fmt(m.heal)}`)
+    + tile("기동성 (평균 이동 속도)", m.mobility, base.mobility, `스킬 가속 기본 ${fmt(m.haste.basic)} · 궁 ${fmt(m.haste.ult)}`)
+    + tile("제어력 (콤보당 CC 초)", m.control, base.control, "기절·속박 등 그대로, 둔화는 30%");
   const rows = St.ROWS.filter(([k]) => Math.abs(e2[k] || 0) > 1e-6 || ["HP", "AD", "AP", "AS", "ARMOR", "MR", "MS"].includes(k));
   const cell = (v, k, d, pct, sign) => {
     if (Math.abs(v) < 1e-6) return sign ? `<td class="muted">-</td>` : `<td>0</td>`;
@@ -447,6 +449,7 @@ function renderAugs() {
         <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>
           ${gains[r.aug.id] ? `<span class="chip ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
+        ${(state.data.rules.augments[r.aug.id] || {}).model ? `<div class="muted small">📐 계산 기준: ${esc(state.data.rules.augments[r.aug.id].model)}</div>` : ""}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${r.unclassified ? `<span class="chip">효과 분류 안 됨</span>` : ""}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
           ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>

@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from champion_data import (augment_effects, item_spell, parse_lua_table, passive_spell, process_champion,
-                           text_effects, wiki_extras)
+                           spell_cc_seconds, text_effects, wiki_extras)
 from lol_calc import Calc, expr_json, fmt_expr_ranks
 
 ROOT = Path(__file__).resolve().parent
@@ -635,7 +635,8 @@ def main():
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
             "aramSource": aram_source,
             "passive": {"name": d["passive"]["name"], "desc": p_html or to_html(d["passive"]["description"])[0],
-                        "effects": p_effects},
+                        "effects": p_effects,
+                        "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", p_html or d["passive"]["description"]))},
             "spells": spells,
         })
     out_champs.sort(key=lambda c: c["name"])
