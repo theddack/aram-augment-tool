@@ -44,6 +44,9 @@ FETCHED = {}
 WIKI_FAILED = []  # 이번에 못 받은 위키 자료 (확인 이슈에 올림)  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
 
 
+DAMAGE_TYPE = {"kPhysical": "physical", "kMagic": "magic", "kMixed": "mixed"}
+
+
 def fetch(url, name):
     path = CACHE / name
     FETCHED.setdefault(name, (url, time.strftime("%Y-%m-%d %H:%M", time.localtime(path.stat().st_mtime))
@@ -1081,10 +1084,21 @@ def main():
                     raise
                 time.sleep(2)
 
+    (CACHE / "tactical").mkdir(exist_ok=True)
+
+    def tactical(cid):
+        """라이엇이 정한 챔피언 성향 (주 피해 유형 damageType, 평타↔스킬 style). 못 받으면 {} → 피해 유형 거르기 안 함"""
+        try:
+            return fetch_json(f"{CDRAGON}/plugins/rcp-be-lol-game-data/global/default/v1/champions/{champs[cid]['key']}.json",
+                              f"tactical/{cid}.json").get("tacticalInfo") or {}
+        except Exception:
+            return {}
+
     print("챔피언 상세·스킬 데이터 받는 중...")
     with ThreadPoolExecutor(8) as ex:
         details = dict(zip(champs, ex.map(detail, champs)))
         bins = dict(zip(champs, ex.map(champ_bin, champs)))
+        tacticals = dict(zip(champs, ex.map(tactical, champs)))
     out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
     mayhem_mods = mayhem_champion_overrides(wiki_mayhem_page, wiki)
     mayhem_cd = mayhem_cooldowns(wiki_mayhem_page, wiki)
@@ -1125,6 +1139,9 @@ def main():
             "tags": c["tags"], "partype": c["partype"], "info": c["info"],
             "range": c["stats"]["attackrange"], "melee": c["stats"]["attackrange"] <= 250,
             "traits": traits, "magicShare": magic_share,
+            # 주 피해 유형 (기본 빌드에서 반대 유형 아이템을 빼는 기준). kPhysical/kMagic/kMixed → physical/magic/mixed
+            "damageType": DAMAGE_TYPE.get(tacticals[cid].get("damageType")),
+            "style": tacticals[cid].get("style"),
             "features": features + (["melee"] if c["stats"]["attackrange"] <= 250 else ["ranged"]),
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
             "aramSource": aram_source,
@@ -1132,6 +1149,7 @@ def main():
             "refs": [r for r in [
                 {"label": "스킬 수치 (게임 데이터)", "url": f"{CDRAGON}/game/data/characters/{cid.lower()}/{cid.lower()}.bin.json"},
                 {"label": "기본 능력치 (Data Dragon)", "url": f"{DDRAGON}/cdn/{version}/data/ko_KR/champion/{cid}.json"},
+                {"label": "주 피해 유형 (게임 데이터)", "url": f"{CDRAGON}/plugins/rcp-be-lol-game-data/global/default/v1/champions/{c['key']}.json"},
                 {"label": "칼바람 보정 (위키)", "url": f"{WIKI}/{urllib.parse.quote(c['id'])}/ARAM" if False else f"{WIKI}/ARAM:_Mayhem#List_of_mode_overrides"} if aram else None,
                 {"label": "이번 패치 노트", "url": pn_url + "#patch-aram:-mayhem"} if patch_lines.get(c["name"]) else None,
             ] if r],
