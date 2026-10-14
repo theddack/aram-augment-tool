@@ -523,6 +523,8 @@ class Diag(threading.Thread):
             self.write(f"증강 인식: {a.get('status')}" + (f" ({a.get('ms')}ms)" if a.get("ms") else ""))
         if a.get("seq") != self._last_aug.get("seq") and a.get("offers"):
             self.write("증강 선택지: " + " / ".join(n or "?" for n in a["offers"]))
+        if a.get("near") and a.get("near") != self._last_aug.get("near"):
+            self.write(f"증강 인식 못 맞춘 글자: {a['near']}")
         if a.get("pickSeq") != self._last_aug.get("pickSeq") and a.get("pickSeq"):
             self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
         self._last_aug = a

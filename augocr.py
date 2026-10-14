@@ -260,10 +260,11 @@ class Reader(threading.Thread):
         self.status = "대기"
         self.beat = None
         self.last_ms = None
+        self.near = None  # 반쯤 읽은 글자 (진단 기록용)
 
     @property
     def state(self):
-        return {**self.tracker.state, "status": self.status, "ms": self.last_ms}
+        return {**self.tracker.state, "status": self.status, "ms": self.last_ms, "near": self.near}
 
     def run(self):
         if not IS_WINDOWS:
@@ -305,6 +306,11 @@ class Reader(threading.Thread):
         words = ocr.words(img[n0 * gw * 4: n1 * gw * 4], gw, n1 - n0)
         words = [(t, x, y + n0 + top, w, h) for t, x, y, w, h in words]
         offers = find_offers(words, gw, gh, matcher)
+        if not offers:
+            # 이름이 하나만 맞으면 선택 화면을 반쯤 읽은 것 → 읽은 글자를 기록에 남긴다 (실제 게임에서 왜 못 읽었는지 보려고)
+            segs = [t for t, _, y in segments(words, gap=gw * 0.04) if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh]
+            if sum(1 for t in segs if matcher.match(t)[0]) == 1:
+                self.near = " | ".join(segs)[:160]
 
         def pixel_at(x, y):
             y -= top
