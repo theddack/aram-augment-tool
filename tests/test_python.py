@@ -161,6 +161,14 @@ class Lcu(unittest.TestCase):
         self.assertEqual(titles, ["t", "내 세트"])
         self.assertEqual(len(os.listdir(bd)), 1)
 
+    def test_old_name_sets_replaced(self):
+        """저장소 이름을 바꾸기 전(aram-augment-tool-)에 등록한 세트도 우리 것으로 보고 교체"""
+        c = self._client({"itemSets": [{"uid": "aram-augment-tool-222", "title": "예전"}, {"uid": "mine", "title": "내 세트"}]})
+        c.write_item_set(222, "새", [{"type": "a", "items": [3031]}])
+        sets = c.puts[0]["itemSets"]
+        self.assertEqual([s["title"] for s in sets], ["새", "내 세트"])
+        self.assertTrue(sets[0]["uid"].startswith("kalbaram-addon-"))
+
     def test_no_write_when_read_fails(self):
         for reply in (None, {}, {"itemSets": None}):
             c = self._client(reply)

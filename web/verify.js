@@ -1,7 +1,7 @@
 // 받은 파일 확인: 파일의 SHA-256 을 브라우저에서 계산해 GitHub 공식 릴리스 파일 지문(digest)과 비교한다.
 // 지문은 GitHub 가 릴리스 파일마다 서버에서 계산해 API 로 공개하는 값이다 (우리가 올린 값이 아니라서 더 믿을 만하다).
 // 파일은 어디에도 보내지 않는다.
-const REPO = "theddack/aram-augment-tool";
+const REPO = "theddack/kalbaram-addon";
 const RELEASES = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
 const PAGE = `https://github.com/${REPO}/releases/latest`;
 const $ = (s) => document.querySelector(s);

@@ -1,7 +1,7 @@
 # 프로그램 빌드. main 에 올리면 윈도우·맥을 빌드해서 Actions 아티팩트로 남기고,
 # 버전 태그(v0.1.0 등)를 붙이면 GitHub 릴리스를 만들고 zip 두 개를 올린다.
 # 릴리스 파일 이름은 영어 (GitHub 가 첨부 파일 이름의 한글을 지운다). zip 안의 폴더·프로그램 이름은 한글.
-#   릴리스: https://github.com/theddack/aram-augment-tool/releases/latest
+#   릴리스: https://github.com/theddack/kalbaram-addon/releases/latest
 name: build
 
 on:

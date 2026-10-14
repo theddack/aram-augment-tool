@@ -1,5 +1,5 @@
 # 웹사이트 배포: main 에 올릴 때마다 web/ 폴더를 GitHub Pages 로 올린다
-# 주소: https://theddack.github.io/aram-augment-tool/
+# 주소: https://theddack.github.io/kalbaram-addon/
 name: pages
 
 on:

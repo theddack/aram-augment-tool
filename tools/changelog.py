@@ -87,8 +87,8 @@ DOWNLOAD = """## 받기
 | 윈도우 10/11 | `KalbaramAddon-Windows.zip` → 압축 풀고 `칼바람증강Addon` 폴더의 `칼바람증강Addon.exe` |
 | 맥 (M1~M4, macOS 11 이상) | `KalbaramAddon-Mac.zip` → 압축 풀고 `칼바람증강Addon.app` |
 
-**실행하기 전에** 받은 zip을 [받은 파일 확인 페이지](https://theddack.github.io/aram-augment-tool/verify.html)에 끌어다 놓아 ✅ 공식 파일인지 확인하세요.
-처음 실행 시 경고가 뜨면 [사용 설명서](https://github.com/theddack/aram-augment-tool/blob/main/사용설명서.md#처음-실행할-때-경고가-뜨면)를 보세요. 롤 화면 모드는 **테두리 없음**으로 해 주세요.
+**실행하기 전에** 받은 zip을 [받은 파일 확인 페이지](https://theddack.github.io/kalbaram-addon/verify.html)에 끌어다 놓아 ✅ 공식 파일인지 확인하세요.
+처음 실행 시 경고가 뜨면 [사용 설명서](https://github.com/theddack/kalbaram-addon/blob/main/사용설명서.md#처음-실행할-때-경고가-뜨면)를 보세요. 롤 화면 모드는 **테두리 없음**으로 해 주세요.
 """
 
 if __name__ == "__main__":
@@ -111,6 +111,6 @@ if __name__ == "__main__":
 
 - 윈도우: PowerShell 에서 `Get-FileHash KalbaramAddon-Windows.zip` → 위 값과 같은지
 - 맥: 터미널에서 `shasum -a 256 KalbaramAddon-Mac.zip`
-- GitHub 빌드 출처 증명: `gh attestation verify KalbaramAddon-Windows.zip -R theddack/aram-augment-tool` (이 저장소의 빌드 워크플로가 만든 파일인지 확인)
+- GitHub 빌드 출처 증명: `gh attestation verify KalbaramAddon-Windows.zip -R theddack/kalbaram-addon` (이 저장소의 빌드 워크플로가 만든 파일인지 확인)
 """
-        print(DOWNLOAD + verify + "\n" + section(text, sys.argv[2]) + "\n\n전체 내역: [업데이트내역.md](https://github.com/theddack/aram-augment-tool/blob/main/업데이트내역.md)\n\n라이엇 게임즈와 무관한 팬 제작 도구입니다.")
+        print(DOWNLOAD + verify + "\n" + section(text, sys.argv[2]) + "\n\n전체 내역: [업데이트내역.md](https://github.com/theddack/kalbaram-addon/blob/main/업데이트내역.md)\n\n라이엇 게임즈와 무관한 팬 제작 도구입니다.")

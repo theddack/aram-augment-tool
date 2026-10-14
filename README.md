@@ -2,7 +2,7 @@
 
 > **어떤 증강도 재밌게.** 서포터가 원딜처럼, 탱커가 근접 딜러처럼 — 고른 증강에 맞춰 다음 증강과 아이템을 안내하는 칼바람 증강 모드(아수라장) 도우미예요.
 
-**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/aram-augment-tool/releases/latest)** · [✅ 받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html) · **[🌐 웹에서 바로 보기](https://theddack.github.io/aram-augment-tool/)** · [📖 사용 설명서](사용설명서.md) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/aram-augment-tool/sources.html)
+**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/kalbaram-addon/releases/latest)** · [✅ 받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html) · **[🌐 웹에서 바로 보기](https://theddack.github.io/kalbaram-addon/)** · [📖 사용 설명서](사용설명서.md) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/kalbaram-addon/sources.html)
 
 ![칼바람 증강 Addon 화면](docs/screenshot.png)
 
@@ -24,13 +24,13 @@
 
 ## 3단계로 시작
 
-1. [릴리스](https://github.com/theddack/aram-augment-tool/releases/latest)에서 `KalbaramAddon-Windows.zip`(또는 Mac)을 받아요. 압축을 풀기 전에 **[받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html)**에 끌어다 놓아 ✅인지 보고, 압축을 풀고 실행해요.
+1. [릴리스](https://github.com/theddack/kalbaram-addon/releases/latest)에서 `KalbaramAddon-Windows.zip`(또는 Mac)을 받아요. 압축을 풀기 전에 **[받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html)**에 끌어다 놓아 ✅인지 보고, 압축을 풀고 실행해요.
 2. 롤 설정 → 비디오 → 창 모드를 **테두리 없음**으로 바꿔요.
 3. 프로그램에서 **게임 연동**과 **게임 화면 표시**를 켜고 게임을 시작해요.
 
 처음 실행 시 경고가 뜨면 [사용 설명서](사용설명서.md#처음-실행할-때-경고가-뜨면)를 보세요. 맥에서 "손상되었다"고 나오면 v0.1.3 이하 파일이에요. 최신 버전을 받으세요.
 
-문제가 생기면 [GitHub 이슈](https://github.com/theddack/aram-augment-tool/issues)에 증강 선택 화면 스크린샷과 기록 파일을 올려 주세요.
+문제가 생기면 [GitHub 이슈](https://github.com/theddack/kalbaram-addon/issues)에 증강 선택 화면 스크린샷과 기록 파일을 올려 주세요.
 기록 파일 위치: 윈도우 `C:\Users\(사용자 이름)\AppData\Roaming\AramAugment\logs\` (**윈도우 키 + R** → `%APPDATA%\AramAugment\logs` → 확인) · 맥 `~/Library/Application Support/AramAugment/logs/` — [자세히](사용설명서.md#기록-파일-위치)
 
 ## 정확도와 한계
@@ -50,7 +50,7 @@
 | 칼바람 보정 | 위키 표(일반 칼바람 + 증강 모드 전용 59명)를 써요. 위키 표의 기준 시점이 25.17이라 최신 패치와 다를 수 있어요 |
 | 효과 분류 | 24개 증강은 효과 종류를 못 정해서 "효과 분류 안 됨"으로 보여요 (대부분 소환사 주문·증강 변환) |
 | 수치 일부 `?` | 15개 증강. 5개는 퀘스트 목표·게임 중 누적값이라 원래 숫자가 없고, 10개는 아직 해석 못 한 계산식이에요 |
-| 가정값 | 게임에 숫자가 없는 값(가동률·평균 중첩 등) 증강 36개·아이템 14개 + 공통 12개는 모두 **이유와 함께** 📐 근거·[계산 가정값](https://theddack.github.io/aram-augment-tool/sources.html#assumptions)에 적었어요. 실측이 아니라서 게임 기록이 모이면 바꿀 거예요 |
+| 가정값 | 게임에 숫자가 없는 값(가동률·평균 중첩 등) 증강 36개·아이템 14개 + 공통 12개는 모두 **이유와 함께** 📐 근거·[계산 가정값](https://theddack.github.io/kalbaram-addon/sources.html#assumptions)에 적었어요. 실측이 아니라서 게임 기록이 모이면 바꿀 거예요 |
 | 특수 규칙 | 증강 144개의 규칙(`rules.json`)은 설명을 읽고 사람이 판단한 것이고, 새 증강은 설명에서 🤖 자동 추정해요. 둘 다 실제 게임에서 검증하지 않았어요 |
 | 패치 노트 | 줄마다 게임 데이터와 대조해요 (16.20: 30줄 중 ✅ 27 · 대조 불가 2 · 데이터에서 못 찾음 1). 게임 데이터가 늦으면 확실한 줄만 패치 노트 값으로 임시 계산해요 |
 | 추천 결과 | 실제 게임 결과와 대조하지 않았어요. 게임 기록을 모아 대조할 계획이에요 |
@@ -61,13 +61,13 @@
 
 ## 보안
 
-공식 [릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만 쓰세요. 코드 서명이 없어서 경고가 뜨니, 경고를 넘기기 전에 **[받은 파일 확인](https://theddack.github.io/aram-augment-tool/verify.html)**에서 ✅ 공식 파일인지 확인하세요 (파일은 업로드되지 않고 브라우저에서 GitHub 공식 지문과 비교). 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명이 있어요. 프로그램이 하는 일과 막아 둔 것은 [SECURITY.md](SECURITY.md)에 있어요.
+공식 [릴리스 페이지](https://github.com/theddack/kalbaram-addon/releases/latest)에서 받은 파일만 쓰세요. 코드 서명이 없어서 경고가 뜨니, 경고를 넘기기 전에 **[받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html)**에서 ✅ 공식 파일인지 확인하세요 (파일은 업로드되지 않고 브라우저에서 GitHub 공식 지문과 비교). 릴리스마다 SHA-256 체크섬과 GitHub 빌드 출처 증명이 있어요. 프로그램이 하는 일과 막아 둔 것은 [SECURITY.md](SECURITY.md)에 있어요.
 
 ## 데이터와 수집 원칙
 
 - 라이엇 Data Dragon · CommunityDragon(게임 파일) · [리그 오브 레전드 위키](https://wiki.leagueoflegends.com/) (CC BY-SA 4.0) · 라이엇 공식 패치 노트
 - 허용된 출처만, **하루 1번**, 출처를 남겨서 받아요. 승률 통계 사이트는 이용약관상 자동 수집하지 않아요.
-- 전체 목록: [데이터 출처 페이지](https://theddack.github.io/aram-augment-tool/sources.html)
+- 전체 목록: [데이터 출처 페이지](https://theddack.github.io/kalbaram-addon/sources.html)
 
 ## 개발
 

@@ -13,7 +13,9 @@ import ssl
 import time
 import urllib.request
 
-UID_PREFIX = "aram-augment-tool-"
+UID_PREFIX = "kalbaram-addon-"
+OLD_UID_PREFIXES = ("aram-augment-tool-",)  # 예전 이름으로 등록한 세트도 우리 것 (교체해서 두 개씩 남지 않게)
+OUR_PREFIXES = (UID_PREFIX,) + OLD_UID_PREFIXES
 INSTALL_CANDIDATES = [
     r"C:\Riot Games\League of Legends",
     r"D:\Riot Games\League of Legends",
@@ -93,7 +95,7 @@ class Lcu:
             raise RuntimeError("지금 아이템 세트 목록을 못 읽어서 저장하지 않았어요 (사용자 세트 보호)")
         if backup_dir:
             save_backup(backup_dir, cur)
-        sets = [s for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX)]
+        sets = [s for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(OUR_PREFIXES)]
         sets.insert(0, {
             "uid": f"{UID_PREFIX}{champion_key}",
             "title": title,
@@ -102,8 +104,8 @@ class Lcu:
             "preferredItemSlots": [],
             "blocks": [{"type": b["type"], "items": [{"id": str(i), "count": 1} for i in b["items"]]} for b in blocks],
         })
-        users_before = [s.get("uid") for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(UID_PREFIX)]
-        users_after = [s.get("uid") for s in sets if not str(s.get("uid", "")).startswith(UID_PREFIX)]
+        users_before = [s.get("uid") for s in cur["itemSets"] if not str(s.get("uid", "")).startswith(OUR_PREFIXES)]
+        users_after = [s.get("uid") for s in sets if not str(s.get("uid", "")).startswith(OUR_PREFIXES)]
         if users_after != users_before:  # 사용자 세트가 하나도 빠지거나 바뀌지 않았는지 (코드 실수 방지)
             raise RuntimeError("사용자 세트 수가 달라져서 저장하지 않았어요")
         self.req("PUT", path, {"accountId": cur.get("accountId", account), "itemSets": sets,

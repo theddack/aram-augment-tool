@@ -39,7 +39,7 @@ REFRESH = "--refresh" in sys.argv
 
 DATA_FORMAT = 2  # data.json 형식 번호: 화면이 기대하는 칸이 바뀌면 올린다 (프로그램이 옛 형식의 받아 둔 데이터를 교체)
 SAFE_ID = re.compile(r"[A-Za-z0-9_]{1,80}")  # 외부 데이터의 id 검사 (HTML 속성·파일 이름에 그대로 쓰인다)
-UA = "aram-augment-tool (+https://github.com/theddack/aram-augment-tool)"  # 누가 받는지 밝힌다
+UA = "kalbaram-addon (+https://github.com/theddack/kalbaram-addon)"  # 누가 받는지 밝힌다
 FETCHED = {}
 WIKI_FAILED = []  # 이번에 못 받은 위키 자료 (확인 이슈에 올림)  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
 

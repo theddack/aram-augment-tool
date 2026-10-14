@@ -1,12 +1,12 @@
 # 보안
 
 ## 문제를 발견하면
-공개 이슈 대신 GitHub의 [비공개 보안 제보](https://github.com/theddack/aram-augment-tool/security/advisories/new)로 알려 주세요.
+공개 이슈 대신 GitHub의 [비공개 보안 제보](https://github.com/theddack/kalbaram-addon/security/advisories/new)로 알려 주세요.
 
 ## 받는 파일
-- **[공식 릴리스 페이지](https://github.com/theddack/aram-augment-tool/releases/latest)에서 받은 파일만** 쓰세요. 코드 서명(유료 인증서)이 없어서 윈도우·맥 경고가 뜨는데, 다른 곳에서 받은 파일은 경고를 넘기지 마세요.
-- **[받은 파일 확인 페이지](https://theddack.github.io/aram-augment-tool/verify.html)**: 받은 zip을 끌어다 놓으면 브라우저가 SHA-256을 계산해 GitHub가 릴리스 파일마다 서버에서 계산해 공개한 지문(`digest`)과 비교해요. 파일은 업로드되지 않아요.
-- 릴리스마다 `SHA256SUMS.txt`와 GitHub 빌드 출처 증명(attestation)이 있어요. `gh attestation verify <파일> -R theddack/aram-augment-tool` 로 이 저장소의 빌드 워크플로가 만든 파일인지 확인할 수 있어요.
+- **[공식 릴리스 페이지](https://github.com/theddack/kalbaram-addon/releases/latest)에서 받은 파일만** 쓰세요. 코드 서명(유료 인증서)이 없어서 윈도우·맥 경고가 뜨는데, 다른 곳에서 받은 파일은 경고를 넘기지 마세요.
+- **[받은 파일 확인 페이지](https://theddack.github.io/kalbaram-addon/verify.html)**: 받은 zip을 끌어다 놓으면 브라우저가 SHA-256을 계산해 GitHub가 릴리스 파일마다 서버에서 계산해 공개한 지문(`digest`)과 비교해요. 파일은 업로드되지 않아요.
+- 릴리스마다 `SHA256SUMS.txt`와 GitHub 빌드 출처 증명(attestation)이 있어요. `gh attestation verify <파일> -R theddack/kalbaram-addon` 로 이 저장소의 빌드 워크플로가 만든 파일인지 확인할 수 있어요.
 - 프로그램은 스스로 새 버전을 받아 바꾸지 않아요. 새 버전이 있으면 알려 주기만 해요.
 
 ## 프로그램이 하는 일과 막아 둔 것

@@ -10,7 +10,7 @@ const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 async function page(releases) {
   const html = fs.readFileSync(path.join(WEB, "verify.html"), "utf8").replace(/<script src="[^"]+"><\/script>/g, "");
-  const dom = new JSDOM(html, { runScripts: "outside-only", url: "https://theddack.github.io/aram-augment-tool/verify.html" });
+  const dom = new JSDOM(html, { runScripts: "outside-only", url: "https://theddack.github.io/kalbaram-addon/verify.html" });
   const w = dom.window;
   w.fetch = async () => ({ ok: true, json: async () => releases });
   Object.defineProperty(w, "crypto", { value: globalThis.crypto });
