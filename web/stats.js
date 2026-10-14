@@ -169,10 +169,10 @@
     return 100 / (100 + eff);
   }
 
-  // 기준 상대: 칼바람 18레벨 평균 정도의 방어력·마법 저항력·체력 (비교용 고정값)
+  // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
-  const TARGET = { ARMOR: 80, MR: 60, HP: 3000, CUR: 0.7, DPS_TAKEN: 600 };
+  const TARGET = { ARMOR: 113, MR: 63, HP: 2470, CUR: 0.7, DPS_TAKEN: 600 };
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
@@ -182,6 +182,24 @@
     Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP } : {});
   }
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
+
+  // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
+  // src: data = 게임 데이터·위키에서 계산한 값, assume = 정한 값(실측 아님)
+  const ASSUMPTIONS = [
+    { what: "기준 상대: 체력 2470 · 방어력 113 · 마법 저항력 63", src: "data",
+      why: "전 챔피언 173명이 18레벨에 우리 추천 빌드(균형)를 갖췄을 때의 중앙값이에요 (패치 16.20). 평균은 탱커에 끌려 올라가서 중앙값을 써요. 능력치 패널 '상대'에서 실제 챔피언으로 바꿀 수 있어요." },
+    { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해에만 쓰여요." },
+    { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
+    { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },
+    { what: "초당 피해에 스킬 피해는 30%만", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요." },
+    { what: "제어력: 기절·속박은 그대로, 둔화는 30%만", src: "assume", why: "둔화는 움직일 수는 있어서 기절보다 약하게 셌어요. 5초 넘는 지속 효과(장판 등)는 CC로 안 셌어요." },
+    { what: "골드 → 능력치: 주 공격 50% · 체력 30% · 방어력·마법 저항력 20%", src: "assume", why: "능력치 1당 골드 가치는 위키 '골드 효율'(공격력 35·주문력 20·체력 2.67·방어 20골드) 그대로이고, 나눠 사는 비율만 정한 값이에요." },
+    { what: "평가 기준: 18레벨 · 아이템 6칸 완성", src: "assume", why: "증강·아이템을 같은 조건에서 비교하려고 풀템 시점으로 맞췄어요. 능력치 패널 레벨 슬라이더로 다른 레벨도 볼 수 있어요." },
+    { what: "스킬 레벨: 궁극기 6·11·16, 나머지는 Q→W→E 순서로 고르게", src: "assume", why: "챔피언마다 선마가 다르지만 18레벨에는 결국 다 마스터라 차이가 작아요." },
+    { what: "충전 공격(스태틱의 단검 등)은 기본 공격 8번에 1번", src: "assume", why: "충전 속도가 이동 거리에 따라 달라서 정확한 숫자가 없어요." },
+    { what: "치명타 확률로 발동하는 효과는 치명타 확률만큼 기대값", src: "data", why: "설명의 '치명타 확률과 같은 확률'을 그대로 계산해요." },
+    { what: "재사용 대기시간은 가속을 받아도 최소 0.5초로 셈", src: "assume", why: "징크스 Q처럼 전환형 스킬이 초당 피해를 부풀리지 않게 했어요." },
+  ];
 
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
@@ -304,7 +322,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { ROWS, TARGET, DEFAULT_TARGET, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);
