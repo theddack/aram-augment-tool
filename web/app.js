@@ -4,6 +4,7 @@ const state = {
   data: null, champ: null, weights: null, chosen: [], rarity: "all", augQuery: "",
   items: [], kind: "all", itemQuery: "", concept: "augment", level: 18, aram: true,
   offers: [null, null, null], rerolled: [false, false, false], tierMode: "auto", target: "",
+  gold: null, inventory: [],  // 게임 연동: 지금 골드, 가방 속 아이템 전체(부품 포함)
 };
 const REROLL_PCT = 0.4; // 같은 등급 안에서 하위 40% 이하면 새로고침 권장
 const statOpts = () => ({ aram: state.aram });
@@ -23,9 +24,15 @@ function josa(word, withBatchim, without) {
 const KIND_NAME = { legendary: "전설", boots: "신발", special: "증강 보상" };
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const label = (t) => S.TAG_LABEL[t] || t;
+const label = (t) => esc(S.TAG_LABEL[t] || t);  // 데이터에서 온 태그 이름도 이스케이프
 // 아이콘 경로: 데이터를 만들 때 WebP 로 바꿨으면 webp, 아니면 png (프로그램의 '데이터 갱신')
-const icon = (kind, id) => `icons/${kind}/${id}.${(state.data && state.data.iconExt) || "png"}`;
+let webpOnly = null;  // PNG 로 받은 데이터에서 WebP 만 남은 아이콘
+const icon = (kind, id) => {
+  const d = state.data;
+  if (d && !webpOnly) webpOnly = new Set(d.iconWebpOnly || []);
+  const ext = webpOnly && webpOnly.has(`${kind}/${id}`) ? "webp" : (d && d.iconExt) || "png";
+  return `icons/${kind}/${id}.${ext}`;
+};
 
 // 근거·패치 펼치기를 눌렀을 때 증강·아이템이 같이 선택되지 않게
 document.addEventListener("click", (e) => {
@@ -74,7 +81,7 @@ async function init() {
     renderAugs();
     renderOfferResult();
   }));
-  $("#aug-names").innerHTML = d.augments.map((a) => `<option value="${esc(a.name)}">${a.rarityName}</option>`).join("");
+  $("#aug-names").innerHTML = d.augments.map((a) => `<option value="${esc(a.name)}">${esc(a.rarityName)}</option>`).join("");
   $("#reset-items").addEventListener("click", () => { state.items = []; renderAll(); });
   $("#reset-all").addEventListener("click", () => {
     state.chosen = [];
@@ -86,7 +93,7 @@ async function init() {
     renderAll();
   });
   $("#level").addEventListener("input", (e) => { state.level = Number(e.target.value); $("#level-val").textContent = state.level; renderStats(); });
-  $("#aram-toggle").addEventListener("change", (e) => { state.aram = e.target.checked; renderAll(); });
+  $("#aram-toggle").addEventListener("change", (e) => { state.aram = e.target.checked; setTargetChamp(state.target); renderAll(); });
   $("#target-champ").innerHTML += d.champions.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
   $("#target-champ").addEventListener("change", (e) => { setTargetChamp(e.target.value); renderAll(); });
   setTargetChamp("");
@@ -107,6 +114,7 @@ function setTargetChamp(id) {
   if (!enemy) {
     St.setTarget(null);
   } else {
+    St.setTarget(null);  // 상대의 빌드는 기준 상대로 계산 (앞에 고른 상대에 따라 달라지지 않게)
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
     const t = St.computeStats(enemy, 18, b.pick.map((p) => p.item), [], statOpts()).total;
     St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
@@ -129,6 +137,7 @@ function renderChamps() {
       // 챔피언이 바뀌면 새 게임: 고른 증강·선택지를 비운다 (아이템은 남겨서 비교할 수 있게)
       state.chosen = [];
       state.tierMode = "auto";
+      state.showAllAugs = false;
       clearOffers();
     }
     state.champ = next;
@@ -149,8 +158,10 @@ function renderAll() {
   renderChosenItems();
   renderBuild();
   if (!simple) {
-    renderItemList();
+    renderItemList();  // 안에서 '다음에 살 아이템'·게임 화면 표시도 갱신
     renderWeights();
+  } else {
+    renderNextBuy(state.champ ? itemRanking() : []);  // 아이템 목록은 숨겨도 '다음에 살 아이템'은 보인다
   }
 }
 
@@ -165,7 +176,7 @@ function renderChampCard() {
   const traits = Object.entries(c.traits || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
   el.innerHTML = `<img src="${icon("champion", c.id)}" alt="">
     <div><div><b>${esc(c.name)}</b> <span class="muted">${esc(c.title)}</span></div>
-    <div class="muted small">${c.tags.join(" · ")} · ${c.melee ? "근접" : "원거리"} · ${esc(c.partype || "자원 없음")}
+    <div class="muted small">${esc(c.tags.join(" · "))} · ${c.melee ? "근접" : "원거리"} · ${esc(c.partype || "자원 없음")}
       ${c.magicShare != null ? ` · 스킬 피해 마법 ${Math.round(c.magicShare * 100)}%` : ""}</div>
     <div><span class="muted small">가중치</span> ${top.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}</div>
     <div><span class="muted small">스킬 특성</span> ${traits.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}
@@ -178,16 +189,16 @@ const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", h
 function aramChips(c) {
   if (!c.aram) return `<div><span class="muted small">칼바람 보정 없음</span></div>`;
   const chips = Object.entries(c.aram).map(([k, v]) => {
-    const pct = k === "ability_haste" ? `+${v}` : `${Math.round(v * 100)}%`;
+    const pct = k === "ability_haste" ? `+${Number(v)}` : `${Math.round(Number(v) * 100)}%`;
     const good = k === "dmg_taken" ? v < 1 : k === "ability_haste" ? v > 0 : v > 1;
     const neutral = k !== "ability_haste" && v === 1;
-    return `<span class="chip ${neutral ? "" : good ? "syn" : "bad"}">${ARAM_NAME[k] || k} ${pct}</span>`;
+    return `<span class="chip ${neutral ? "" : good ? "syn" : "bad"}">${esc(ARAM_NAME[k] || k)} ${pct}</span>`;
   });
   return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}</div>`;
 }
 
 function renderStats() {
-  const c = state.champ;
+  const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);  // 검을 뽑아라 → 근접
   if (!c) { $("#metrics").innerHTML = ""; $("#stat-table").innerHTML = ""; $("#skills").innerHTML = ""; return; }
   const L = state.level, o = statOpts();
   const e0 = St.computeStats(c, L, [], [], o).total;
@@ -215,16 +226,16 @@ function renderStats() {
   };
   $("#stat-table").innerHTML = `<tr><th>능력치</th><th>기본 (${L}레벨)</th><th>아이템</th><th>증강</th><th>합계</th></tr>`
     + rows.map(([k, name, d, pct]) => `<tr><td>${name}</td>${cell(e0[k] || 0, k, d, pct)}${cell((e1[k] || 0) - (e0[k] || 0), k, d, pct, true)}${cell((e2[k] || 0) - (e1[k] || 0), k, d, pct, true)}<td><b>${pct ? fmt((e2[k] || 0) * 100) + "%" : fmt(e2[k] || 0, d)}</b></td></tr>`).join("");
-  const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${e.kind}">${KIND_LABEL[e.kind] || e.kind}</span></td>
-      <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${TRIGGER_LABEL[e.trigger] || e.trigger}</td></tr>`).join("");
+  const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
+      <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
   $("#skills").innerHTML = (effRows ? `<table class="eff-table"><tr><th>패시브·아이템·증강 효과</th><th>종류</th><th>1회</th><th>방어 적용</th><th>발동</th></tr>${effRows}</table>
       <p class="muted small">콤보에는 4초 동안 발동 횟수만큼(쿨다운·기본 공격 횟수 제한) 들어가고, DPS에는 초당 발동 횟수로 들어가요.
       상대 체력 비례 피해는 상대 최대 체력 ${St.TARGET.HP}, 현재 체력 ${St.TARGET.CUR * 100}% 기준이에요.</p>` : "")
     + `<div class="skill"><b>패시브 · ${esc(c.passive.name)}</b><div class="desc">${c.passive.desc}</div></div>`
     + c.spells.map((sp, i) => {
       const ms = m.spells[i];
-      const vals = ms.values.map((v) => `<span class="chip k-${v.kind}">${KIND_LABEL[v.kind]} ${fmt(v.value)}</span>`).join("");
-      return `<div class="skill ${ms.disabled ? "off" : ""}"><b>${sp.slot} · ${esc(sp.name)}</b>
+      const vals = ms.values.map((v) => `<span class="chip k-${esc(v.kind)}">${esc(KIND_LABEL[v.kind] || v.kind)} ${fmt(v.value)}</span>`).join("");
+      return `<div class="skill ${ms.disabled ? "off" : ""}"><b>${esc(sp.slot)} · ${esc(sp.name)}</b>
         <span class="muted small">랭크 ${ms.rank}/${sp.ranks} · 재사용 ${fmt(ms.cd, 1)}초</span>
         ${ms.disabled ? `<span class="chip bad">${ms.rank === 0 ? "아직 안 배움" : "궁극기 봉인"}</span>` : ""}
         <div>${vals ? `<span class="muted small">지금 수치</span> ${vals}` : ""}</div>
@@ -342,7 +353,7 @@ function patchChip(lines, checks) {
 
 function transformChip(a) {
   const tr = transform(a);
-  return tr ? `<span class="chip on" title="이 증강을 고르면 ${state.champ.name}의 플레이 방향이 바뀌어요">🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신</span>` : "";
+  return tr ? `<span class="chip on" title="이 증강을 고르면 ${esc(state.champ.name)}의 플레이 방향이 바뀌어요">🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신</span>` : "";
 }
 
 // 이유 한 줄: 데이터에서 자동으로 만든 쉬운 문장
@@ -378,7 +389,7 @@ function augReason(a, t, sc, g) {
   if (t.reasons.includes("연계 없음")) return `${josa(names, "과", "와")} 직접 연계는 없어요.${g && g.gain > 0 ? " 그래도 그 자체로는 강해요 (종합 보기에서 확인)." : ""}${trText}`;
   if (t.reasons.includes("충돌")) return `${josa(names, "과", "와")} 잘 안 맞아요. 서로 효과를 깎아먹어요.`;
   if (t.reasons.includes("궁합")) return `${josa(names, "과", "와")} 잘 맞아요. ${partText(topPart(1), "늘어요.")}`;
-  if (state.chosen.length && tierMode() === "synergy" && g && t.tier >= "C") {
+  if (state.chosen.length && tierMode() === "synergy" && g && TIER_ORDER[t.tier] >= TIER_ORDER.C) {
     return `그 자체로는 ${partText(topPart(1), "늘지만")} ${josa(names, "과", "와")} 연계는 약해요.${trText}`;
   }
   if (g) {
@@ -423,7 +434,7 @@ function renderOfferResult() {
   const out = $("#offer-result");
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
   if (!state.champ || !offers.length) {
-    pushOverlay([]);
+    if (!$("#ov-preview").checked) pushOverlay([]);  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
     out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
     return;
@@ -513,6 +524,7 @@ function sendOverlay() {
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
+  if (state.buyNowText) hud.push("💰 " + state.buyNowText);
   api.set_overlay({ cards: overlayCards, hud });
 }
 
@@ -542,7 +554,7 @@ function renderAugs() {
     <div class="aug" data-id="${r.aug.id}">
       <img src="${icon("augment", r.aug.id)}" alt="" loading="lazy">
       <div>
-        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${r.aug.rarityName}</span>${newChips(r.aug)}
+        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${esc(r.aug.rarityName)}</span>${newChips(r.aug)}
           ${gains[r.aug.id] ? `<span class="chip adv ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
         ${basisBlock([...(((state.data.rules.augments[r.aug.id] || {}).basisView) || []), ...effectBasis(r.aug.effects)])}
@@ -580,7 +592,7 @@ function itemRow(r, extra = "") {
   const tip = (r.item.passiveHtml ? r.item.passiveHtml + " " : "") + r.item.desc;
   return `<div class="item ${r.fixed ? "fixed" : ""}" data-id="${r.item.id}" title="${esc(tip.replace(/<br>/g, "\n").replace(/<[^>]+>/g, "").replace(/[ \t]+/g, " "))}">
     <img src="${icon("item", r.item.id)}" alt="">
-    <div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span> <span class="muted small">${KIND_NAME[r.item.kind] || ""}${r.item.limit ? ` · ${LIMIT_NAME[r.item.limit] || r.item.limit} 계열` : ""}</span>${r.fixed ? ` <span class="chip on">고정</span>` : ""}${r.mismatch ? ` <span class="chip">성향 반대</span>` : ""}</div>
+    <div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span> <span class="muted small">${KIND_NAME[r.item.kind] || ""}${r.item.limit ? ` · ${esc(LIMIT_NAME[r.item.limit] || r.item.limit)} 계열` : ""}</span>${r.fixed ? ` <span class="chip on">고정</span>` : ""}${r.mismatch ? ` <span class="chip">성향 반대</span>` : ""}</div>
     <div>${r.parts.slice(0, 4).map((p) => `<span class="chip">${label(p.tag)} +${p.value.toFixed(2)}</span>`).join("")}</div>
     ${r.synergy ? `<span class="chip syn">🔗 연계 추천</span>` : ""}
     ${r.reasons && r.reasons.length ? `<div class="reason">${esc(itemReason(r))}</div>` : ""}
@@ -702,6 +714,48 @@ function itemRanking() {
   return rows;
 }
 
+// ---- 지금 골드로 살 것: 1순위 아이템을 완성하려면 남은 금액, 지금 살 수 있는 가장 비싼 부품
+const partOf = (id) => (state.data.parts || {})[id] || state.data.items.find((i) => i.id === id);
+const partGold = (id) => { const p = partOf(id); return p ? (p.gold || 0) : 0; };
+const partFrom = (id) => { const p = partOf(id); return (p && p.from) || []; };
+// 가진 부품(owned: id → 개수)을 써서 id 를 완성하는 데 드는 남은 금액
+function remainingCost(id, owned) {
+  if (owned[id] > 0) { owned[id]--; return 0; }
+  const from = partFrom(id);
+  if (!from.length) return partGold(id);
+  const combine = partGold(id) - from.reduce((t, c) => t + partGold(c), 0);
+  return combine + from.reduce((t, c) => t + remainingCost(c, owned), 0);
+}
+function buyNow(item, gold, inventory) {
+  const count = () => inventory.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
+  const left = remainingCost(item.id, count());
+  if (gold >= left) return { done: true, left };
+  // 부품 후보: 트리 안의 부품 중 아직 없는 것 (가진 부품을 반영한 실제 가격)
+  const cands = [];
+  const walk = (id) => { for (const c of partFrom(id)) { cands.push(c); walk(c); } };
+  walk(item.id);
+  let best = null;
+  for (const c of new Set(cands)) {
+    if (inventory.includes(c)) continue;
+    const cost = remainingCost(c, count());
+    if (cost > 0 && cost <= gold && (!best || cost > best.cost)) best = { id: c, name: partOf(c).name, cost };
+  }
+  return { done: false, left, part: best };
+}
+function renderBuyNow() {
+  const el = $("#buy-now");
+  if (!el) return;
+  const top = state.nextTop;
+  if (state.gold == null || !top) { el.innerHTML = ""; return; }
+  const g = Math.floor(state.gold);
+  const b = buyNow(top, g, state.inventory);
+  el.innerHTML = `💰 지금 골드 <b>${fmt(g)}</b> · ${esc(top.name)} 완성까지 <b>${fmt(b.left)}G</b><br>`
+    + (b.done ? `→ <b>지금 ${esc(top.name)} 완성할 수 있어요</b>`
+      : b.part ? `→ 지금 <img src="${icon("item", b.part.id)}" alt=""> <b>${esc(b.part.name)}</b> (${fmt(b.part.cost)}G)부터 사세요`
+        : `→ 아직 살 수 있는 부품이 없어요 (가장 싼 부품보다 골드가 적어요)`);
+  state.buyNowText = b.done ? `지금 ${top.name} 완성 가능` : b.part ? `지금 ${b.part.name} (${b.part.cost}G)` : "";
+}
+
 function renderNextBuy(rows) {
   const box = $("#next-buy");
   if (!state.champ) { box.innerHTML = ""; return; }
@@ -712,8 +766,11 @@ function renderNextBuy(rows) {
     .slice(0, 3);
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${r.item.gold}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
+  box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
+  state.nextTop = pick.length ? pick[0].item : null;
+  renderBuyNow();
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
   sendOverlay();
 }
@@ -735,7 +792,7 @@ function renderWeights() {
   if (!state.champ) { $("#weights").innerHTML = ""; return; }
   $("#weights").innerHTML = state.data.tags.map((t) => `
     <label>${label(t)}</label>
-    <input type="range" min="0" max="1.5" step="0.05" value="${state.weights[t]}" data-t="${t}">
+    <input type="range" min="0" max="1.5" step="0.05" value="${Number(state.weights[t]) || 0}" data-t="${esc(t)}">
     <span>${state.weights[t].toFixed(2)}</span>`).join("");
   $("#weights").querySelectorAll("input").forEach((el) => el.addEventListener("input", () => {
     state.weights[el.dataset.t] = Number(el.value);
@@ -744,6 +801,7 @@ function renderWeights() {
     renderAugs();
     renderBuild();
     renderItemList();
+    renderOfferResult();  // 선택지 비교·게임 화면 표시도 새 가중치로
   }));
 }
 
@@ -780,19 +838,42 @@ async function applyLcu(api, L) {
   if (itemSetDone === champ.id) return;
   itemSetDone = champ.id;
   el.textContent = `· ${champ.name} 상점 추천 만드는 중…`;
-  const r = await api.write_item_set(champ.key, `칼바람 증강 계산기 · ${champ.name}`, itemSetBlocks(champ));
-  el.textContent = r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${r.error}`;
-  if (!r.ok) itemSetDone = null;
+  try {
+    // 상점 추천은 화면에서 고른 상대와 무관하게 기준 상대로 만든다
+    const prev = state.target;
+    if (prev) St.setTarget(null);
+    let blocks;
+    try { blocks = itemSetBlocks(champ); } finally { if (prev) setTargetChamp(prev); }
+    const r = await api.write_item_set(champ.key, `칼바람 증강 계산기 · ${champ.name}`, blocks);
+    el.textContent = r && r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
+    if (!r || !r.ok) itemSetDone = null;
+  } catch (e) {
+    el.textContent = `· 등록 실패: ${String(e && e.message || e).slice(0, 80)}`;
+    itemSetDone = null;  // 다음 확인 때 다시 시도
+  }
 }
 
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
+let liveEnded = false;
 function applyLive(L) {
   const el = $("#live-status");
   if (!L || !L.enabled) { el.textContent = ""; return; }
-  if (!L.inGame) { el.textContent = "게임 대기 중"; return; }
+  if (!L.inGame) {
+    el.textContent = "게임 대기 중";
+    if (state.gold != null) { state.gold = null; state.inventory = []; renderBuyNow(); }
+    if (liveLast) { liveLast = ""; liveEnded = true; }  // 게임이 끝남 → 다음 게임은 새로 시작
+    return;
+  }
+  if (liveEnded) {  // 같은 챔피언으로 다음 게임을 해도 고른 증강·선택지는 비운다
+    liveEnded = false;
+    state.chosen = [];
+    state.tierMode = "auto";
+    clearOffers();
+  }
   const d = state.data;
-  const champ = d.champions.find((c) => c.id === L.champion);
+  // 게임 내부 이름과 Data Dragon id 의 대소문자가 다른 챔피언이 있다 (FiddleSticks ↔ Fiddlesticks)
+  const champ = L.champion ? d.champions.find((c) => c.id.toLowerCase() === String(L.champion).toLowerCase()) : null;
   const items = (L.items || []).map((id) => d.items.find((i) => i.id === id)).filter(Boolean)
     .filter((it, i, arr) => arr.findIndex((x) => x.name === it.name) === i).slice(0, S.SLOTS);
   const level = Math.max(1, Math.min(18, L.level || 1));
@@ -800,8 +881,15 @@ function applyLive(L) {
     + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "");
   el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
+  // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다
+  const goldChanged = state.gold !== (L.gold ?? null) || JSON.stringify(state.inventory) !== JSON.stringify(L.items || []);
+  state.gold = L.gold ?? null;
+  state.inventory = (L.items || []).map(String);
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id)]);
-  if (key === liveLast) return;
+  if (key === liveLast) {
+    if (goldChanged) { renderBuyNow(); sendOverlay(); }
+    return;
+  }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
   liveLast = key;
   // 레벨만 바뀌었으면 능력치 표만 다시: 증강·아이템 순위는 18레벨 완성 빌드 기준이라 레벨과 무관하다
