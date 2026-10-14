@@ -9,6 +9,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+env:
+  PYTHONIOENCODING: utf-8  # 한글 파일 이름 출력 (윈도우 콘솔 기본 인코딩은 한글을 못 씀)
+
 jobs:
   windows:
     runs-on: windows-latest

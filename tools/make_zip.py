@@ -6,6 +6,10 @@ import sys
 import zipfile
 from pathlib import Path
 
+# 윈도우 콘솔(cp1252 등)에서 한글 이름을 출력하다 멈추지 않게
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 src, out = Path(sys.argv[1]), Path(sys.argv[2])
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
     for p in sorted(src.rglob("*")):
