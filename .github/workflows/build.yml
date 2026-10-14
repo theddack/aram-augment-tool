@@ -1,0 +1,46 @@
+# 윈도우 실행 파일 빌드. 결과: Actions 실행 페이지의 AramAugment-windows 아티팩트 (zip)
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 도구 설치
+        run: python -m pip install pywebview pyinstaller
+
+      - name: 모듈 확인
+        run: python -c "import desktop, build_data, champion_data, lol_calc, webview; print('ok')"
+
+      - name: 빌드
+        run: >
+          pyinstaller --noconfirm --windowed --name AramAugment
+          --add-data "web;web" --add-data "rules.json;."
+          --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
+          desktop.py
+
+      - name: 결과 확인
+        shell: pwsh
+        run: |
+          $exe = "dist/AramAugment/AramAugment.exe"
+          if (-not (Test-Path $exe)) { throw "exe 없음" }
+          $web = Get-ChildItem dist/AramAugment -Recurse -Filter data.json
+          if (-not $web) { throw "data.json 이 번들에 없음" }
+          "exe: {0:N1} MB" -f ((Get-Item $exe).Length / 1MB)
+          "폴더: {0:N1} MB" -f ((Get-ChildItem dist/AramAugment -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AramAugment-windows
+          path: dist/AramAugment
+          retention-days: 30

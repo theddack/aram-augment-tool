@@ -1,0 +1,782 @@
+{
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt",
+  "features": {
+    "dash": "돌진·도약 스킬",
+    "knockback": "밀어내기 스킬",
+    "terrain": "지형 생성 스킬",
+    "spin": "회전 스킬",
+    "summon": "소환 스킬",
+    "channel": "정신 집중 스킬",
+    "stealth": "은신·투명 스킬",
+    "immobilize": "이동 불가 CC",
+    "allysupport": "아군 회복·보호막 스킬",
+    "melee": "근접 챔피언",
+    "ranged": "원거리 챔피언"
+  },
+  "augments": {
+    "ARAM_ADAPt": {
+      "convert": {
+        "AD": "AP"
+      },
+      "tags": {
+        "AP": 1
+      },
+      "note": "공격력 아이템이 주문력으로 바뀌므로 공격력 아이템도 주문력으로 계산",
+      "stats": {
+        "bonusADtoAP": "ConversionRate",
+        "APmult": "APAmp"
+      }
+    },
+    "ARAM_escAPADe": {
+      "convert": {
+        "AP": "AD"
+      },
+      "tags": {
+        "AD": 1
+      },
+      "note": "주문력 아이템이 공격력으로 바뀌므로 주문력 아이템도 공격력으로 계산",
+      "stats": {
+        "APtoBonusAD": "ConversionRate",
+        "ADmult": "ADAmp"
+      }
+    },
+    "ARAM_Purist_Caster": {
+      "convert": {
+        "AS": "HASTE"
+      },
+      "tags": {
+        "HASTE": 1
+      },
+      "note": "공격 속도가 스킬 가속으로 바뀜"
+    },
+    "GlassCannon": {
+      "tags": {
+        "TRUE": 1,
+        "AD": 0.5,
+        "AP": 0.5
+      },
+      "zero": [
+        "HP"
+      ],
+      "note": "체력이 줄어드는 대신 고정 피해. 체력 아이템 가치 낮음",
+      "stats": {
+        "HPmult": "-HPReductionPerc",
+        "trueBonus": "TrueDamagePerc"
+      }
+    },
+    "ARAM_BacktoBasics": {
+      "tags": {
+        "HASTE": 1,
+        "HEALSHIELD": 0.6
+      },
+      "zero": [
+        "ULT"
+      ],
+      "note": "궁극기 봉인. 기본 스킬 위주 챔피언에게 유리",
+      "stats": {
+        "HASTE": "Haste",
+        "skillDmgMult": "DamageAmp",
+        "HSP": "HealingAmp",
+        "noUlt": true
+      }
+    },
+    "SkipTheBasics": {
+      "tags": {
+        "ULT": 1,
+        "HASTE": 0.6
+      },
+      "note": "스킬 가속이 궁극기에만 적용. 궁극기 의존 챔피언용",
+      "stats": {
+        "ultHaste": "Haste"
+      }
+    },
+    "Vampirism": {
+      "tags": {
+        "VAMP": 1
+      },
+      "zero": [
+        "HEALSHIELD"
+      ],
+      "note": "아군 회복을 못 받음. 회복 아이템 대신 흡혈"
+    },
+    "ARAM_CelestialBody": {
+      "tags": {
+        "HP": 1
+      },
+      "note": "체력 1500 대신 피해량 감소. 탱커 빌드와 맞음",
+      "stats": {
+        "HP": "Health",
+        "dmgDealtMult": "-DamageReduction"
+      }
+    },
+    "ARAM_Goliath": {
+      "tags": {
+        "HP": 1,
+        "AD": 0.4,
+        "AP": 0.4
+      },
+      "stats": {
+        "HPmult": "HealthAmp",
+        "adaptiveMult": "AFAmp"
+      }
+    },
+    "ARAM_GiantSlayer": {
+      "tags": {
+        "MS": 0.6,
+        "AD": 0.5,
+        "AP": 0.5
+      },
+      "note": "큰 적 상대로 추가 피해"
+    },
+    "ARAM_Dashing": {
+      "requires": "dash",
+      "tags": {
+        "HASTE": 1
+      },
+      "note": "돌진 스킬 가속"
+    },
+    "ARAM_OutlawsGrit": {
+      "requires": "dash",
+      "tags": {
+        "ARMOR": 0.8,
+        "MR": 0.8
+      }
+    },
+    "ARAM_ShadowRunner": {
+      "requires": "dash",
+      "tags": {
+        "MS": 1
+      }
+    },
+    "ARAM_Earthwake": {
+      "requires": "dash",
+      "tags": {
+        "AD": 0.6,
+        "AP": 0.6
+      }
+    },
+    "SwiftAndSafe": {
+      "requires": "dash",
+      "tags": {
+        "HEALSHIELD": 0.6,
+        "AD": 0.4,
+        "AP": 0.4
+      }
+    },
+    "ChainReaction": {
+      "requires": "knockback",
+      "tags": {
+        "CC": 1
+      }
+    },
+    "Terraind": {
+      "requires": "terrain",
+      "tags": {
+        "AP": 0.6,
+        "ULT": 0.6
+      }
+    },
+    "ARAM_SpinToWin": {
+      "requires": "spin",
+      "tags": {
+        "HASTE": 0.8,
+        "ULT": 0.4
+      }
+    },
+    "ARAM_Minionmancer": {
+      "requires": "summon",
+      "tags": {
+        "AP": 0.4
+      },
+      "note": "소환물 강화"
+    },
+    "DontChangeTheChannel": {
+      "requires": "channel",
+      "tags": {
+        "HEALSHIELD": 0.8
+      }
+    },
+    "ARAM_CourageoftheColossus": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "HEALSHIELD": 0.8,
+        "HP": 0.4
+      }
+    },
+    "Adamant": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "ARMOR": 0.6,
+        "MR": 0.6
+      }
+    },
+    "ARAM_SlapAround": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1
+      }
+    },
+    "ARAM_Cruelty": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "AP": 0.6
+      }
+    },
+    "DarkWind": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "AP": 0.5
+      }
+    },
+    "SoulEater": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "HP": 0.8
+      }
+    },
+    "ARAM_Impassable": {
+      "requires": "immobilize",
+      "tags": {
+        "CC": 1,
+        "ARMOR": 0.6,
+        "MR": 0.6
+      }
+    },
+    "ARAM_AllForYou": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1
+      },
+      "stats": {
+        "HSP": "HealShieldAmp"
+      }
+    },
+    "ARAM_WindspeakersBlessing": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1
+      }
+    },
+    "ARAM_SonicBoom": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1,
+        "TRUE": 0.4
+      }
+    },
+    "ARAM_EmpoweredByTheFaithful": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1
+      }
+    },
+    "ARAM_SpiritBomb": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1
+      }
+    },
+    "MercysStrike": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1,
+        "AS": 0.4
+      }
+    },
+    "ARAM_WeeWooWeeWoo": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1,
+        "MS": 0.5
+      }
+    },
+    "SupportMain": {
+      "requires": "allysupport",
+      "tags": {
+        "HEALSHIELD": 1
+      }
+    },
+    "ARAM_ScopedWeapons": {
+      "requires": "ranged",
+      "tags": {
+        "AS": 0.5,
+        "CRIT": 0.3
+      },
+      "note": "평타 사거리 증가"
+    },
+    "ARAM_ScopierWeapons": {
+      "requires": "ranged",
+      "tags": {
+        "AS": 0.6,
+        "CRIT": 0.4
+      }
+    },
+    "ARAM_ScopiestWeapons": {
+      "requires": "ranged",
+      "tags": {
+        "AS": 0.8,
+        "CRIT": 0.5
+      }
+    },
+    "ARAM_DrawYourSword": {
+      "requires": "ranged",
+      "tags": {
+        "AD": 1,
+        "HP": 0.6,
+        "VAMP": 0.6,
+        "AS": 0.5
+      },
+      "note": "잃은 사거리에 비례해 강해짐. 원거리 챔피언일수록 효과 큼",
+      "stats": {
+        "ADmult": "BonusAD",
+        "HPmult": "BonusHP",
+        "AS": "BonusAS",
+        "LS": "BonusLifesteal",
+        "MSmult": "BonusMS"
+      }
+    },
+    "LittleExtraHelp": {
+      "tags": {
+        "AS": 1
+      }
+    },
+    "ARAM_ThreadtheNeedle": {
+      "tags": {
+        "LETHAL": 1,
+        "MPEN": 1
+      },
+      "stats": {
+        "ARPEN": "PercentPen",
+        "MPENP": "PercentPen"
+      }
+    },
+    "Quest_Sneakerhead": {
+      "items": [
+        "광전사의 군화",
+        "신속의 장화"
+      ],
+      "tags": {
+        "AS": 0.6,
+        "MS": 0.6
+      },
+      "note": "퀘스트: 광전사의 군화·신속의 장화 착용"
+    },
+    "ARAM_Upgrade_IE": {
+      "items": [
+        "무한의 대검"
+      ],
+      "tags": {
+        "CRIT": 1
+      }
+    },
+    "ARAM_Upgrade_Collector": {
+      "items": [
+        "징수의 총"
+      ],
+      "tags": {
+        "AD": 0.6,
+        "CRIT": 0.6
+      }
+    },
+    "ARAM_Upgrade_ZH": {
+      "items": [
+        "존야의 모래시계"
+      ],
+      "tags": {
+        "AP": 0.6
+      }
+    },
+    "ARAM_Upgrade_Immolate": {
+      "items": [
+        "태양불꽃 방패",
+        "공허한 광휘"
+      ],
+      "tags": {
+        "HP": 0.8
+      }
+    },
+    "ARAM_Upgrade_Sheen": {
+      "items": [
+        "삼위일체",
+        "리치베인",
+        "얼어붙은 건틀릿",
+        "정수 약탈자"
+      ],
+      "tags": {
+        "ONHIT": 0.6,
+        "HASTE": 0.4
+      },
+      "note": "주문 검 효과 아이템과 같이"
+    },
+    "ARAM_Quest_WoogletsWitchcap": {
+      "items": [
+        "라바돈의 죽음모자",
+        "존야의 모래시계"
+      ],
+      "tags": {
+        "AP": 1
+      },
+      "note": "퀘스트: 라바돈의 죽음모자 + 존야의 모래시계"
+    },
+    "ARAM_Quest_VoidImmolation": {
+      "items": [
+        "태양불꽃 방패",
+        "공허한 광휘"
+      ],
+      "tags": {
+        "HP": 0.8
+      },
+      "note": "퀘스트: 태양불꽃 방패 + 공허한 광휘"
+    },
+    "ARAM_Quest_SteelYourHeart": {
+      "items": [
+        "강철심장"
+      ],
+      "tags": {
+        "HP": 1
+      },
+      "note": "퀘스트: 강철심장 중첩"
+    },
+    "Quest_UltraHydra": {
+      "items": [
+        "굶주린 히드라",
+        "불경한 히드라",
+        "거대한 히드라"
+      ],
+      "tags": {
+        "AD": 0.8,
+        "HP": 0.4
+      },
+      "note": "퀘스트: 히드라 3종"
+    },
+    "Upgrade_SwordOfBlossom": {
+      "items": [
+        "꽃피는 새벽의 검"
+      ],
+      "tags": {
+        "AS": 1,
+        "HEALSHIELD": 0.5
+      }
+    },
+    "Upgrade_SunderedSky": {
+      "items": [
+        "갈라진 하늘"
+      ],
+      "tags": {
+        "AD": 0.6,
+        "HEALSHIELD": 0.4
+      }
+    },
+    "Upgrade_Ravenous": {
+      "items": [
+        "굶주린 히드라"
+      ],
+      "tags": {
+        "AD": 0.6,
+        "VAMP": 0.8
+      }
+    },
+    "Upgrade_DeathDance": {
+      "items": [
+        "죽음의 무도"
+      ],
+      "tags": {
+        "AD": 0.6,
+        "ARMOR": 0.4
+      }
+    },
+    "ARAM_Quest_UrfsChampion": {
+      "generic": true,
+      "note": "처치 관여 퀘스트 보상: 황금 뒤집개"
+    },
+    "KingMe": {
+      "generic": true
+    },
+    "ARAM_OmniSoul": {
+      "generic": true
+    },
+    "ARAM_TransmutePrismatic": {
+      "generic": true
+    },
+    "ARAM_TransmuteChaos": {
+      "generic": true
+    },
+    "ARAM_TransmuteGold": {
+      "generic": true
+    },
+    "ARAM_PandorasBox": {
+      "generic": true
+    },
+    "ARAM_StatsOnStatsOnStats": {
+      "generic": true
+    },
+    "ARAM_StatsOnStats": {
+      "generic": true
+    },
+    "ARAM_Stats": {
+      "generic": true
+    },
+    "ARAM_HighRoller": {
+      "generic": true
+    },
+    "Donation": {
+      "generic": true
+    },
+    "ARAM_YowchMyCoins": {
+      "generic": true
+    },
+    "ARAM_Flashy": {
+      "generic": true
+    },
+    "Flash2": {
+      "generic": true
+    },
+    "Poltergeist": {
+      "generic": true
+    },
+    "VeilOfWarding": {
+      "generic": true
+    },
+    "ARAM_DivineIntervention": {
+      "generic": true
+    },
+    "PromQueen": {
+      "tags": {
+        "CC": 0.8
+      }
+    },
+    "BrushPower": {
+      "tags": {
+        "AD": 0.4,
+        "AP": 0.4
+      }
+    },
+    "ForgedByTheMaster": {
+      "tags": {
+        "AD": 0.3,
+        "AP": 0.3
+      },
+      "note": "아이템·증강 피해 증가"
+    },
+    "TrustyWeapon": {
+      "tags": {
+        "AD": 0.3,
+        "AP": 0.3
+      }
+    },
+    "Ability_SelfAOE_DoubleCast": {
+      "tags": {
+        "AP": 0.6,
+        "HASTE": 0.4
+      }
+    },
+    "SpellVolley": {
+      "tags": {
+        "AP": 0.5,
+        "HASTE": 0.4
+      }
+    },
+    "Missile_Split": {
+      "tags": {
+        "AP": 0.5
+      }
+    },
+    "ARAM_Multishot": {
+      "tags": {
+        "AP": 0.5,
+        "HASTE": 0.4
+      }
+    },
+    "BloodMoneyBurn": {
+      "tags": {
+        "AP": 0.4
+      }
+    },
+    "ARAM_StackosaurusRex": {
+      "tags": {
+        "HASTE": 0.3
+      }
+    },
+    "ARAM_Deft": {
+      "stats": {
+        "AS": "AttackSpeed"
+      }
+    },
+    "ARAM_ItsCritical": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "ARAM_WitchfulThinking": {
+      "stats": {
+        "AP": {
+          "calc": "AP"
+        }
+      }
+    },
+    "ARAM_LegDay": {
+      "stats": {
+        "MS": "MovementSpeed"
+      }
+    },
+    "ARAM_Goredrink": {
+      "stats": {
+        "OMNIVAMP": "Omnivamp"
+      }
+    },
+    "ARAM_Recursion": {
+      "stats": {
+        "HASTE": "AbilityHaste"
+      }
+    },
+    "InfiniteRecursion": {
+      "stats": {
+        "HASTE": "StartingHaste"
+      }
+    },
+    "ARAM_Zealot": {
+      "stats": {
+        "AS": "BaseAttackSpd",
+        "CRIT": "BaseCritChance"
+      }
+    },
+    "ARAM_CriticalHealing": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "ARAM_SoulSiphon": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "ARAM_TankItOrLeaveIt": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "ARAM_Vulnerability": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "CriticalRhythm": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "ARAM_DoubleTap": {
+      "stats": {
+        "CRIT": 0.25
+      }
+    },
+    "Twinfire": {
+      "stats": {
+        "CRIT": "CrtiChance"
+      }
+    },
+    "CriticalMissile": {
+      "stats": {
+        "CRIT": "CrtiChance"
+      }
+    },
+    "ARAM_JeweledGauntlet": {
+      "stats": {
+        "CRIT": "CritChance"
+      }
+    },
+    "HandOfBaron": {
+      "stats": {
+        "adaptiveMult": "AFAmp"
+      }
+    },
+    "WarlockJuicebox": {
+      "stats": {
+        "OMNIVAMP": 0.1
+      }
+    },
+    "ARAM_DualWield": {
+      "stats": {
+        "ASmult": "AttackSpeed"
+      }
+    },
+    "ARAM_FirstAidKit": {
+      "stats": {
+        "HSP": "HealShieldAmp"
+      }
+    },
+    "EmpyreanPromise": {
+      "stats": {
+        "HSP": "HSAmp"
+      }
+    },
+    "ARAM_BreadAndButter": {
+      "stats": {
+        "slotHaste": {
+          "Q": "QAbilityHaste"
+        }
+      }
+    },
+    "ARAM_BreadAndCheese": {
+      "stats": {
+        "slotHaste": {
+          "E": "EAbilityHaste"
+        }
+      }
+    },
+    "ARAM_BreadAndJam": {
+      "stats": {
+        "slotHaste": {
+          "W": "WAbilityHaste"
+        }
+      }
+    },
+    "ARAM_BluntForce": {
+      "stats": {
+        "ADmult": "ADAmp"
+      }
+    },
+    "ARAM_WithHaste": {
+      "stats": {
+        "HASTEtoMS": "AbilityHasteToMSConversion"
+      }
+    },
+    "ARAM_Eureka": {
+      "stats": {
+        "APtoHASTE": "APToHasteConversion"
+      }
+    }
+  },
+  "items": {
+    "_설명": "아이템 고유 효과 중 능력치를 바꾸는 것. check 문구가 아이템 설명에 있어야 적용(패치로 바뀌면 빌드 시 경고)",
+    "라바돈의 죽음모자": {
+      "stats": {
+        "APmult": 0.3
+      },
+      "check": "30%"
+    },
+    "대천사의 지팡이": {
+      "stats": {
+        "bonusMANAtoAP": 0.01
+      },
+      "check": "1%만큼 주문력"
+    },
+    "워모그의 갑옷": {
+      "stats": {
+        "itemHPbonus": 0.12
+      },
+      "check": "12%"
+    },
+    "해신 작쇼": {
+      "stats": {
+        "bonusResistMult": 0.3
+      },
+      "check": "30%"
+    }
+  }
+}

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>칼바람 증강 계산기</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>칼바람 증강 계산기</h1>
+  <span id="meta" class="muted"></span>
+  <span id="desktop-tools" hidden>
+    <label class="small"><input id="on-top" type="checkbox"> 항상 위</label>
+    <button id="update-data" class="reset" title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
+  </span>
+  <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
+</header>
+<main>
+  <section id="champ-panel" class="panel">
+    <input id="champ-search" type="search" placeholder="챔피언 검색">
+    <div id="champ-grid"></div>
+  </section>
+
+  <section id="center" class="panel">
+    <div id="champ-card" class="empty">왼쪽에서 챔피언을 고르세요.</div>
+
+    <details id="stat-panel" open>
+      <summary>능력치 · 스킬 수치 <span class="muted small">(고른 아이템·증강 적용)</span></summary>
+      <div class="row controls">
+        <label>레벨 <input id="level" type="range" min="1" max="18" value="18"> <b id="level-val">18</b></label>
+        <label><input id="aram-toggle" type="checkbox" checked> 칼바람 밸런스 보정</label>
+      </div>
+      <div id="metrics"></div>
+      <table id="stat-table"></table>
+      <div id="skills"></div>
+      <p class="muted small">스킬 콤보 = Q·W·E·R 각 1회 피해 합 (방어력 ${TARGET_ARMOR}·마법 저항력 ${TARGET_MR}인 대상 기준, 관통력 적용).
+        평타 DPS = 공격력 × 공격 속도 × 치명타 기대값. 유효 체력 = 체력 × (1 + 방어력/100), 마법은 마법 저항력 기준.
+        아이템 고유 효과는 능력치를 바꾸는 일부(라바돈·대천사·워모그·해신 작쇼)만 반영돼요.</p>
+    </details>
+
+    <div class="row"><h2>고른 증강 <span class="muted">(최대 4개, 누르면 해제)</span></h2>
+      <button id="reset-augs" class="reset">증강 초기화</button></div>
+    <div id="chosen"></div>
+
+    <div class="row"><h2>이번 선택지 <span class="muted">(게임에 뜬 3개를 입력)</span></h2>
+      <button id="reset-offers" class="reset">선택지 비우기</button></div>
+    <div id="offers"></div>
+    <div id="offer-result"></div>
+    <datalist id="aug-names"></datalist>
+
+    <div class="row">
+      <h2>전체 증강 순위 <span class="muted small">(이 챔피언과 잘 맞는 증강 구경용)</span></h2>
+      <div id="rarity-filter">
+        <button data-r="all" class="on">전체</button>
+        <button data-r="0">실버</button>
+        <button data-r="1">골드</button>
+        <button data-r="2">프리즘</button>
+      </div>
+      <input id="aug-search" type="search" placeholder="증강 검색">
+    </div>
+    <div id="aug-list"></div>
+  </section>
+
+  <section id="right" class="panel">
+    <div class="row"><h2>고른 아이템 <span class="muted">(6칸, 신발은 1개까지, 누르면 해제)</span></h2>
+      <button id="reset-items" class="reset">아이템 초기화</button></div>
+    <div id="chosen-items"></div>
+
+    <div class="row"><h2>추천 빌드 <span class="muted">(고른 아이템은 고정)</span></h2>
+      <div id="concept-tabs"></div></div>
+    <p id="concept-desc" class="muted small"></p>
+    <div id="build"></div>
+
+    <div class="row">
+      <h2>아이템 고르기</h2>
+      <div id="kind-filter">
+        <button data-k="all" class="on">전체</button>
+        <button data-k="legendary">전설</button>
+        <button data-k="boots">신발</button>
+        <button data-k="special">증강 보상</button>
+      </div>
+    </div>
+    <input id="item-search" type="search" placeholder="아이템 검색">
+    <p class="muted small">현재 빌드에 하나 더 넣는다고 했을 때의 점수순이에요. 누르면 고른 아이템에 추가돼요. "증강 보상"은 증강으로만 얻는 아이템이라 자동 추천에서는 빠져요.</p>
+    <div id="item-list"></div>
+
+    <details id="formula">
+      <summary>공식 (가중치) 조정</summary>
+      <p class="muted">챔피언 역할군과 공격/마법 성향으로 자동 설정된 값이에요. 바꾸면 증강·아이템 점수가 즉시 다시 계산돼요.</p>
+      <div id="weights"></div>
+      <button id="reset-weights">챔피언 기본값으로</button>
+      <p class="muted small">
+        증강 점수 = Σ(가중치 × 증강 태그 강도, 큰 순서로 ×1, 0.75, 0.55, 0.4… 감쇠) + 시너지(이미 고른 증강과 같은 태그면 40% 가산) + 등급 보너스(골드 0.1, 프리즘 0.2)<br>
+        챔피언 가중치 = 역할군 프리셋 + 공격/마법 성향(스킬 피해 유형과 반반) + 스킬 특성 × 0.4<br>
+        증강 조건(돌진 스킬 등): 충족 +0.4, 미충족 ×0.3 · 범용 증강 0.6 고정<br>
+        빌드 가중치 = 챔피언 가중치 × a + 고른 증강 태그 × b (증강 몰빵 a=0.35 b=1.2 · 균형 a=1 b=0.7 · 변칙 = 공격/마법·딜/탱 뒤집은 가중치 × 0.5 + 증강 × 1)<br>
+        아이템 점수 = 수치 증가분 × 4 + 태그 점수 × 0.4<br>
+        · 수치 증가분: 18레벨 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 증가율을 빌드 가중치로 가중합 (변칙은 챔피언이 약한 지표를 중시)<br>
+        · 태그 점수: Σ(빌드 가중치 × 아이템 태그 강도), 같은 태그 반복 시 ×0.7 감쇠, 성향 반대 ×0.3(변칙 제외), 증강이 요구하는 아이템 +1.5<br>
+        · 빌드는 후보 6개를 동시에 키우는 빔 탐색으로 고른다
+      </p>
+    </details>
+  </section>
+</main>
+<script src="stats.js"></script>
+<script src="scoring.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
