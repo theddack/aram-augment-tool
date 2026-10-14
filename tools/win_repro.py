@@ -122,7 +122,8 @@ def shot(name):
 
 
 GAME_WINDOW = r"""
-import tkinter as tk, ctypes
+import tkinter as tk, ctypes, sys
+HUD_PNG = sys.argv[1]
 try: ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception: pass
 W, H = 1024, 700
@@ -151,6 +152,18 @@ r.after(15000, lambda: cards(A))             # 게임 60초: 첫 증강 선택 �
 r.after(28000, lambda: c.delete("card"))     # 골라서 닫힘 → 고른 증강 = 강타자
 r.after(45000, lambda: cards(B))             # 두 번째 선택 화면 (마우스 표시 없음)
 r.after(53000, lambda: c.delete("card"))     # 닫힘 → 못 정함 (직접 선택)
+# 실제 게임에서 잘라 온 증강 칸 (골드 강탈 + 돌진/앙파상 그림) → '증강 칸' 읽기
+hud = tk.PhotoImage(file=HUD_PNG).subsample(2)  # 실제 비율(아이콘 ≈ 창 높이의 4.5%)에 맞게 절반으로
+r.after(32000, lambda: c.create_image(W // 2 - 40, H - 8, image=hud, anchor="s", tags="hud"))
+# 상점 창 위쪽 탭 → 상자가 상점 옆에만 뜨는지
+def shop(on):
+    c.delete("shop")
+    if on:
+        c.create_rectangle(W * 0.42, H * 0.16, W * 0.95, H * 0.80, fill="#0a1a24", outline="#c8aa6e", tags="shop")
+        for x, t in ((0.47, "추천"), (0.60, "모든 아이템"), (0.78, "아이템 세트")):
+            c.create_text(W * x, H * 0.20, text=t, fill="#e0e0e0", font=("Malgun Gothic", -int(H * 0.026)), tags="shop")
+r.after(60000, lambda: shop(True))
+r.after(75000, lambda: shop(False))
 r.mainloop()
 """
 
@@ -195,14 +208,14 @@ def main():
     hung_since = None
     worst = 0.0
     shots = {10: "1_lobby", 30: "2_champselect", 64: "3_aug_offer", 69: "4_aug_hover", 76: "5_aug_picked",
-             95: "6_aug_offer2", 104: "7_aug_unknown", 120: "8_ingame_items"}
+             95: "6_aug_offer2", 104: "7_aug_unknown", 112: "8_shop_open", 125: "9_hud_slots"}
     try:
         while now() < a.seconds:
             if app.poll() is not None:
                 log(f"애드온이 꺼짐 (코드 {app.returncode})")
                 break
             if phase() == "InProgress" and not game:
-                game = subprocess.Popen([sys.executable, "-c", GAME_WINDOW])
+                game = subprocess.Popen([sys.executable, "-c", GAME_WINDOW, str(ROOT / "tests" / "data" / "hud_naafiri_goldrend_endlesshunt.png")])
                 log("가짜 게임 창 띄움")
             hwnd = hwnd or u32.FindWindowW(None, TITLE)
             if hwnd:
@@ -248,7 +261,8 @@ def main():
     print("결과:", "멈춤 재현됨" if hung else "멈춤 없음")
     diag = (OUT / "diag.log").read_text(encoding="utf-8") if (OUT / "diag.log").exists() else ""
     want = ["증강 선택지: 눈 폭발 / 강타자 / 정신 변환", "고른 증강: 강타자",
-            "증강 선택지: 눈 폭발 / 탱크 엔진 / 정신 변환", "고른 증강: 못 정함"]
+            "증강 선택지: 눈 폭발 / 탱크 엔진 / 정신 변환", "고른 증강: 못 정함",
+            "증강 칸: 골드 강탈", "상점 창: 열림"]
     miss = [w for w in want if w not in diag]
     print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")
     sys.exit(1 if hung or (miss and a.check_ocr) else 0)
