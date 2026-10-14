@@ -217,3 +217,20 @@ test("증강 인식: 읽은 선택지를 채우고 게임 화면 카드에 보�
   assert.match(p.text("#offer-result"), /이걸로 선택/);
   assert.deepEqual(p.errors, []);
 });
+
+test("챔피언 선택 중: 롤에서 고른 챔피언을 따라가고, 대기석에서 바꾸면 화면·상점 추천도 바뀐다", async () => {
+  const p = await loadPage({ simple: true });
+  const writes = [];
+  const api = { write_item_set: async (key, title) => { writes.push(title); return { ok: true, blocks: 3 }; } };
+  p.q("#itemset-toggle").checked = true;
+  await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 39 });
+  assert.match(p.text("#champ-card"), /이렐리아/);
+  await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 799 });  // 대기석에서 암베사로
+  assert.match(p.text("#champ-card"), /암베사/);
+  assert.match(writes.at(-1), /암베사/);
+  assert.match(p.text("#itemset-status"), /암베사 상점 추천 등록됨/);
+  p.pickChamp("Jinx");  // 그 사이 다른 챔피언을 눌러 보면
+  await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 799 });
+  assert.match(p.text("#champ-card"), /징크스/, "롤 챔피언이 그대로면 덮어쓰지 않는다");
+  assert.deepEqual(p.errors, []);
+});

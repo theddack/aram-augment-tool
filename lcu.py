@@ -69,7 +69,18 @@ class Lcu:
         return self.req("GET", "/lol-gameflow/v1/gameflow-phase")
 
     def current_champion(self):
-        """챔피언 선택 중 내 챔피언 key (숫자). 아직 없으면 0"""
+        """챔피언 선택 중 내 챔피언 key (숫자). 아직 없으면 0
+
+        세션의 내 칸(localPlayerCellId)을 먼저 본다: 칼바람은 대기석에서 바꾸는데, current-champion 은
+        바꾼 뒤에도 앞 챔피언으로 남는 경우가 있었다 (2026-10-14 이렐리아 → 암베사, 상점 추천이 이렐리아로 남음)."""
+        try:
+            sess = self.req("GET", "/lol-champ-select/v1/session")
+            cell = sess.get("localPlayerCellId")
+            me = next((p for p in sess.get("myTeam") or [] if p.get("cellId") == cell), None)
+            if me and me.get("championId"):
+                return int(me["championId"])
+        except Exception:
+            pass
         try:
             return self.req("GET", "/lol-champ-select/v1/current-champion") or 0
         except Exception:

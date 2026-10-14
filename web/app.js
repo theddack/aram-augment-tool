@@ -132,19 +132,22 @@ function renderChamps() {
       <img src="${icon("champion", c.id)}" alt="" loading="lazy">${esc(c.name)}
     </div>`).join("");
   $("#champ-grid").querySelectorAll(".champ").forEach((el) => el.addEventListener("click", () => {
-    const next = state.data.champions.find((c) => c.id === el.dataset.id);
-    if (!state.champ || state.champ.id !== next.id) {
-      // 챔피언이 바뀌면 새 게임: 고른 증강·선택지를 비운다 (아이템은 남겨서 비교할 수 있게)
-      state.chosen = [];
-      state.tierMode = "auto";
-      state.showAllAugs = false;
-      clearOffers();
-    }
-    state.champ = next;
-    state.weights = S.profile(state.champ, state.data.tags);
-    renderChamps();
-    renderAll();
+    selectChamp(state.data.champions.find((c) => c.id === el.dataset.id));
   }));
+}
+
+function selectChamp(next) {
+  if (!state.champ || state.champ.id !== next.id) {
+    // 챔피언이 바뀌면 새 게임: 고른 증강·선택지를 비운다 (아이템은 남겨서 비교할 수 있게)
+    state.chosen = [];
+    state.tierMode = "auto";
+    state.showAllAugs = false;
+    clearOffers();
+  }
+  state.champ = next;
+  state.weights = S.profile(state.champ, state.data.tags);
+  renderChamps();
+  renderAll();
 }
 
 function renderAll() {
@@ -822,32 +825,27 @@ function renderWeights() {
 // ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 / 첫 증강 상위 3개별 / 변칙
 let itemSetDone = null;
 function itemSetBlocks(champ) {
+  // 상점 추천은 기본 빌드 한 줄만: 증강별 후보를 여러 줄 넣으면 뭘 사야 할지 모른다 (2026-10-14 지적).
+  // 상점은 게임 로딩 때 한 번만 읽혀서 증강을 고른 뒤 바뀌지 않는다 → 고른 증강 기준은 게임 화면 오른쪽 위 '다음 구매'가 맡는다
   const d = state.data;
   const w = S.profile(champ, d.tags);
-  const ids = (b) => b.pick.map((p) => p.item.id);
-  const [aug, bal, twist] = S.buildConcepts(d.items, w, [], [], d.rules, champ, statOpts());
-  const tiers = S.augmentTiers(d.augments, d.items, w, [], [], d.rules, champ, statOpts(), "total");
-  // 첫 증강 후보(🔥·👍) 중 빌드가 확실히 달라지는 것만 블록으로: 기존 블록과 아이템이 2개 이상 달라야 넣는다
-  const cands = d.augments.filter((a) => tiers[a.id] && ["S", "A"].includes(tiers[a.id].tier) && !(d.rules.augments[a.id] || {}).generic)
-    .sort((x, y) => (tiers[y.id].gain ?? -1) - (tiers[x.id].gain ?? -1)).slice(0, 15);
-  const blocks = [{ type: `기본 빌드${buildStyle(ids(bal)) ? ` (${STYLE_LABEL[buildStyle(ids(bal))]})` : ""}`, items: ids(bal) }];
-  const differs = (items) => blocks.every((b) => items.filter((i) => !b.items.includes(i)).length >= 2);
-  const twistIds = ids(twist);
-  for (const a of cands) {
-    if (blocks.length >= 4) break;
-    const items = ids(S.buildConcepts(d.items, w, [a], [], d.rules, champ, statOpts(), ["augment"])[0]);
-    if (!differs(items) || items.filter((i) => !twistIds.includes(i)).length < 2) continue;
-    const st = buildStyle(items);
-    blocks.push({ type: `${a.name} 고르면${st ? ` (${STYLE_LABEL[st]})` : ""}`, items });
-  }
-  if (differs(twistIds)) blocks.push({ type: `변칙${buildStyle(twistIds) ? ` (${STYLE_LABEL[buildStyle(twistIds)]})` : ""}`, items: twistIds });
-  return blocks;
+  const bal = S.buildConcepts(d.items, w, [], [], d.rules, champ, statOpts(), ["balanced"])[0];
+  const items = bal.pick.map((p) => p.item.id);
+  const st = buildStyle(items);
+  return [{ type: `기본 빌드${st ? ` (${STYLE_LABEL[st]})` : ""} · 왼쪽부터 사세요`, items }];
 }
+let lcuChamp = null;
 async function applyLcu(api, L) {
   const el = $("#itemset-status");
+  const champ = L && L.connected ? state.data.champions.find((c) => Number(c.key) === Number(L.championKey)) : null;
+  // 챔피언 선택 중: 화면도 내 챔피언으로 (대기석에서 바꾸면 따라간다). 게임 중엔 게임 연동이 맞춘다.
+  // 롤에서 챔피언이 바뀔 때만 바꾼다 (그 사이 다른 챔피언을 눌러 보는 건 덮어쓰지 않게)
+  if (champ && L.phase === "ChampSelect" && lcuChamp !== champ.id) {
+    lcuChamp = champ.id;
+    if (!state.champ || state.champ.id !== champ.id) selectChamp(champ);
+  }
   if (!$("#itemset-toggle").checked) { el.textContent = ""; return; }
   if (!L || !L.connected) { el.textContent = "· 롤 클라이언트 대기"; return; }
-  const champ = state.data.champions.find((c) => Number(c.key) === Number(L.championKey));
   if (!champ) { el.textContent = `· ${L.phase === "ChampSelect" ? "챔피언 선택 대기" : "클라이언트 연결됨"}`; return; }
   if (itemSetDone === champ.id) return;
   itemSetDone = champ.id;
