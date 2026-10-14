@@ -892,7 +892,9 @@ function applyLive(L) {
     .filter((it, i, arr) => arr.findIndex((x) => x.name === it.name) === i).slice(0, S.SLOTS);
   const level = Math.max(1, Math.min(18, L.level || 1));
   el.textContent = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
-    + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "");
+    + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "")
+    // 게임 화면 위 표시가 안 보일 때 이유를 바로 보이게 (윈도우)
+    + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "");
   el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
   // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다

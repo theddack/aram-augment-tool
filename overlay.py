@@ -13,6 +13,7 @@
 import queue
 import sys
 import threading
+import time
 
 GAME_TITLE = "League of Legends (TM) Client"
 KEY = "#ff00ff"  # 이 색은 투명하게 처리된다
@@ -203,6 +204,7 @@ class Overlay(threading.Thread):
         self.mode = None  # 롤 화면 모드 (game.cfg)
         self.cfg_path = None
         self._running = False
+        self.beat = None  # 표시 창이 마지막으로 확인한 시각 (멈춤 진단용, 돌기 시작하면 채운다)
         self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
 
     # 표시 창이 돌고 있지 않으면(맥, Tk 실패) 큐에 쌓지 않고 값만 바꾼다 (끝없이 쌓이지 않게)
@@ -248,6 +250,7 @@ class Overlay(threading.Thread):
 
         def tick():
             nonlocal shown, last
+            self.beat = time.time()
             rect = None
             try:
                 rect = step()

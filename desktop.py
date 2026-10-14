@@ -17,6 +17,7 @@ import ssl
 import sys
 import threading
 import time
+import traceback
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -28,7 +29,7 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-APP_VERSION = "0.1.10"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
+APP_VERSION = "0.1.11"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
 RELEASES_API = "https://api.github.com/repos/theddack/kalbaram-addon/releases/latest"
 RELEASES_PAGE = "https://github.com/theddack/kalbaram-addon/releases/latest"
 
@@ -221,9 +222,11 @@ class LiveWatcher(threading.Thread):
         self.enabled = True
         self._game_key = None
         self._last_snap = 0
+        self.beat = time.time()  # 마지막으로 한 바퀴 돈 시각 (멈춤 진단용)
 
     def run(self):
         while True:
+            self.beat = time.time()
             if self.enabled:
                 self.poll()
             # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
@@ -354,6 +357,7 @@ class LcuWatcher(threading.Thread):
         self.client = None
         self.measure_dir = measure_dir
         self._saved_games = set()
+        self.beat = time.time()
 
     def save_eog(self):
         """경기 결과 저장 (게임마다 한 번). 실패해도 다른 기능에는 영향 없게"""
@@ -380,6 +384,7 @@ class LcuWatcher(threading.Thread):
 
     def run(self):
         while True:
+            self.beat = time.time()
             self.poll()
             # 챔피언 선택 중에만 3초마다 (상점 추천 등록 시점), 그 밖에는 10초마다
             busy = self.state.get("connected") and self.state.get("phase") in ("ChampSelect", "GameStart", "PreEndOfGame", "WaitingForStats")
@@ -401,6 +406,74 @@ class LcuWatcher(threading.Thread):
         except Exception as e:
             self.client = None  # 클라이언트를 껐다 켜면 포트·비밀번호가 바뀐다
             self.state = {"connected": False, "error": str(e)[:120]}
+
+
+class Diag(threading.Thread):
+    """멈춤 진단: 감시 기능마다 마지막으로 돈 시각을 보고, 오래 멈춘 게 있으면 그때 모든 스레드가 어느 줄에 있는지 diag.log 에 남긴다.
+    게임 화면 표시 상태가 바뀔 때도 남긴다 (윈도우에서 왜 안 보이는지 확인용). 이름·사용자 폴더 경로는 남기지 않는다."""
+
+    CHECK = 5  # 초
+    MAX_BYTES = 512 * 1024  # 넘으면 diag.old.log 로 돌린다
+
+    def __init__(self, path, beats, status=None):
+        super().__init__(daemon=True)
+        self.path = path
+        self.beats = beats  # {이름: (마지막 시각을 돌려주는 함수, 멈춤으로 볼 초)}
+        self.status = status  # 게임 화면 표시 상태를 돌려주는 함수
+        self._stale = set()
+        self._last_status = None
+
+    def write(self, text):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.exists() and self.path.stat().st_size > self.MAX_BYTES:
+                os.replace(self.path, self.path.with_name("diag.old.log"))
+            home = str(Path.home())
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text.replace(home, "~") + "\n")
+        except OSError:
+            pass
+
+    def stacks(self):
+        names = {t.ident: t.name for t in threading.enumerate()}
+        out = []
+        for ident, frame in sys._current_frames().items():
+            out.append(f"  [{names.get(ident, ident)}]")
+            out += ["    " + ln.rstrip().replace("\n", "\n    ") for ln in traceback.format_stack(frame)[-6:]]
+        return "\n".join(out)
+
+    def check(self, now=None):
+        now = now or time.time()
+        stale = {}
+        for name, (get, limit) in self.beats.items():
+            t = get()
+            if t and now - t > limit:
+                stale[name] = int(now - t)
+        new = set(stale) - self._stale
+        if new:
+            self.write("멈춤: " + ", ".join(f"{n} {stale[n]}초째" for n in sorted(stale)) + "\n" + self.stacks())
+        for n in sorted(self._stale - set(stale)):
+            self.write(f"다시 움직임: {n}")
+        self._stale = set(stale)
+        if self.status:
+            st = re.sub(r"\d+×\d+", "", str(self.status())).strip()  # 창 크기만 바뀐 건 남기지 않는다
+            if st != self._last_status:
+                self.write(f"게임 화면 표시: {st}")
+                self._last_status = st
+
+    def run(self):
+        self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}")
+        while True:
+            time.sleep(self.CHECK)
+            try:
+                self.check()
+            except Exception as e:
+                self.write(f"진단 오류: {str(e)[:120]}")
+
+
+def platform_name():
+    import platform
+    return f"{platform.system()} {platform.release()} {platform.version()}"
 
 
 class Settings:
@@ -438,6 +511,7 @@ class Api:
         self._ov = ov
         self._lcu = lcu_watcher
         self._lock = threading.Lock()
+        self._ui_beat = None  # 화면(JS)이 마지막으로 게임 상태를 물어본 시각 (3초마다). 멈추면 화면 쪽이 멈춘 것
 
     # ---- 게임 화면 표시 (윈도우)
     def set_overlay(self, payload):
@@ -485,9 +559,11 @@ class Api:
 
     def get_live(self):
         """게임 연동 상태 (화면이 몇 초마다 부른다)"""
+        self._ui_beat = time.time()
         if not self._watcher:
             return {"inGame": False, "disabled": True}
-        return {**self._watcher.state, "enabled": self._watcher.enabled, "logDir": str(self._watcher.log_dir)}
+        return {**self._watcher.state, "enabled": self._watcher.enabled, "logDir": str(self._watcher.log_dir),
+                "overlayStatus": self._ov.status if self._ov else None}
 
     def set_live(self, on):
         if self._watcher:
@@ -580,11 +656,14 @@ def main():
     web = prepare_web()
     watcher = LiveWatcher(user_dir() / "logs")
     watcher.enabled = bool(settings.get("live", True))
+    watcher.name = "게임 연동"
     watcher.start()
     ov = overlay.Overlay()
+    ov.name = "게임 화면 표시"
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")
+    lw.name = "롤 클라이언트"
     lw.start()
     api = Api(settings, watcher, ov, lw)
     geo = settings.get("geometry") or {}
@@ -595,6 +674,14 @@ def main():
         min_size=(420, 500), on_top=bool(settings.get("on_top", False)),
     )
     api._window = window
+    # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
+    # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
+    Diag(user_dir() / "logs" / "diag.log", {
+        "게임 연동": (lambda: watcher.beat, 30),
+        "롤 클라이언트": (lambda: lw.beat, 60),
+        "게임 화면 표시": (lambda: ov.beat, 15),
+        "애드온 화면": (lambda: api._ui_beat, 90),
+    }, status=lambda: ov.status).start()
 
     def on_closing():
         try:

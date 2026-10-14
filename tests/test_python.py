@@ -245,6 +245,34 @@ class Overlay(unittest.TestCase):
         self.assertEqual(ov.payload, {"cards": []})
 
 
+class Diag(unittest.TestCase):
+    """멈춤 진단 기록: 멈춘 기능과 그때 스레드 위치, 다시 움직임, 게임 화면 표시 상태 변화만 남긴다"""
+
+    def test_stale_recover_and_status(self):
+        path = pathlib.Path(tempfile.mkdtemp()) / "diag.log"
+        beats = {"a": time.time(), "b": None}
+        status = {"v": "게임 창 없음"}
+        d = desktop.Diag(path, {"a": (lambda: beats["a"], 10), "b": (lambda: beats["b"], 10)},
+                         status=lambda: status["v"])
+        d.check()
+        d.check()  # 같은 상태는 한 번만
+        beats["a"] -= 60  # b 는 아직 안 돈 상태(None) → 멈춤으로 보지 않는다
+        d.check()
+        d.check()  # 계속 멈춰 있어도 한 번만
+        beats["a"] = time.time()
+        status["v"] = "표시 중 · 테두리 없음 1920×1080"
+        d.check()
+        status["v"] = "표시 중 · 테두리 없음 2560×1440"  # 크기만 바뀐 건 남기지 않는다
+        d.check()
+        log = path.read_text(encoding="utf-8")
+        self.assertEqual(log.count("게임 화면 표시:"), 2)
+        self.assertEqual(log.count("멈춤: a"), 1)
+        self.assertNotIn("멈춤: b", log)
+        self.assertIn("다시 움직임: a", log)
+        self.assertIn("MainThread", log)  # 멈춘 순간 스레드 위치
+        self.assertNotIn(str(pathlib.Path.home()), log)  # 사용자 폴더 경로는 ~ 로
+
+
 class DataFiles(unittest.TestCase):
     def test_prepare_web_replaces_old_or_broken_data(self):
         d = pathlib.Path(tempfile.mkdtemp())
