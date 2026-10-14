@@ -160,7 +160,7 @@ def shop(on):
     c.delete("shop")
     if on:
         c.create_rectangle(W * 0.42, H * 0.16, W * 0.95, H * 0.80, fill="#0a1a24", outline="#c8aa6e", tags="shop")
-        for x, t in ((0.47, "추천"), (0.60, "모든 아이템"), (0.78, "아이템 세트")):
+        for x, t in ((0.47, "Recommended"), (0.62, "All Items"), (0.80, "Item Sets")):  # 가상 PC 는 영어 글자 인식뿐
             c.create_text(W * x, H * 0.20, text=t, fill="#e0e0e0", font=("Malgun Gothic", -int(H * 0.026)), tags="shop")
 r.after(60000, lambda: shop(True))
 r.after(75000, lambda: shop(False))

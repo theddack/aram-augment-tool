@@ -88,10 +88,12 @@ def rows_of(words):
 
 def find_shop(words, width, height):
     """상점 창이 열려 있으면 위쪽 탭 줄의 위치 {left, right, top} (게임 창 비율), 아니면 None.
-    탭 글자 '모든 아이템' 과 '아이템 세트'(또는 '추천')가 한 줄에 있으면 상점"""
+    탭 글자 '모든 아이템' 과 '아이템 세트'(또는 '추천')가 한 줄에 있으면 상점 (영어: All Items · Item Sets · Recommended)"""
     for row in rows_of(words):
-        text = norm("".join(w[0] for w in sorted(row, key=lambda r: r[1])))
-        if "모든아이템" in text and ("아이템세트" in text or "추천" in text):
+        text = norm("".join(w[0] for w in sorted(row, key=lambda r: r[1]))).lower()
+        ko = "모든아이템" in text and ("아이템세트" in text or "추천" in text)
+        en = "allitems" in text and ("itemsets" in text or "recommended" in text)  # 영어 클라이언트·검증용 가상 PC
+        if ko or en:
             x0 = min(w[1] for w in row)
             x1 = max(w[1] + w[3] for w in row)
             y0 = min(w[2] for w in row)

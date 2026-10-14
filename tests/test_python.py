@@ -631,6 +631,8 @@ class ShopBox(unittest.TestCase):
         shop = augocr.find_shop(words, W, H)
         self.assertAlmostEqual(shop["left"], 560 / W, places=3)
         self.assertIsNone(augocr.find_shop([("모든", 700, 170, 40, 20), ("공격", 760, 170, 40, 20)], W, H))
+        self.assertIsNotNone(augocr.find_shop([("Recommended", 560, 170, 90, 20), ("All", 700, 170, 30, 20), ("Items", 735, 170, 50, 20),
+                                               ("Item", 880, 170, 40, 20), ("Sets", 925, 170, 40, 20)], W, H))
         payload = {"cards": [None] * 3, "hud": ["다음 구매: 크라켄 학살자"]}
         self.assertEqual(overlay.layout(payload, W, H), [], "상점이 안 열려 있으면 상자를 띄우지 않는다")
         items = overlay.layout({**payload, "shop": shop}, W, H)
