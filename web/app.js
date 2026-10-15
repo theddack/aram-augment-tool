@@ -177,6 +177,7 @@ function setTargetChamp(id) {
 }
 
 function renderChamps() {
+  if (document.body.classList.contains("winapp")) { $("#champ-grid").innerHTML = ""; return; }  // 윈도우 프로그램: 목록 없음 (아이콘 173개를 안 들고 있게)
   const q = $("#champ-search").value.trim();
   document.body.classList.toggle("searching", !!q);
   const list = state.data.champions.filter((c) => !q || c.name.includes(q) || c.id.toLowerCase().includes(q.toLowerCase()));
@@ -1100,6 +1101,15 @@ window.addEventListener("pywebviewready", async () => {
       <span class="tip">압축을 풀기 전에 '받은 파일 확인'으로 공식 파일인지 확인하세요. 새 폴더로 바꿀 땐 예전 폴더 안의 data 폴더를 옮기면 설정·기록이 그대로예요.</span>`;
     document.body.prepend(bar);
   }).catch(() => {});
+  // 윈도우 프로그램: 챔피언은 롤에서 정해지니(챔피언 선택 화면·게임 중 자동) 검색·목록을 없앤다.
+  // 고른 챔피언은 가운데 챔피언 칸에 그대로 보인다 (웹사이트·맥은 검색으로 고른다)
+  if (st.overlaySupported) {
+    document.body.classList.add("winapp");
+    $("#champ-grid").innerHTML = "";
+    if (!state.champ) $("#champ-card").textContent = "롤에서 챔피언을 고르면 여기 떠요 (챔피언 선택 화면·게임 중 자동)";
+    const g = $("#guide li:first-child .muted");
+    if (g) g.textContent = "롤에서 고르면 자동으로 떠요";
+  }
   if (st.overlaySupported) {
     $("#overlay-wrap").hidden = false;
     $("#overlay-pos").hidden = false;

@@ -318,3 +318,13 @@ test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로
   assert.match(p.text("#chosen"), /거인/, "증강 칸에서 찾은 것을 더한다");
   assert.match(p.text("#chosen"), /골드 강탈/, "클릭으로 잡은 것은 지우지 않는다");
 });
+
+test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에서 고른 챔피언은 가운데 칸에", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.document.body.classList.add("winapp");
+  p.w.renderChamps();
+  assert.equal(p.qa("#champ-grid .champ").length, 0, "목록을 만들지 않는다");
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 6, items: [] });
+  assert.match(p.text("#champ-card"), /징크스/);
+  assert.deepEqual(p.errors, []);
+});

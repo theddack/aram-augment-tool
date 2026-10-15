@@ -182,7 +182,12 @@ body.mini .refs { display: none; }
 .t-speed, .t-attackspeed { color: #f0d36b; }
 .t-status, .t-keywordmajor, .t-attention { color: var(--accent); }
 
+/* 윈도우 프로그램: 챔피언 검색·목록 없음 (롤에서 고른 챔피언을 자동으로 띄운다) */
+body.winapp #champ-panel { display: none; }
+body.winapp:not(.mini) main { grid-template-columns: 1fr 340px; }
+
 @media (max-width: 1000px) {
+  body.winapp:not(.mini) main { grid-template-columns: 1fr; }
   main { grid-template-columns: 1fr; height: auto; }
   .panel { max-height: none; }
   #champ-grid { max-height: 240px; overflow-y: auto; }
