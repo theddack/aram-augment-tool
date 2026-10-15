@@ -415,6 +415,43 @@ test("증강 쿨타임: 자동 주기는 고른 시각부터, 체력 발동은 �
   assert.deepEqual(p.errors, []);
 });
 
+test("상대 아이템 반영: 적이 산 아이템으로 상대 능력치·관통·치유 감소, 기록, 게임 끝나면 원래대로", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const foes = ["Malphite", "Leona", "Soraka", "Vayne", "Lux"];
+  const live = (builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c, k) => ({ champion: c, level: 12, items: builds[k] || [] })) });
+  const T = () => ({ ...p.w.Stats.TARGET });
+  live([]);
+  const t0 = T();
+  assert.match(p.text("#target-info"), /이번 판 적 5명이 산 아이템 기준/);
+  assert.ok(Math.abs(t0.MR - p.w.Stats.DEFAULT_TARGET.MR) < 15, "아직 안 산 칸은 평균 빌드: 기준 상대와 비슷");
+  live([[id("가시 갑옷"), id("태양불꽃 방패")], [id("대자연의 힘"), id("정령의 형상"), id("케이닉 루컨")], [], [id("몰락한 왕의 검")], [id("케이닉 루컨")]]);
+  const t1 = T();
+  assert.ok(t1.MR > t0.MR + 30 && t1.ARMOR > t0.ARMOR, `방어 아이템을 사면 상대가 단단해진다 ${JSON.stringify([t0, t1])}`);
+  p.w.sendOverlay();
+  const e = sent.at(-1).enemy;
+  assert.ok(e && e.auto && e.target.MR === t1.MR, "기록용으로 상대 능력치를 보낸다");
+  assert.ok(e.builds.find((b) => b.champ === "Leona").items.includes("케이닉 루컨"));
+  const advice = e.advice.join("\n");
+  assert.match(advice, /마법 저항력 높음 \(평균 \d+, 보통 63\) → 관통/);
+  assert.match(advice, /회복 많음 \([^)]*베인/, "흡혈 아이템을 산 적은 회복 많음");
+  // 상대를 직접 고르면 그대로 둔다
+  const sel = p.q("#target-champ");
+  sel.value = "Garen"; sel.dispatchEvent(new p.w.Event("change", { bubbles: true }));
+  const tg = T();
+  live([[id("가시 갑옷")], [], [], [], []]);
+  assert.deepEqual(T(), tg, "직접 고른 상대는 적 아이템으로 바꾸지 않는다");
+  sel.value = ""; sel.dispatchEvent(new p.w.Event("change", { bubbles: true }));
+  // 게임이 끝나면 기준 상대로
+  p.w.applyLive({ enabled: true, inGame: false });
+  assert.deepEqual(T(), { ...p.w.Stats.DEFAULT_TARGET, CUR: T().CUR, DPS_TAKEN: T().DPS_TAKEN });
+  assert.match(p.text("#target-info"), /기준 상대/);
+  assert.deepEqual(p.errors, []);
+});
+
 test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에서 고른 챔피언은 가운데 칸에", async () => {
   const p = await loadPage({ simple: true });
   p.w.document.body.classList.add("winapp");

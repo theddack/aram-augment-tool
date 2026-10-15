@@ -595,6 +595,17 @@ class LiveEnemies(unittest.TestCase):
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
 
+    def test_enemy_builds(self):
+        # 적이 산 아이템·레벨 (Tab 점수판 정보): 적 수만큼, 챔피언 순서 그대로
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        foe = next(p for p in raw["allPlayers"] if p.get("team") == "ORDER")
+        foe["items"] = [{"itemID": 3075}, {"itemID": 3047}]
+        st = desktop.parse_live(raw)
+        self.assertEqual([b["champion"] for b in st["enemyBuilds"]], st["enemies"])
+        b = next(b for b in st["enemyBuilds"] if b["items"])
+        self.assertEqual(b["items"], ["3075", "3047"])
+        self.assertIn("level", b)
+
 
 
 try:

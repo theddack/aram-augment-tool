@@ -208,7 +208,11 @@ def parse_live(raw):
         return m.group(1) if m else None
     champ_id = cid(mine) if mine else None
     # 적 챔피언: 팀이 다른 사람 (적 구성에 맞춘 추천용. 연습 모드처럼 혼자면 빈 목록)
-    enemies = [c for c in (cid(p) for p in players if mine and p.get("team") and p.get("team") != mine.get("team")) if c]
+    foes = [p for p in players if mine and p.get("team") and p.get("team") != mine.get("team") and cid(p)]
+    enemies = [cid(p) for p in foes]
+    # 적이 산 아이템·레벨 (게임 안 Tab 점수판에 보이는 정보): 상대 능력치·관통·치유 감소 판단에 쓴다
+    enemy_builds = [{"champion": cid(p), "level": p.get("level"),
+                     "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")]} for p in foes]
     gd = raw.get("gameData") or {}
     return {
         "inGame": True,
@@ -222,6 +226,7 @@ def parse_live(raw):
         "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),
         "augmentFields": find_keys(raw, r"augment"),
         "enemies": enemies,
+        "enemyBuilds": enemy_builds,
     }
 
 
@@ -702,6 +707,9 @@ class Api:
                                       "shop": bool(payload.get("shop"))}, dedupe=True)
             # 증강 쿨타임: 언제 골랐다고/발동했다고 봤는지 (실제 발동과 대조). 시각은 컴퓨터 시각(초) 그대로 —
             # 이 판 기록의 start.wall 을 빼면 기록 시각(t)과 맞는다. 바뀔 때만 남는다 (남은 초를 남기면 매번 달라진다)
+            # 상대 아이템 반영: 적이 산 아이템으로 잡은 상대 능력치와 조언 (바뀔 때만)
+            if payload.get("enemy"):
+                self._rec.event("enemy", payload["enemy"], dedupe=True)
             timers = [{"name": t.get("name"), "kind": t.get("kind"), "picked": round(t.get("base") or 0),
                        "readyAt": round(t.get("readyAt") or 0), "hp": t.get("trigHp")} for t in (payload.get("timers") or [])]
             if timers:

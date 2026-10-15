@@ -24,12 +24,61 @@ function enemyInfo() {
   // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
-  const healers = list.filter((c) => heals(c) >= 2);
-  const tanks = list.filter((c) => (c.tags || []).includes("Tank"));
+  // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
+  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem));
+  const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
   return { list, magic, healers, tanks };
 }
 
+// ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
+// ① 계산 기준 상대 능력치 ② 관통 조언 ③ 치유 감소 조언을 정한다. 상대를 직접 고른 경우(state.target)는 그대로 둔다
+let slotBonus = null;  // 평균 빌드 한 칸이 올리는 체력·방어 = (기준 상대 중앙값 − 전 챔피언 18레벨 맨몸 평균) ÷ 6칸
+function avgSlotBonus() {
+  if (slotBonus) return slotBonus;
+  const sum = { ARMOR: 0, MR: 0, HP: 0 };
+  const list = state.data.champions;
+  for (const c of list) {
+    const t = St.computeStats(c, 18, [], [], { aram: state.aram }).total;
+    for (const k of Object.keys(sum)) sum[k] += t[k] / list.length;
+  }
+  const D = St.DEFAULT_TARGET;
+  slotBonus = Object.fromEntries(Object.keys(sum).map((k) => [k, Math.max(0, (D[k] - sum[k]) / S.SLOTS)]));
+  return slotBonus;
+}
+// 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
+function enemyTarget() {
+  const b = state.enemyBuilds || [];
+  if (!b.length) return null;
+  const sb = avgSlotBonus();
+  const sum = { ARMOR: 0, MR: 0, HP: 0 };
+  for (const e of b) {
+    const t = St.computeStats(e.champ, 18, e.items, [], { aram: state.aram }).total;
+    const empty = Math.max(0, S.SLOTS - e.items.length);
+    for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
+  }
+  const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
+  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50 };
+}
+function applyEnemyTarget() {
+  if (state.target) return false;  // 상대를 직접 골랐으면 그대로
+  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  St.setTarget(enemyTarget());
+  showTarget();
+  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]) !== before;
+}
+function showTarget() {
+  const T = St.TARGET, id = state.target;
+  const enemy = id && state.data.champions.find((c) => c.id === id);
+  const n = (state.enemyBuilds || []).length;
+  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : n ? `이번 판 적 ${n}명이 산 아이템 기준 (안 산 칸은 평균 빌드로)` : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
+}
+const healItem = (i) => (i.tags && (i.tags.VAMP || 0) >= 0.5) || (i.stats && !Array.isArray(i.stats) && ("LS" in i.stats || "OMNIVAMP" in i.stats));
+const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0) >= 0.5 || (i.tags.MR || 0) >= 0.5)
+  && !((i.tags.AD || 0) >= 0.5 || (i.tags.AP || 0) >= 0.5);
+const enemyItems = (c) => ((state.enemyBuilds || []).find((e) => e.champ.id === c.id) || {}).items || [];
+
 // 적 구성 조언 (게임 화면 상자·애드온): 받는 피해 쪽 방어, 회복 많으면 치유 감소, 탱커 많으면 관통
+
 function enemyAdvice() {
   const e = enemyInfo();
   if (!e || !state.champ) return [];
@@ -54,10 +103,16 @@ function enemyAdvice() {
     }
     out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
   }
-  if (e.tanks.length >= 2) {
+  // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
+  const T = St.TARGET, D = St.DEFAULT_TARGET;
+  const resKey = mineType === "magic" ? "MR" : "ARMOR";
+  const resHigh = !state.target && (state.enemyBuilds || []).length > 0 && T[resKey] >= D[resKey] * 1.25;
+  if (e.tanks.length >= 2 || resHigh) {
     const pen = items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
       : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name).slice(0, 2);
-    out.push(`적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
+    const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
+      resHigh ? `적 ${resKey === "MR" ? "마법 저항력" : "방어력"} 높음 (평균 ${fmt(T[resKey])}, 보통 ${fmt(D[resKey])})` : ""].filter(Boolean).join(" · ");
+    out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
   }
   return out;
 }
@@ -164,15 +219,14 @@ function setTargetChamp(id) {
   const enemy = d.champions.find((c) => c.id === id);
   state.target = enemy ? id : "";
   if (!enemy) {
-    St.setTarget(null);
+    St.setTarget(enemyTarget());  // 게임 중이면 이번 판 적이 산 아이템 기준, 아니면 기준 상대
   } else {
     St.setTarget(null);  // 상대의 빌드는 기준 상대로 계산 (앞에 고른 상대에 따라 달라지지 않게)
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
     const t = St.computeStats(enemy, 18, b.pick.map((p) => p.item), [], statOpts()).total;
     St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
   }
-  const T = St.TARGET;
-  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
+  showTarget();
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
 }
 
@@ -322,7 +376,7 @@ let tierCache = { key: null, value: null };
 // 첫 증강은 챔피언 기준(종합), 고른 뒤에는 고른 증강과의 연계 기준. 버튼으로 바꿀 수 있다
 const tierMode = () => (state.tierMode === "auto" ? (state.chosen.length ? "synergy" : "total") : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, statOpts()]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -745,7 +799,7 @@ function pushOverlay(rows) {
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
   if (!state.champ || !state.items.length) return [];
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, statOpts()]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
@@ -817,7 +871,13 @@ function sendOverlay() {
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
-  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload() });
+  // 기록용: 적이 산 아이템으로 잡은 상대 능력치와 조언 (잘 돌아가는지 나중에 확인)
+  const enemy = (state.enemyBuilds || []).length ? {
+    auto: !state.target, target: { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP },
+    builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, items: e.items.map((i) => i.name) })),
+    advice: enemyAdvice(),
+  } : null;
+  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload(), enemy });
 }
 
 function renderAugs() {
@@ -1223,6 +1283,7 @@ function setAutoChamp() {
 let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0;
+let enemyBuildKey = "";
 function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
@@ -1233,6 +1294,7 @@ function applyLive(L) {
   if (!L.inGame) {
     el.textContent = "게임 대기 중";
     if (state.gold != null) { state.gold = null; state.inventory = []; state.enemies = []; renderBuyNow(); }
+    if ((state.enemyBuilds || []).length) { state.enemyBuilds = []; enemyBuildKey = ""; applyEnemyTarget(); }
     if (liveLast) { liveLast = ""; liveEnded = true; }  // 게임이 끝남 → 다음 게임은 새로 시작
     return;
   }
@@ -1272,8 +1334,17 @@ function applyLive(L) {
   const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);
   const enemyKey = enemies.map((c) => c.id).sort().join(",");
   if (enemyKey !== (state.enemies || []).map((c) => c.id).sort().join(",")) state.enemies = enemies;
+  // 적이 산 아이템 (완성 아이템·신발만: 부품은 계산에 넣지 않는다). 바뀌면 상대 능력치를 다시 잡는다
+  const eb = (L.enemyBuilds || []).map((x) => ({
+    champ: d.champions.find((c) => c.id.toLowerCase() === String(x.champion).toLowerCase()),
+    items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
+      .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
+  })).filter((x) => x.champ);
+  const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort()]));
+  if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey]);
+  // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
   if (key === liveLast) {
     if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay(); }
     return;
