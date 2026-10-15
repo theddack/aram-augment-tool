@@ -493,7 +493,6 @@ class Diag(threading.Thread):
     def __init__(self, path, beats, status=None, aug=None):
         super().__init__(daemon=True, name="진단")
         self.aug = aug  # 증강 인식 상태를 돌려주는 함수 (선택지·고른 증강·인식 상태가 바뀌면 남긴다)
-        self.light = False
         self._last_aug = {}
         self.path = path
         self.beats = beats  # {이름: (마지막 시각을 돌려주는 함수, 멈춤으로 볼 초)}
@@ -568,8 +567,8 @@ class Diag(threading.Thread):
     def run(self):
         gb = total_ram_gb()
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}"
-                   + (f" · 메모리 {gb:.0f}GB" if gb else "") + (" · 가벼운 모드" if self.light else "")
-                   + (f" · CPU 상한 코어 {self.cpu_cap}개분" if getattr(self, "cpu_cap", None) else " · CPU 상한 없음"))
+                   + (f" · 메모리 {gb:.0f}GB" if gb else "") 
+                   + (f" · CPU 상한 코어 {CPU_CAP['idle']}개분 (게임 중 {CPU_CAP['game']}개분)" if getattr(self, "cpu_cap", None) else " · CPU 상한 없음"))
         # 프로그램 전체가 멈추면(파이썬 잠금 교착) 이 스레드도 못 돌아서 위의 '멈춤' 기록을 못 남긴다 (v0.1.12 실제 PC:
         # 20:21:06 뒤로 한 줄도 없음). faulthandler 는 파이썬 잠금 없이 도는 감시라, 다시 못 맞추면 모든 스레드 위치를 쓴다
         import faulthandler
@@ -749,12 +748,7 @@ class Api:
                 "live": bool(self._settings.get("live", True)),
                 "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
                 "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
-                "itemSets": bool(self._settings.get("item_sets", True)), "light": light_mode(self._settings)}
-
-    def set_light(self, on):
-        """가벼운 모드 켜기/끄기 (증강 칸 아이콘 읽기는 다시 켜면 적용)"""
-        self._settings.set(light=bool(on))
-        return bool(on)
+                "itemSets": bool(self._settings.get("item_sets", True))}
 
     def set_item_sets(self, on):
         self._settings.set(item_sets=bool(on))
@@ -904,45 +898,53 @@ def total_ram_gb():
         return None
 
 
-def light_mode(settings):
-    """가벼운 모드: 기본으로 켜져 있다 (저사양 PC 도 쓰게, 사용자 요청 2026-10-14). 끄면 증강 칸 아이콘 읽기까지 켜진 전체 모드"""
-    v = settings.get("light")
-    return v if isinstance(v, bool) else True
-
-
-CPU_CAP_CORES = {True: 0.5, False: 1.0}  # 가벼운 모드 / 전체 모드: 애드온 전체가 쓸 수 있는 CPU (코어 몇 개분)
+# 모드는 하나 (2026-10-15 사용자 요청: 가벼운/전체로 나누지 말고 최적화로). 애드온 전체가 쓸 수 있는 CPU (코어 몇 개분):
+# 게임 밖(켤 때·챔피언 선택 상점 추천 계산)은 넉넉히, 게임 중엔 게임 몫을 뺏지 않게 반 개분.
+# 켤 때까지 반 개분으로 묶으면 화면이 처음 그려지는 동안 창이 잠깐 굳었다 (가상 PC 0.6초)
+CPU_CAP = {"idle": 1.0, "game": 0.5}
 _job = None  # 작업 개체 핸들 (프로그램이 끝날 때까지 들고 있어야 상한이 유지된다)
+_job_cores = None
+
+
+def _set_rate(job, cores):
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    k.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+
+    class CpuRate(ctypes.Structure):
+        _fields_ = [("ControlFlags", wintypes.DWORD), ("CpuRate", wintypes.DWORD)]
+    ncpu = os.cpu_count() or 4
+    rate = max(100, min(10000, int(cores * 10000 / ncpu)))  # 전체 CPU 의 1/100 % 단위
+    info = CpuRate(0x1 | 0x4, rate)  # JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | HARD_CAP
+    return bool(k.SetInformationJobObject(job, 15, ctypes.byref(info), ctypes.sizeof(info)))  # JobObjectCpuRateControlInformation
 
 
 def cap_cpu(cores):
     """윈도우: 이 프로그램과 자식(화면 엔진 WebView2)이 함께 쓸 수 있는 CPU 를 코어 cores 개분으로 묶는다 (작업 개체 하드 캡).
-    무거운 계산이 순간적으로 몰려도 게임 몫을 뺏지 않는다 (CPU 순간 최대 지적 2026-10-14). 실패해도 다른 기능엔 영향 없음"""
-    global _job
-    if sys.platform != "win32" or _job:
+    무거운 계산이 순간적으로 몰려도 게임 몫을 뺏지 않는다 (CPU 순간 최대 지적 2026-10-14). 실패해도 다른 기능엔 영향 없음.
+    이미 묶여 있으면 상한만 바꾼다 (게임 시작·끝)"""
+    global _job, _job_cores
+    if sys.platform != "win32":
         return False
     try:
+        if _job:
+            if cores != _job_cores and _set_rate(_job, cores):
+                _job_cores = cores
+            return True
         import ctypes
         from ctypes import wintypes
         k = ctypes.windll.kernel32
         k.CreateJobObjectW.restype = wintypes.HANDLE
         k.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
-        k.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
         k.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
         k.GetCurrentProcess.restype = wintypes.HANDLE
-
-        class CpuRate(ctypes.Structure):
-            _fields_ = [("ControlFlags", wintypes.DWORD), ("CpuRate", wintypes.DWORD)]
         job = k.CreateJobObjectW(None, None)
-        if not job:
-            return False
-        ncpu = os.cpu_count() or 4
-        rate = max(100, min(10000, int(cores * 10000 / ncpu)))  # 전체 CPU 의 1/100 % 단위
-        info = CpuRate(0x1 | 0x4, rate)  # JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | HARD_CAP
-        if not k.SetInformationJobObject(job, 15, ctypes.byref(info), ctypes.sizeof(info)):  # JobObjectCpuRateControlInformation
+        if not job or not _set_rate(job, cores):
             return False
         if not k.AssignProcessToJobObject(job, k.GetCurrentProcess()):
             return False
-        _job = job
+        _job, _job_cores = job, cores
         return True
     except Exception:
         return False
@@ -1082,7 +1084,7 @@ def main():
         sys.exit(run_update_data())
     overlay.set_dpi_aware()  # 창을 만들기 전에 (화면 배율에서 좌표 맞추기)
     settings = Settings()
-    capped = cap_cpu(CPU_CAP_CORES[light_mode(settings)])  # 화면 엔진을 띄우기 전에 (자식 프로세스도 같이 묶이게)
+    capped = cap_cpu(CPU_CAP["idle"])  # 화면 엔진을 띄우기 전에 (자식 프로세스도 같이 묶이게)
     web = prepare_web()
     watcher = LiveWatcher(user_dir() / "logs")
     watcher.enabled = bool(settings.get("live", True))
@@ -1101,15 +1103,13 @@ def main():
         reader = augocr.Reader(win.game_rect, augment_names)
         reader.enabled = watcher.enabled
         # 증강 칸 아이콘 읽기: 받은 데이터의 증강 아이콘과 비교 (고른 증강의 정답).
-        # 가벼운 모드(저사양 PC)에선 끈다: numpy·Pillow 를 아예 안 불러와 메모리·CPU 를 아낀다 (고른 증강은 클릭으로)
+        # 그 판 선택 화면에 떴던 증강하고만 비교해 가볍다 (numpy·Pillow 는 게임에서 처음 읽을 때 불러온다)
         reader.icon_dir = str(user_dir() / "web" / "icons" / "augment")
-        reader.hud_light = light_mode(settings)  # 가벼운 모드: 고른 직후에만 방금 뜬 3개와 비교
         try:
             reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
         except (OSError, ValueError, KeyError):
             reader._id_names = {}
         watcher.on_new_game = lambda st: reader.new_game()
-        reader.on_ready = trim_memory
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
     # 한 판 기록: logs/games/날짜_챔피언/ (끝나면 zip). 빗나간 인식·추천을 고치려고 읽은 화면 조각까지 남긴다
@@ -1125,6 +1125,8 @@ def main():
         if prev_new:
             prev_new(st)
         webmem.set(in_game=True)
+        if capped:
+            cap_cpu(CPU_CAP["game"])
         rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION})
 
     watcher.on_new_game = on_new_game
@@ -1132,6 +1134,8 @@ def main():
     def on_game_end():
         rec.finish()
         webmem.set(in_game=False)
+        if capped:
+            cap_cpu(CPU_CAP["idle"])
         trim_memory()
 
     watcher.on_game_end = on_game_end
@@ -1160,8 +1164,7 @@ def main():
         "애드온 화면": (lambda: api._ui_beat, 90),
         "증강 인식": (lambda: reader.beat if reader else None, 30),
     }, status=lambda: ov.status, aug=lambda: reader.state if reader else None)
-    diag.light = light_mode(settings)
-    diag.cpu_cap = CPU_CAP_CORES[diag.light] if capped else None
+    diag.cpu_cap = capped
     diag.start()
     webmem.log = diag.write
     window.events.loaded += lambda: webmem.apply()

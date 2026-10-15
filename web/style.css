@@ -233,6 +233,5 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 body.ingame #champ-grid { display: none; }
 body.ingame.searching #champ-grid { display: grid; }
 /* 가벼운 모드: 자세히 보기 버튼 숨김 (쉽게 보기만), 챔피언 목록은 검색할 때만 */
-body.light #simple-toggle { display: none; }
 body.light #champ-grid { display: none; }
 body.light.searching #champ-grid { display: grid; }

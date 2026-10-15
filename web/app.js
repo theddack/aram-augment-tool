@@ -1127,19 +1127,9 @@ window.addEventListener("pywebviewready", async () => {
     lcuAt = Date.now();
     applyLcu(api, await api.get_lcu());
   }, 3000);
-  // 가벼운 모드 (저사양 PC): 계산 기억을 줄이고 쉽게 보기만. 증강 칸 아이콘 읽기는 프로그램을 다시 켜면 꺼진다
-  const applyLight = (on) => {
-    document.body.classList.toggle("light", on);
-    S.setMemoMax(on ? 8 : 40);
-    if (on && !document.body.classList.contains("simple")) setSimple(true);
-  };
-  $("#light-toggle").checked = !!st.light;
-  applyLight(!!st.light);
-  $("#light-toggle").addEventListener("change", async (e) => {
-    await api.set_light(e.target.checked);
-    applyLight(e.target.checked);
-    $("#live-status").title = "가벼운 모드의 증강 칸 읽기 설정은 프로그램을 다시 켜면 적용돼요";
-  });
+  // 모드는 하나 (저사양 PC 도): 계산 기억은 작게, 챔피언 목록은 검색할 때만. 쉽게/자세히 보기는 고를 수 있다
+  document.body.classList.add("light");
+  S.setMemoMax(8);
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
   // 증강 선택 화면이 떠 있거나 상점이 열려 있으면 1초마다, 그 밖엔 3초마다 (게임 중 CPU).

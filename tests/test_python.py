@@ -630,8 +630,8 @@ class HudIcons(unittest.TestCase):
         r.scan(img, 900)
         self.assertEqual(r.scan(img, 900), [])
 
-    def _light_reader(self, fixture, offers, click):
-        """가벼운 모드 Reader: 고른 직후 방금 뜬 3개하고만 증강 칸을 비교한다 (가짜 화면 캡처)"""
+    def _hud_reader(self, fixture, offers, click):
+        """Reader: 증강 칸은 그 판 선택 화면에 떴던 증강하고만 비교한다 (가짜 화면 캡처)"""
         import numpy as np
         from PIL import Image
         import augocr
@@ -646,29 +646,28 @@ class HudIcons(unittest.TestCase):
 
         r = augocr.Reader(lambda: None, lambda: [])
         r.icon_dir = str(ROOT / "web" / "icons" / "augment")
-        r.hud_light = True
         r._id_names = self.names
         r._hud_cap = Cap()
         r.offered = set(offers)
         r._verify = {"from": offers, "click": click, "until": time.time() + 30}
         return r, (0, 0, W, H)
 
-    def test_light_mode_fixes_wrong_click(self):
-        # 가벼운 모드도 정확하게: 클릭 짐작(강타자)이 틀렸으면 증강 칸 그림(골드 강탈)으로 고친다
+    def test_hud_fixes_wrong_click(self):
+        # 클릭 짐작(강타자)이 틀렸으면 증강 칸 그림(골드 강탈)으로 고친다
         old = self.h.REGION
         self.h.REGION = (0, 0, 1, 1)
         try:
-            r, rect = self._light_reader("hud_naafiri_goldrend_endlesshunt.png", ["강타자", "골드 강탈", "정신 변환"], "강타자")
+            r, rect = self._hud_reader("hud_naafiri_goldrend_endlesshunt.png", ["강타자", "골드 강탈", "정신 변환"], "강타자")
             r._hud_job(rect, r._game_n if hasattr(r, "_game_n") else 0)
             r._hud_job(rect, getattr(r, "_game_n", 0))  # 연속 2번 보여야 인정
             self.assertEqual(r._fix, ("골드 강탈", ["강타자", "골드 강탈", "정신 변환"], "강타자"))
-            self.assertEqual(len(r.hud.tpl.groups), 3, "방금 뜬 3개하고만 비교")
+            self.assertEqual(len(r.hud.tpl.groups), 3, "그 판에 뜬 증강하고만 비교 (215개 전부 X)")
             r.apply_fix()
             st = r.tracker.state
             self.assertEqual((st["picked"], st["replaces"], st["by"], st["pickSeq"]), ("골드 강탈", "강타자", "hud", 1))
             self.assertIsNone(r._verify)
             # 바닥 타일 조각: 아무것도 아니어야 (엉뚱하게 고치지 않는다)
-            r, rect = self._light_reader("hud_false_floor.png", ["광신자", "도취", "존야 업그레이드"], "광신자")
+            r, rect = self._hud_reader("hud_false_floor.png", ["광신자", "도취", "존야 업그레이드"], "광신자")
             r._hud_job(rect, 0)
             r._hud_job(rect, 0)
             self.assertIsNone(r._fix)
@@ -737,14 +736,9 @@ class GameLog(unittest.TestCase):
         self.assertEqual(len(list(base.glob("*.zip"))), 2)
 
 
-class LightMode(unittest.TestCase):
-    def test_default_on(self):
-        class S:
-            def __init__(self, v):
-                self.v = v
-
-            def get(self, k, d=None):
-                return self.v.get(k, d)
-        self.assertTrue(desktop.light_mode(S({})), "가벼운 모드가 기본")
-        self.assertFalse(desktop.light_mode(S({"light": False})), "끄면 전체 모드")
+class LowResource(unittest.TestCase):
+    def test_one_mode_low_resource(self):
+        # 모드는 하나: 게임 중 CPU 상한이 게임 밖보다 낮고, 화면 엔진은 저사양 옵션
+        self.assertFalse(hasattr(desktop, "light_mode"))
+        self.assertLess(desktop.CPU_CAP["game"], desktop.CPU_CAP["idle"])
         self.assertIn("--disable-gpu", desktop.WEBVIEW2_ARGS)

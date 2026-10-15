@@ -20,7 +20,7 @@ SHOP_BAND = (0.06, 0.32)  # 상점 창 위쪽 탭('추천 · 모든 아이템 ·
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
-HUD_EVERY_MISSING = 60.0  # 초. 증강 칸을 아직 한 번도 못 찾았으면 더 드물게 (못 찾는 해상도에서 계속 무겁게 돌던 것)
+HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
@@ -443,12 +443,11 @@ class Reader(threading.Thread):
         self.icon_dir = None
         self.offered = set()  # 이번 게임 선택 화면에서 본 증강 이름 (같은 그림 묶음을 가릴 때)
         self.rec = None  # 한 판 기록 (gamelog.GameRecorder)
-        self.on_ready = None
         self.on_change = None  # 선택지·고른 증강·상점 열림이 바뀌면 부른다 (애드온 화면을 바로 깨워 카드 평가를 늦지 않게)
         self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
-        # 가벼운 모드: 증강 칸은 고른 직후에만, 방금 떴던 3개하고만 비교한다 (215개 전부 X · 30초마다 X).
-        # numpy·Pillow 는 처음 고를 때 불러온다
-        self.hud_light = False
+        # 증강 칸은 그 판 선택 화면에 떴던 증강하고만 비교한다 (215개 전부와 비교하던 전체 모드보다 훨씬 가볍다.
+        # 안 뜬 증강은 어차피 인정하지 않았다). 선택 화면을 하나도 못 봤으면(게임 중간에 켬) 전부와 · 60초마다.
+        # numpy·Pillow 는 게임에서 처음 읽을 때 불러온다
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
         self._fix = None  # 증강 칸으로 고친 결과 (증강 칸 스레드 → 읽기 스레드로 넘긴다)
 
@@ -517,14 +516,6 @@ class Reader(threading.Thread):
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
         self.lang = ocr.lang
-        if self.icon_dir and not self.hud_light:
-            try:
-                import hudicons
-                self.hud = hudicons.HudReader(hudicons.Templates(self.icon_dir, self.id_names()))
-            except Exception as e:  # numpy·Pillow 가 없거나 아이콘을 못 읽으면 이 기능만 끈다
-                self.hud_error = str(e)[:120]
-            if self.on_ready:
-                self.on_ready()  # 아이콘 비교 준비가 끝나면 쓰고 남은 메모리 돌려주기
         matcher, names = None, None
         while True:
             self.beat = time.time()
@@ -565,7 +556,8 @@ class Reader(threading.Thread):
         self._shop_img = False
         self._hud_logged = False
         self._area_saved = False
-        self._hud_at = 0
+        # 게임 시작 직후엔 첫 선택 화면을 기다린다 (그 전에 읽으면 증강 215개 전부와 비교해야 해서 무겁다)
+        self._hud_at = time.time() + HUD_EVERY_MISSING
         self._game_n = getattr(self, "_game_n", 0) + 1
         self._verify = None
         self._fix = None
@@ -665,8 +657,8 @@ class Reader(threading.Thread):
         if self._verify and (now > self._verify["until"] or self._verify.get("tries", 1) <= 0):
             self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
             self._verify = None
-        want = self._verify if self.hud_light else self.hud
-        if self.icon_dir and want and now >= getattr(self, "_hud_at", 0) and not getattr(self, "_hud_busy", False):
+        if self.icon_dir and not getattr(self, "hud_error", None) and now >= getattr(self, "_hud_at", 0) \
+                and not getattr(self, "_hud_busy", False):
             self._hud_busy = True
             threading.Thread(target=self._hud_job, args=(rect, getattr(self, "_game_n", 0)), daemon=True, name="증강 칸 읽기").start()
         self.scan_shop_only(cap, ocr, rect)
@@ -676,30 +668,29 @@ class Reader(threading.Thread):
             lower_thread()
             if getattr(self, "_hud_cap", None) is None:
                 self._hud_cap = _Capture()  # 화면 캡처 도구는 스레드마다 따로
-            if self.hud_light:
-                v = self._verify
-                if not v:
-                    return
-                import hudicons
-                names = {i: n for i, n in self.id_names().items() if n in v["from"]}
-                key = tuple(sorted(names))
-                if getattr(self, "_tpl_key", None) != key:
-                    tpl = hudicons.Templates(self.icon_dir, names)
-                    if self.hud is None:
-                        self.hud = hudicons.HudReader(tpl)
-                    else:
-                        self.hud.tpl, self.hud._seen = tpl, {}
-                    self._tpl_key = key
+            import hudicons
+            offered = set(self.offered)
+            names = {i: n for i, n in self.id_names().items() if not offered or n in offered}
+            key = tuple(sorted(names))
+            if getattr(self, "_tpl_key", None) != key:  # 새 선택지를 봤으면 비교 대상을 다시 만든다 (몇 개 안 돼 금방)
+                tpl = hudicons.Templates(self.icon_dir, names)
+                if self.hud is None:
+                    self.hud = hudicons.HudReader(tpl)
+                else:
+                    self.hud.tpl, self.hud._seen = tpl, {}
+                self._tpl_key = key
             v = self._verify
             self.scan_hud(self._hud_cap, rect, game_n)
             if v is not None and "tries" in v:
                 v["tries"] -= 1
+        except ImportError as e:  # numpy·Pillow 가 없으면 이 기능만 끈다
+            self.hud_error = str(e)[:120]
         except Exception as e:
             self._rec("error", {"error": "증강 칸: " + str(e)[:200]}, dedupe=True)
         finally:
             soon, self._hud_soon = getattr(self, "_hud_soon", False), False
             # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
-            self._hud_at = time.time() + (2 if soon or self._verify else HUD_EVERY if self.hud and self.hud.size else HUD_EVERY_MISSING)
+            self._hud_at = time.time() + (2 if soon or self._verify else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
             self._hud_busy = False
 
     def scan_shop_only(self, cap, ocr, rect):
