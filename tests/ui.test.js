@@ -384,6 +384,20 @@ test("고른 증강이 4개인데 선택 화면이 또 뜨면 증강 칸에서 �
   assert.deepEqual(p.errors, []);
 });
 
+test("아이템이 있어야 하는 증강(강철 같은 심장)을 고르면 그 아이템이 '다음 구매' 맨 앞", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [] });
+  p.w.applyAug({ offers: null, seq: 1, picked: "강철 같은 심장", pickSeq: 1 });
+  assert.match(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /^다음 구매: 강철심장/);
+  assert.match(p.text("#next-buy"), /증강에 필요/);
+  // 이미 샀으면 다시 권하지 않는다
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["3084"] });
+  assert.doesNotMatch(p.text("#next-buy"), /증강에 필요/);
+  assert.deepEqual(p.errors, []);
+});
+
 test("게임 화면 상자: 상점·죽음·시작 직후에만 띄우라고 보낸다", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];

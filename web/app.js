@@ -1174,12 +1174,20 @@ function renderNextBuy(rows) {
   if (!state.champ) { box.innerHTML = ""; return; }
   const hasBoots = state.items.some((i) => i.kind === "boots");
   const ctx = S.augContext(state.chosen, state.data.rules);
-  const pick = rows.filter((r) => !canAdd(r.item))
-    .filter((r) => r.item.kind === "legendary" || (r.item.kind === "boots" && !hasBoots) || (r.item.kind === "special" && ctx.wanted[r.item.name]))
-    .slice(0, 3);
+  const avail = rows.filter((r) => !canAdd(r.item))
+    .filter((r) => r.item.kind === "legendary" || (r.item.kind === "boots" && !hasBoots) || (r.item.kind === "special" && ctx.wanted[r.item.name]));
+  // 아이템이 있어야 효과가 나는 증강(강철 같은 심장 → 강철심장, 업그레이드 증강)은 그 아이템을 맨 앞에.
+  // 빌드에는 넣었지만 순위로만 고르면 징크스·강철심장처럼 6위라 '다음 구매'에서 빠졌다 (2026-10-15 사용자 지적)
+  const must = [];
+  for (const group of ctx.must) {
+    if (state.items.some((i) => group.includes(i.name))) continue;
+    const r = avail.find((x) => group.includes(x.item.name) && !must.includes(x));
+    if (r) { r.must = true; must.push(r); }
+  }
+  const pick = [...must, ...avail.filter((r) => !must.includes(r))].slice(0, 3);
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
   const adv = enemyAdvice();
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
