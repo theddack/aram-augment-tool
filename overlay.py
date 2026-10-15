@@ -244,6 +244,7 @@ def draw(canvas, payload, w, h, scale=1.0):
             canvas.tag_raise(t)
 
 
+KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임"}
 PARK = (-4000, -4000)  # 보여 줄 게 없을 때 표시 창을 치워 두는 자리 (화면 밖)
 
 
@@ -375,7 +376,12 @@ class Overlay(threading.Thread):
                     win.place(*where)
                     placed = where
                 shown = True
-                self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h}"
+                # 무엇을 어디에 그렸는지 (게임 창 비율, 0.05 단위): 실제 게임에서 무엇을 가리는지 기록으로 보려고.
+                # 0.05 단위라 초가 바뀌어도 상태 글은 그대로 → 진단 기록에 매초 남지 않는다
+                kinds = "·".join(sorted({KIND_NAME.get(k, k) for k, *_ in entries}))
+                r5 = lambda v: f"{round(v * 20) / 20:.2f}"
+                where_txt = f"가로 {r5(bx0 / w)}~{r5((bx0 + bw) / w)} 세로 {r5(by0 / h)}~{r5((by0 + bh) / h)}"
+                self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h} · {kinds} ({where_txt})"
             return rect
 
         root.after(200, tick)

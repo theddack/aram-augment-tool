@@ -790,7 +790,10 @@ function trackTimers(L) {
     const st = (L && L.stats) || {};
     if (L && L.dead) { if (def.deathReset) t.readyAt = 0; continue; }
     const hp = st.currentHealth, max = st.maxHealth;
-    if (hp > 0 && max > 0 && hp / max <= def.below && now >= t.readyAt) t.readyAt = now + def.cd;
+    if (hp > 0 && max > 0 && hp / max <= def.below && now >= t.readyAt) {
+      t.readyAt = now + def.cd;
+      t.trigHp = Math.round(hp / max * 100);  // 발동했다고 본 순간의 체력 % (기록용: 실제 발동과 대조)
+    }
   }
   augTimers = next;
   const key = JSON.stringify(augTimers);
@@ -799,7 +802,7 @@ function trackTimers(L) {
 function timersPayload() {
   return Object.entries(augTimers).map(([id, t]) => {
     const a = state.data.augments.find((x) => x.id === id);
-    return { name: a ? a.name : id, ...AUG_TIMERS[id], base: t.base, readyAt: t.readyAt };
+    return { name: a ? a.name : id, ...AUG_TIMERS[id], base: t.base, readyAt: t.readyAt, trigHp: t.trigHp ?? null };
   });
 }
 

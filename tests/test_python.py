@@ -749,6 +749,27 @@ class HudIcons(unittest.TestCase):
 class ShopBox(unittest.TestCase):
     """게임 화면 상자는 상점 창이 열려 있을 때만, 상점 옆에 (평소엔 게임을 가리지 않게)"""
 
+    def test_overlay_record_reasons_and_timers(self):
+        # 기록: 카드 이유 문장과 증강 쿨타임(고른 시각·발동 시각·체력)을 남긴다. 같은 내용은 한 번만
+        class Rec:
+            def __init__(self):
+                self.ev = []
+
+            def event(self, kind, data=None, dedupe=False):
+                if dedupe and self.ev and [e for e in self.ev if e[0] == kind][-1:] == [(kind, data)]:
+                    return
+                self.ev.append((kind, data))
+        api = desktop.Api.__new__(desktop.Api)
+        api._ov, api._rec = None, Rec()
+        payload = {"cards": [{"name": "퀸카", "label": "추천", "reason": "🔗 강한 연계 · 이유"}, None, None],
+                   "hud": [], "timers": [{"name": "도주 계획", "kind": "hp", "base": 1000.4, "readyAt": 1080.6, "trigHp": 33}]}
+        api.set_overlay(payload)
+        api.set_overlay(payload)
+        kinds = [k for k, _ in api._rec.ev]
+        self.assertEqual(kinds, ["shown", "timers"], "같은 내용은 한 번만")
+        self.assertEqual(api._rec.ev[0][1]["reasons"][0], "🔗 강한 연계 · 이유")
+        self.assertEqual(api._rec.ev[1][1]["timers"][0], {"name": "도주 계획", "kind": "hp", "picked": 1000, "readyAt": 1081, "hp": 33})
+
     def test_timer_lines(self):
         # 증강 쿨타임: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준. 모두 '예상'
         import overlay

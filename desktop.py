@@ -693,7 +693,16 @@ class Api:
         if self._rec:
             # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
             cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]
-            self._rec.event("shown", {"cards": cards, "box": payload.get("hud"), "shop": bool(payload.get("shop"))}, dedupe=True)
+            # 카드 밑 이유(연계·재미 픽·쓰는 법 문장)도: 체감과 맞았는지 나중에 대조
+            reasons = [c and (c.get("reason") or "")[:120] for c in (payload.get("cards") or [])]
+            self._rec.event("shown", {"cards": cards, "reasons": reasons, "box": payload.get("hud"),
+                                      "shop": bool(payload.get("shop"))}, dedupe=True)
+            # 증강 쿨타임: 언제 골랐다고/발동했다고 봤는지 (실제 발동과 대조). 시각은 컴퓨터 시각(초) 그대로 —
+            # 이 판 기록의 start.wall 을 빼면 기록 시각(t)과 맞는다. 바뀔 때만 남는다 (남은 초를 남기면 매번 달라진다)
+            timers = [{"name": t.get("name"), "kind": t.get("kind"), "picked": round(t.get("base") or 0),
+                       "readyAt": round(t.get("readyAt") or 0), "hp": t.get("trigHp")} for t in (payload.get("timers") or [])]
+            if timers:
+                self._rec.event("timers", {"timers": timers}, dedupe=True)
         return True
 
     def set_overlay_enabled(self, on):

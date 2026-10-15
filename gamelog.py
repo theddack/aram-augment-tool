@@ -18,7 +18,7 @@ import time
 import zipfile
 from pathlib import Path
 
-KEEP = 5
+KEEP = 15  # 최근 몇 판 기록을 남길지 (실게임 확인 기간: 지인들과 여러 판 한 뒤 한꺼번에 보내도 남게)
 MAX_IMAGES = 20
 
 
