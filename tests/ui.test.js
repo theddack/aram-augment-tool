@@ -157,9 +157,16 @@ test("지금 골드로 살 것: 남은 금액·살 부품·완성 가능", async
   p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gold: 500 });
   assert.match(p.text("#buy-now"), /지금 골드 500/);
   const list = p.q("#aug-list").innerHTML;
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gold: 1800 });
+  // 골드만 1초마다 오르면 상점이 닫혀 있을 땐 10초에 한 번만 다시 그린다 (게임 중 CPU)
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gold: 900 });
+  assert.match(p.text("#buy-now"), /지금 골드 500/, "상점이 닫혀 있으면 바로 안 그림");
+  // 상점을 열면 바로 (게임 화면 상자에 보인다)
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gold: 1800, aug: { shop: { x: 0 } } });
   assert.match(p.text("#buy-now"), /지금 골드 1,800/);
   assert.equal(p.q("#aug-list").innerHTML, list);
+  // 부품이 바뀌면 상점이 닫혀 있어도 바로
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001", "1036"], gold: 1450 });
+  assert.match(p.text("#buy-now"), /지금 골드 1,450/);
   p.w.applyLive({ enabled: true, inGame: false });
   assert.equal(p.text("#buy-now"), "", "게임이 끝나면 지움");
 });

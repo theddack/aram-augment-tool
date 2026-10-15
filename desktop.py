@@ -1018,6 +1018,51 @@ def trim_memory():
         pass
 
 
+class WebMemory:
+    """화면 엔진(WebView2) 메모리 절약: 게임 중이거나 창을 내려 두면 '적게 쓰기'로 (캐시를 비우고 덜 붙잡는다).
+    게임 밖에서 창을 보고 있을 땐 보통으로 되돌린다 (적게 쓰기는 화면 반응이 조금 느려질 수 있다)"""
+
+    def __init__(self, log=None):
+        self.window = None
+        self.in_game = False
+        self.minimized = False
+        self.applied = None
+        self.log = log
+
+    def set(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, bool(v))
+        self.apply()
+
+    def apply(self):
+        low = self.in_game or self.minimized
+        if sys.platform != "win32" or low == self.applied:
+            return
+        wv = getattr(getattr(self.window, "native", None), "webview", None)
+        if wv is None:
+            return  # 창이 아직 안 떴다 → 뜨면 다시 (loaded)
+        try:
+            from System import Action
+            from Microsoft.Web.WebView2.Core import CoreWebView2MemoryUsageTargetLevel as Level
+
+            def run():
+                try:
+                    if wv.CoreWebView2 is not None:
+                        wv.CoreWebView2.MemoryUsageTargetLevel = Level.Low if low else Level.Normal
+                except Exception as e:
+                    if self.log:
+                        self.log(f"화면 엔진 메모리 절약 실패: {str(e)[:100]}")
+
+            # 창 스레드에서 바꿔야 한다. 기다리지 않고 맡긴다 (Invoke 로 기다리면 창 스레드와 서로 기다릴 수 있다)
+            wv.BeginInvoke(Action(run))
+            self.applied = low
+            if self.log:
+                self.log("화면 엔진 메모리: " + ("적게 쓰기" if low else "보통") + (" (게임 중)" if self.in_game else " (창 내림)" if low else ""))
+        except Exception as e:
+            if self.log:
+                self.log(f"화면 엔진 메모리 절약 못 씀: {str(e)[:100]}")
+
+
 def main():
     lower_priority()
     if sys.platform == "win32":
@@ -1062,16 +1107,19 @@ def main():
     if reader:
         reader.rec = rec
     prev_new = getattr(watcher, "on_new_game", None)
+    webmem = WebMemory()
 
     def on_new_game(st):
         if prev_new:
             prev_new(st)
+        webmem.set(in_game=True)
         rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION})
 
     watcher.on_new_game = on_new_game
 
     def on_game_end():
         rec.finish()
+        webmem.set(in_game=False)
         trim_memory()
 
     watcher.on_game_end = on_game_end
@@ -1084,6 +1132,7 @@ def main():
         min_size=(420, 500),
     )
     api._window = window
+    webmem.window = window
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
     # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
     diag = Diag(user_dir() / "logs" / "diag.log", {
@@ -1096,6 +1145,11 @@ def main():
     diag.light = light_mode(settings)
     diag.cpu_cap = CPU_CAP_CORES[diag.light] if capped else None
     diag.start()
+    webmem.log = diag.write
+    window.events.loaded += lambda: webmem.apply()
+    window.events.minimized += lambda: webmem.set(minimized=True)
+    window.events.restored += lambda: webmem.set(minimized=False)
+    window.events.maximized += lambda: webmem.set(minimized=False)
 
     def on_closing():
         try:

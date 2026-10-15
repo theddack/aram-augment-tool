@@ -1001,6 +1001,7 @@ function applyAug(A) {
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
 let liveEnded = false;
+let liveShop = false, goldDrawnAt = 0;
 function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
@@ -1024,16 +1025,24 @@ function applyLive(L) {
   const items = (L.items || []).map((id) => d.items.find((i) => i.id === id)).filter(Boolean)
     .filter((it, i, arr) => arr.findIndex((x) => x.name === it.name) === i).slice(0, S.SLOTS);
   const level = Math.max(1, Math.min(18, L.level || 1));
-  el.textContent = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
+  const statusText = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
     + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "")
     // 게임 화면 위 표시가 안 보일 때 이유를 바로 보이게 (윈도우)
     + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "")
     // 증강 인식이 안 되면 이유가 바로 보이게 (v0.1.12 는 기록 파일을 열어야만 알 수 있었다)
     + (L.aug && L.aug.status ? ` · 증강 인식: ${L.aug.status}` : "");
+  if (el.textContent !== statusText) el.textContent = statusText;  // 같은 글이면 안 건드린다 (1초마다 다시 그리지 않게)
   el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
-  // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다
-  const goldChanged = state.gold !== (L.gold ?? null) || JSON.stringify(state.inventory) !== JSON.stringify(L.items || []);
+  // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다.
+  // 골드는 칼바람에서 1초마다 오른다 → 상점이 열려 있을 때(게임 화면 상자에 보일 때)·부품이 바뀌었을 때만 바로,
+  // 그 밖엔 10초에 한 번만 (게임 중 CPU 를 아낀다)
+  const shopOpen = !!(L.aug && L.aug.shop);
+  const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
+  const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
+    && (shopOpen || shopOpen !== liveShop || Date.now() - goldDrawnAt > 10000));
+  liveShop = shopOpen;
+  if (goldChanged) goldDrawnAt = Date.now();
   state.gold = L.gold ?? null;
   state.inventory = (L.items || []).map(String);
   const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);

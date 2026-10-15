@@ -216,6 +216,8 @@ def main():
     except Exception:
         proc = None
     cpu_prev = None
+    per = {}  # (단계, 프로세스 종류) → CPU 초. 어느 프로세스가 CPU 를 쓰는지 나눠 본다
+    per_prev = {}
     shots = {10: "1_lobby", 30: "2_champselect", 64: "3_aug_offer", 69: "4_aug_hover", 76: "5_aug_picked",
              95: "6_aug_offer2", 104: "7_aug_unknown", 112: "8_shop_open", 125: "9_hud_slots"}
     try:
@@ -264,6 +266,22 @@ def main():
                     if cpu_prev is not None:
                         usage.append((phase(), (cpu - cpu_prev[0]) / max(1e-3, time.time() - cpu_prev[1]) * 100, mem))
                     cpu_prev = (cpu, time.time())
+                    for p in ps:
+                        try:
+                            ct = p.cpu_times()
+                            c = ct.user + ct.system
+                            if p.pid not in per_prev:
+                                nm = p.name()
+                                if nm == "msedgewebview2.exe":
+                                    cl = p.cmdline()
+                                    nm = next((x[7:] for x in cl if x.startswith("--type=")), "browser")
+                                    nm += next(("/" + x.split("=", 1)[1].split(".")[-1] for x in cl if x.startswith("--utility-sub-type=")), "")
+                                per_prev[p.pid] = (nm, c)
+                            nm, c0 = per_prev[p.pid]
+                            per[(phase(), nm)] = per.get((phase(), nm), 0) + (c - c0)
+                            per_prev[p.pid] = (nm, c)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             if proc and now() >= 140 and not EVENTS_BREAKDOWN:
@@ -272,7 +290,8 @@ def main():
                     for p in [proc] + proc.children(recursive=True):
                         mi = p.memory_info()
                         rows.append((mi.rss / 1048576, p.name(), " ".join(p.cmdline()[1:3])[:60] if p.name() != "msedgewebview2.exe" else
-                                     next((a for a in p.cmdline() if a.startswith("--type=")), "--type=browser")))
+                                     next((a for a in p.cmdline() if a.startswith("--type=")), "--type=browser")
+                                     + next((" " + a.split("=", 1)[1] for a in p.cmdline() if a.startswith("--utility-sub-type=")), "")))
                     for mb, nm, extra in sorted(rows, reverse=True):
                         EVENTS_BREAKDOWN.append(f"{mb:7.0f}MB {nm} {extra}")
                 except Exception as e:
@@ -291,9 +310,12 @@ def main():
         for line in EVENTS_BREAKDOWN:
             log("메모리 " + line)
         if usage:
-            for ph in ("Lobby", "InProgress"):
+            for ph in ("Lobby", "ChampSelect", "GameStart", "InProgress"):
                 rows = [u for u in usage if u[0] == ph]
                 if rows:
+                    secs = {"Lobby": 15, "ChampSelect": 20, "GameStart": 10, "InProgress": max(1, now() - 45)}[ph]
+                    parts = sorted(((v, k[1]) for k, v in per.items() if k[0] == ph), reverse=True)
+                    log(f"CPU 나눠 보기 {ph}: " + " · ".join(f"{nm} {v / secs * 100:.1f}%" for v, nm in parts if v > 0.05))
                     log(f"자원 {ph}: CPU 평균 {sum(r[1] for r in rows) / len(rows):.1f}% · 최대 {max(r[1] for r in rows):.0f}% · 메모리 최대 {max(r[2] for r in rows):.0f}MB")
         games = udir / "logs" / "games"
         if games.exists():  # 한 판 기록 폴더 (events.json · 화면 조각)
