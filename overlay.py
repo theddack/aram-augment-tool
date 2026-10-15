@@ -8,6 +8,7 @@
 표시 내용은 화면(app.js)이 api.set_overlay(payload) 로 넘긴다:
   {"cards": [ {name, label, icon, color, reason} | null ] x3,   # 왼쪽·가운데·오른쪽 증강 카드 밑
    "hud": ["고른 증강: …", "다음 구매: …"],                     # 오른쪽 위 작은 상자
+   "timers": [{name, kind: "auto"|"hp", period|cd, base, readyAt, below}],  # 증강 쿨타임 (예상, 표시 창이 매초 센다)
    "pos": {"y": 0.80, "spread": 0.17}}                          # 카드 밑 표시 세로 위치, 카드 간격 (게임 창 비율)
 """
 import queue
@@ -25,6 +26,7 @@ DEFAULT_POS = {"y": 0.70, "spread": 0.246}
 # 실제 화면(2026-10-14): 이름 0.46 · 설명 0.53~0.57 · 빈 곳 0.59~0.69 · 블리츠 배지 0.70~ → 설명 밑 빈 곳 위쪽
 BELOW_NAME = 0.15
 BOX_X, BOX_Y = 16, 0.08  # 상점 옆 상자 자리: 게임 창 왼쪽 위 (픽셀, 높이 비율)
+TIMER_X, TIMER_Y = 16, 0.34  # 증강 쿨타임 자리: 게임 창 왼쪽, 상점 상자 밑 (실제 화면 확인 전 추정)
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -177,7 +179,29 @@ def layout(payload, w, h):
     # 오른쪽 위에 늘 띄우면 게임을 가렸고, 상점 위치를 따라가면 읽을 때마다 위치가 달라 너무 움직였다 (2026-10-14 지적)
     if hud and payload.get("shop"):
         items.append(("hud", BOX_X, int(h * BOX_Y), (hud, "nw")))
+    lines = timer_lines(payload.get("timers"))
+    if lines:
+        items.append(("timers", TIMER_X, int(h * TIMER_Y), lines))
     return items
+
+
+def timer_lines(timers, now=None):
+    """증강 쿨타임 줄: 표시 창이 스스로 1초마다 센다 (화면과 매초 주고받지 않게). 초가 바뀔 때만 다시 그려진다 (layout 비교).
+    모두 예상값: 게임 연동은 증강 발동을 알려 주지 않아서 고른 시각·내 체력으로 짐작한다"""
+    if not timers:
+        return []
+    now = time.time() if now is None else now
+    out = ["증강 쿨 (예상)"]
+    for t in timers:
+        name = t.get("name", "?")
+        if t.get("kind") == "auto" and t.get("period"):
+            left = t["period"] - ((now - t.get("base", now)) % t["period"])
+            out.append(f"⏳ {name} {int(left + 0.999)}초 뒤 자동 발동")
+        elif t.get("kind") == "hp":
+            left = (t.get("readyAt") or 0) - now
+            out.append(f"⏳ {name} {int(left + 0.999)}초" if left > 0
+                       else f"✅ {name} 준비 (체력 {round((t.get('below') or 0) * 100)}% 아래에서 발동)")
+    return out if len(out) > 1 else []
 
 
 def draw(canvas, payload, w, h, scale=1.0):
@@ -201,6 +225,14 @@ def draw(canvas, payload, w, h, scale=1.0):
                 canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=color)
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
+        elif kind == "timers":
+            t = canvas.create_text(x + 10, y, text="\n".join(c), anchor="nw", font=(font, small), fill="#e6e9ec")
+            hb = canvas.bbox(t)
+            if hb:
+                ready = any(line.startswith("✅") for line in c)
+                canvas.create_rectangle(hb[0] - 10, hb[1] - 6, hb[2] + 10, hb[3] + 6, fill="#111820",
+                                        outline="#4caf50" if ready else "#c8aa6e")
+            canvas.tag_raise(t)
         elif kind == "hud":
             lines_list, anchor = c if isinstance(c, tuple) else (c, "ne")
             lines = "\n".join(lines_list)

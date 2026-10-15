@@ -384,6 +384,37 @@ test("증강 칸 결과와 고른 증강이 한 번에 오면 화면은 한 번�
   assert.deepEqual(p.errors, []);
 });
 
+test("증강 쿨타임: 자동 주기는 고른 시각부터, 체력 발동은 체력이 기준 아래로 떨어질 때부터 (모두 예상)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (hp, extra = {}) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lulu", level: 9, items: [],
+    stats: { currentHealth: hp, maxHealth: 1000 }, ...extra });
+  live(1000);
+  p.w.applyAug({ offers: null, seq: 1, picked: "퀸카", pickSeq: 1 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "도주 계획", pickSeq: 2 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "빛의 인도자 결의", pickSeq: 3 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "강타자", pickSeq: 4 });
+  live(900);
+  let t = sent.at(-1).timers;
+  assert.equal(JSON.stringify(t.map((x) => x.name).sort()), JSON.stringify(["도주 계획", "빛의 인도자 결의", "퀸카"]), "쿨타임 있는 증강만");
+  assert.equal(t.find((x) => x.name === "퀸카").period, 35);
+  assert.equal(t.find((x) => x.name === "도주 계획").readyAt, 0, "아직 발동 안 함 = 준비");
+  live(300);  // 30%: 도주 계획(35%)·빛의 인도자(50%) 발동
+  t = sent.at(-1).timers;
+  const now = Date.now() / 1000;
+  assert.ok(Math.abs(t.find((x) => x.name === "도주 계획").readyAt - (now + 75)) < 2);
+  assert.ok(Math.abs(t.find((x) => x.name === "빛의 인도자 결의").readyAt - (now + 45)) < 2);
+  live(0, { dead: true });  // 사망: 빛의 인도자만 초기화
+  t = sent.at(-1).timers;
+  assert.equal(t.find((x) => x.name === "빛의 인도자 결의").readyAt, 0);
+  assert.ok(t.find((x) => x.name === "도주 계획").readyAt > now);
+  const n = sent.length;
+  live(0, { dead: true });
+  assert.equal(sent.length, n, "바뀐 게 없으면 다시 보내지 않는다");
+  assert.deepEqual(p.errors, []);
+});
+
 test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에서 고른 챔피언은 가운데 칸에", async () => {
   const p = await loadPage({ simple: true });
   p.w.document.body.classList.add("winapp");

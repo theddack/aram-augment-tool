@@ -749,6 +749,22 @@ class HudIcons(unittest.TestCase):
 class ShopBox(unittest.TestCase):
     """게임 화면 상자는 상점 창이 열려 있을 때만, 상점 옆에 (평소엔 게임을 가리지 않게)"""
 
+    def test_timer_lines(self):
+        # 증강 쿨타임: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준. 모두 '예상'
+        import overlay
+        now = 1000.0
+        timers = [{"name": "퀸카", "kind": "auto", "period": 35, "base": now - 10},
+                  {"name": "도주 계획", "kind": "hp", "cd": 75, "below": 0.35, "readyAt": now + 40.2},
+                  {"name": "빛의 인도자 결의", "kind": "hp", "cd": 45, "below": 0.5, "readyAt": 0}]
+        lines = overlay.timer_lines(timers, now)
+        self.assertEqual(lines[0], "증강 쿨 (예상)")
+        self.assertIn("⏳ 퀸카 25초 뒤 자동 발동", lines)
+        self.assertIn("⏳ 도주 계획 41초", lines)
+        self.assertIn("✅ 빛의 인도자 결의 준비 (체력 50% 아래에서 발동)", lines)
+        self.assertEqual(overlay.timer_lines([], now), [])
+        items = overlay.layout({"timers": timers}, 1920, 1080)
+        self.assertEqual([k for k, *_ in items], ["timers"], "쿨타임만 있어도 표시 창이 뜬다 (그 크기만큼)")
+
     def test_find_shop_and_layout(self):
         import augocr
         import overlay

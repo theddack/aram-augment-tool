@@ -765,6 +765,44 @@ function itemVerdicts() {
   return value;
 }
 
+// ---- 증강 쿨타임 (게임 화면, 2026-10-15 요청 "35초마다 발동되는 거 쿨 돌아가는 게 보였으면")
+// 게임 연동 데이터는 증강 발동을 알려 주지 않는다. 그래서 확인할 수 있는 것만, 모두 '예상'으로:
+//   auto = 고른 순간부터 일정 주기로 저절로 발동 (고른 시각은 게임 연동 확인 간격만큼 늦을 수 있다)
+//   hp   = 내 체력이 기준 아래로 떨어지면 발동 → 재사용 대기 (체력은 게임 연동 확인 간격(1~3초)마다만 본다)
+// 궁극기·스킬 사용으로 도는 것(궁극기 대변혁 등)은 사용 시점을 알 수 없어 넣지 않는다. 아이템 사용 효과는 게임이 직접 보여 준다
+const AUG_TIMERS = {
+  PromQueen: { kind: "auto", period: 35 },                 // 퀸카: 35초마다 자동 사용
+  ARAM_DivineIntervention: { kind: "auto", period: 35 },   // 신성한 중재: 35초마다 자동 사용
+  VeilOfWarding: { kind: "auto", period: 30 },             // 감시의 장막: 30초마다 주문 방어막
+  EscapePlan: { kind: "hp", below: 0.35, cd: 75 },         // 도주 계획: 체력 35% → 재사용 75초
+  ARAM_DawnbringersResolve: { kind: "hp", below: 0.5, cd: 45, deathReset: true },  // 빛의 인도자 결의: 50% 아래 → 45초, 사망 시 초기화
+};
+let augTimers = {};  // 증강 id → { base: 고른 시각(초), readyAt: 다시 발동할 수 있는 시각(초) }
+let timersSent = "";
+function trackTimers(L) {
+  const now = Date.now() / 1000;
+  const next = {};
+  for (const a of state.chosen) {
+    const def = AUG_TIMERS[a.id];
+    if (!def) continue;
+    const t = next[a.id] = augTimers[a.id] || { base: now, readyAt: 0 };
+    if (def.kind !== "hp") continue;
+    const st = (L && L.stats) || {};
+    if (L && L.dead) { if (def.deathReset) t.readyAt = 0; continue; }
+    const hp = st.currentHealth, max = st.maxHealth;
+    if (hp > 0 && max > 0 && hp / max <= def.below && now >= t.readyAt) t.readyAt = now + def.cd;
+  }
+  augTimers = next;
+  const key = JSON.stringify(augTimers);
+  if (key !== timersSent) { timersSent = key; sendOverlay(); }
+}
+function timersPayload() {
+  return Object.entries(augTimers).map(([id, t]) => {
+    const a = state.data.augments.find((x) => x.id === id);
+    return { name: a ? a.name : id, ...AUG_TIMERS[id], base: t.base, readyAt: t.readyAt };
+  });
+}
+
 function sendOverlay() {
   const api = window.pywebview && window.pywebview.api;
   if (!api || !api.set_overlay || !state.champ) return;
@@ -776,7 +814,7 @@ function sendOverlay() {
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
-  api.set_overlay({ cards: overlayCards, hud });
+  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload() });
 }
 
 function renderAugs() {
@@ -1164,7 +1202,7 @@ function applyAug(A) {
       offersOnly = warn = true;
     }
   }
-  if (full) renderAll();
+  if (full) { renderAll(); trackTimers(null); }  // 고른 증강에 쿨타임이 있으면 고른 시각부터 센다
   else if (offersOnly) renderOffers();
   if (warn) $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
 }
@@ -1197,6 +1235,7 @@ function applyLive(L) {
   }
   if (liveEnded) {  // 같은 챔피언으로 다음 게임을 해도 고른 증강·선택지는 비운다
     liveEnded = false;
+    augTimers = {};
     state.chosen = [];
     state.tierMode = "auto";
     clearOffers();
@@ -1230,6 +1269,7 @@ function applyLive(L) {
   const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);
   const enemyKey = enemies.map((c) => c.id).sort().join(",");
   if (enemyKey !== (state.enemies || []).map((c) => c.id).sort().join(",")) state.enemies = enemies;
+  trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey]);
   if (key === liveLast) {
     if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay(); }
