@@ -63,6 +63,27 @@ test("계산 기억: 같은 조건이면 같은 결과, 증강이 다르면 새�
   assert.notEqual(a1, t, "상대가 바뀌면 다시 계산");
 });
 
+test("계산 기억: 챔피언·고른 증강·산 아이템·상대 구성·규칙이 바뀌면 새로 계산, 같으면 그대로", () => {
+  const c = champ("Jinx"), w = S.profile(c, d.tags);
+  const one = (...a) => S.buildConcepts(...a)[0];
+  const base = [d.items, w, [aug("ARAM_DrawYourSword")], [d.items.find((i) => i.kind === "legendary")], d.rules, c, { enemyMagic: 0.5 }, ["augment"]];
+  const b0 = one(...base);
+  assert.equal(one(...base), b0, "같으면 기억된 결과");
+  const variants = {
+    챔피언: () => { const x = [...base]; x[5] = champ("Lux"); x[1] = S.profile(x[5], d.tags); return x; },
+    고른증강: () => { const x = [...base]; x[2] = [aug("ARAM_SpinToWin")]; return x; },
+    산아이템: () => { const x = [...base]; x[3] = []; return x; },
+    상대구성: () => { const x = [...base]; x[6] = { enemyMagic: 0.8 }; return x; },
+    규칙: () => { const x = [...base]; x[4] = JSON.parse(JSON.stringify(d.rules)); return x; },
+  };
+  for (const [k, make] of Object.entries(variants)) assert.notEqual(one(...make()), b0, k);
+  // 증강 점수(수치)도 같은 기준
+  const g0 = S.numericAugmentGains(d.augments.slice(0, 20), d.items, w, [], [], d.rules, c, { enemyMagic: 0.5 });
+  assert.equal(S.numericAugmentGains(d.augments.slice(0, 20), d.items, w, [], [], d.rules, c, { enemyMagic: 0.5 }), g0);
+  assert.notEqual(S.numericAugmentGains(d.augments.slice(0, 20), d.items, w, [], [], d.rules, c, { enemyMagic: 0.9 }), g0, "상대 구성");
+  assert.notEqual(S.numericAugmentGains(d.augments.slice(0, 20), d.items, w, [aug("ARAM_DrawYourSword")], [], d.rules, c, { enemyMagic: 0.5 }), g0, "고른 증강");
+});
+
 test("계산 기억: 길이가 같아도 다른 후보 목록이면 새로 계산", () => {
   const c = champ("Lux"), w = S.profile(c, d.tags);
   const nums = d.augments.filter((a) => S.hasNumbers(a, d.rules));

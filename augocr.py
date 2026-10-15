@@ -186,6 +186,7 @@ def card_at(pos, x, y):
 
 
 SURE_SCORE = 0.93  # 선택 화면을 못 본 경우(게임 중간에 켬) 증강 칸만으로 인정할 점수
+RECOVER_TRIES = 3  # 넓혀 찾기 횟수 (2초 간격)
 VERIFY_TRIES = 3  # 클릭으로 잡은 고르기는 증강 칸을 이만큼만 본다 (2초 간격)
 VERIFY_FOR = 25  # 초. 고른 뒤 이만큼 증강 칸에서 그 증강을 찾는다 (선택 화면이 사라지는 연출·상점 창에 가려질 때)
 
@@ -456,6 +457,8 @@ class Reader(threading.Thread):
         self._fast_until = 0.0
         self.size_hint = None  # 게임 창 높이 → 지난 게임에서 찾은 증강 칸 아이콘 크기 (함수)
         self.size_save = None  # (게임 창 높이, 크기) 를 저장하는 함수
+        self._recover = None  # 넓혀 찾기 (선택지를 잘못 읽었을 때) {"from", "click", "tries", "known"}
+        self._picked_names = set()  # 이번 게임에서 고른 증강 이름 (넓혀 찾기에서 빼려고)
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
         self._fix = None  # 증강 칸으로 고친 결과 (증강 칸 스레드 → 읽기 스레드로 넘긴다)
 
@@ -500,6 +503,20 @@ class Reader(threading.Thread):
                 self._hud_logged = True
         if game_n is not None and game_n != getattr(self, "_game_n", 0):
             return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 버린다
+        rc = self._recover
+        if rc:
+            rc["tries"] -= 1
+            names = self.id_names()
+            sure, _ = resolve_groups(groups, names, set(), [best.get(g, 0.0) for g in groups])  # 아주 확실한 것만 (SURE_SCORE)
+            new = [i for i in sure if i not in rc["known"] and names.get(i) not in self._picked_names]
+            if len(new) == 1:
+                self._recover = None
+                self._rec("recover", {"from": rc["from"], "result": names.get(new[0])})
+                self.offered.add(names.get(new[0]))
+                self._picked_names.add(names.get(new[0]))
+                if names.get(new[0]) != rc["click"]:
+                    self._fix = (names.get(new[0]), rc["from"], rc["click"])
+            ids, unsure = resolve_groups(groups, names, self.offered, [best.get(g, 0.0) for g in groups])
         v = self._verify
         if v:
             names = self.id_names()
@@ -507,6 +524,7 @@ class Reader(threading.Thread):
             if len(found) == 1:
                 self._verify = None
                 self._rec("verify", {"from": v["from"], "click": v["click"], "result": found[0]})
+                self._picked_names.add(found[0])
                 if found[0] != v["click"]:
                     self._fix = (found[0], v["from"], v["click"])
         changed = ids != self.hud_ids
@@ -570,6 +588,8 @@ class Reader(threading.Thread):
         self._level = None
         self._verify = None
         self._fix = None
+        self._recover = None
+        self._picked_names = set()
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -660,7 +680,11 @@ class Reader(threading.Thread):
             if self.icon_dir and after.get("pickedFrom"):
                 # 클릭으로 잡았으면 몇 번만 맞는지 보고, 못 잡았으면 VERIFY_FOR 초까지 (확인이 CPU 를 쓴다: 25초 내내면 평균 5→9%)
                 self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
-                                "until": time.time() + VERIFY_FOR, "tries": VERIFY_TRIES if after.get("picked") else 99}
+                                "until": time.time() + VERIFY_FOR, "tries": VERIFY_TRIES if after.get("picked") else 99,
+                                # 이름을 다 못 읽었거나 클릭을 못 잡았으면, 못 찾을 때 증강 전체로 넓혀 찾는다
+                                "unsure": not after.get("picked") or None in after["pickedFrom"]}
+            if after.get("picked"):
+                self._picked_names.add(after["picked"])
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
@@ -673,7 +697,15 @@ class Reader(threading.Thread):
         now = time.time()
         if self._verify and (now > self._verify["until"] or self._verify.get("tries", 1) <= 0):
             self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
+            if self._verify.get("unsure"):
+                # 선택지를 잘못(덜) 읽어 고른 증강이 비교 대상에 없었을 수 있다 → 증강 전체와 몇 번 (아주 확실한 그림만)
+                self._recover = {"from": self._verify["from"], "click": self._verify["click"], "tries": RECOVER_TRIES,
+                                 "known": set(self.hud_ids)}
+                self._hud_at = 0
             self._verify = None
+        if self._recover and self._recover["tries"] <= 0:
+            self._rec("recover", {"from": self._recover["from"], "result": "못 찾음"})
+            self._recover = None
         if self.icon_dir and not getattr(self, "hud_error", None) and now >= getattr(self, "_hud_at", 0) \
                 and not getattr(self, "_hud_busy", False):
             self._hud_busy = True
@@ -686,7 +718,8 @@ class Reader(threading.Thread):
                 self._hud_cap = _Capture()  # 화면 캡처 도구는 스레드마다 따로
             import hudicons
             offered = set(self.offered)
-            names = {i: n for i, n in self.id_names().items() if not offered or n in offered}
+            # 넓혀 찾기 중이면 증강 전체와, 아니면 그 판 선택 화면에 뜬 증강하고만
+            names = {i: n for i, n in self.id_names().items() if not offered or n in offered or self._recover}
             key = tuple(sorted(names))
             if getattr(self, "_tpl_key", None) != key:  # 새 선택지를 봤으면 비교 대상을 다시 만든다 (몇 개 안 돼 금방)
                 tpl = hudicons.Templates(self.icon_dir, names)
@@ -714,7 +747,7 @@ class Reader(threading.Thread):
         finally:
             soon, self._hud_soon = getattr(self, "_hud_soon", False), False
             # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
-            self._hud_at = time.time() + (2 if soon or self._verify else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
+            self._hud_at = time.time() + (2 if soon or self._verify or self._recover else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
             self._hud_busy = False
 
     def urgent(self, now=None):

@@ -1164,7 +1164,8 @@ def main():
         webmem.set(in_game=True)
         if capped:
             cap_cpu(CPU_CAP["game"])
-        rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION})
+        rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION,
+                                       "wall": round(time.time(), 1)})  # 기록 시각(t)의 기준 (윈도우 재현 도구가 지연을 잰다)
 
     watcher.on_new_game = on_new_game
 

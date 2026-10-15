@@ -631,6 +631,31 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
+    def test_recover_when_offers_misread(self):
+        # 선택지 이름을 잘못(덜) 읽어 고른 증강(골드 강탈)이 비교 대상에 없었다 → 넓혀 찾기로 채운다
+        old = self.h.REGION
+        self.h.REGION = (0, 0, 1, 1)
+        try:
+            r, rect = self._hud_reader("hud_naafiri_goldrend_endlesshunt.png", ["강타자", "정신 변환"], None)
+            r._verify["unsure"] = True
+            r._hud_job(rect, 0)  # 그 판 선택지(강타자·정신 변환)하고만 → 못 찾음
+            self.assertIsNone(r._fix)
+            r._verify["tries"] = 0
+            import threading as _t
+            orig = _t.Thread
+            _t.Thread = lambda target, args, **k: type("T", (), {"start": lambda self: target(*args)})()
+            try:
+                r._hud_at = 0
+                r._hud_tick(rect)  # 확인 실패 → 넓혀 찾기 시작 + 한 번
+                r._hud_at = 0
+                r._hud_tick(rect)
+            finally:
+                _t.Thread = orig
+            self.assertEqual(r._fix and r._fix[0], "골드 강탈")
+            # 그림이 같은 묶음(돌진/앙파상)은 넓혀 찾기로 정하지 않는다
+        finally:
+            self.h.REGION = old
+
     def test_size_hint(self):
         # 지난 게임 크기부터 찾는다: 맞으면 그 크기로 바로, 틀렸으면(해상도·HUD 크기 바뀜) 여러 크기로 다시
         import numpy as np

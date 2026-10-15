@@ -27,6 +27,12 @@ GAME_TITLE = "League of Legends (TM) Client"
 LIVE_PORT, LCU_PORT = 29990, 29991
 SAMPLE = ROOT / "tests" / "data" / "live_missfortune_4s.json"
 T0 = time.time()
+FOCUS_STOLEN = []  # 게임 화면 표시 창이 맨 앞으로 나온 시각
+OV_SIZES = []  # 게임 화면 표시 창이 화면에서 차지한 넓이 (0.5초마다)
+LATENCY = []  # 선택지를 읽은 순간 → 카드 표시까지 초
+READ_DELAY = []  # 가짜 게임에 선택 화면이 뜬 순간 → 애드온이 읽은 순간 (초)
+GAME_T0 = None  # 가짜 게임 창을 띄운 시각
+APPEAR = (15, 45, 64)  # 가짜 게임에 선택 화면이 뜨는 때 (창을 띄운 뒤 초)
 
 
 def now():
@@ -163,8 +169,12 @@ def shop(on):
         c.create_rectangle(W * 0.42, H * 0.16, W * 0.95, H * 0.80, fill="#0a1a24", outline="#c8aa6e", tags="shop")
         for x, t in ((0.47, "Recommended"), (0.62, "All Items"), (0.80, "Item Sets")):  # 가상 PC 는 영어 글자 인식뿐
             c.create_text(W * x, H * 0.20, text=t, fill="#e0e0e0", font=("Malgun Gothic", -int(H * 0.026)), tags="shop")
-r.after(60000, lambda: shop(True))
-r.after(75000, lambda: shop(False))
+r.after(85000, lambda: shop(True))   # 레벨이 오른 직후 (게임 85초)
+r.after(95000, lambda: shop(False))
+# 레벨도 그대로인 조용한 전투 중에 미뤄 둔 선택 화면을 연다 (게임 64초) → 6초 주기여도 늦지 않게 뜨는지
+C = ["Mind to Matter", "Snowblast", "Heavy Hitter"]
+r.after(64000, lambda: cards(C))
+r.after(76000, lambda: c.delete("card"))
 r.mainloop()
 """
 
@@ -178,6 +188,7 @@ runpy.run_path("desktop.py", run_name="__main__")
 
 
 def main():
+    global GAME_T0
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe")
     ap.add_argument("--seconds", type=int, default=150)
@@ -226,6 +237,7 @@ def main():
                 log(f"애드온이 꺼짐 (코드 {app.returncode})")
                 break
             if phase() == "InProgress" and not game:
+                GAME_T0 = time.time()
                 game = subprocess.Popen([sys.executable, "-c", GAME_WINDOW, str(ROOT / "tests" / "data" / "hud_naafiri_goldrend_endlesshunt.png")])
                 log("가짜 게임 창 띄움")
             hwnd = hwnd or u32.FindWindowW(None, TITLE)
@@ -284,6 +296,23 @@ def main():
                             pass
                 except Exception:
                     pass
+            if phase() == "InProgress" and game:
+                # 게임이 키 입력(포커스)을 잃는지: 게임 화면 표시 창이 앞으로 나오면 안 된다
+                fg = u32.GetForegroundWindow()
+                buf = ctypes.create_unicode_buffer(256)
+                u32.GetWindowTextW(fg, buf, 256)
+                if buf.value != getattr(main, "_fg", None):
+                    main._fg = buf.value
+                    log(f"맨 앞 창: {buf.value or '(제목 없음)'}")
+                    if buf.value == "칼바람 표시":
+                        FOCUS_STOLEN.append(now())
+                ov = u32.FindWindowW(None, "칼바람 표시")
+                if ov:
+                    rc = wintypes.RECT()
+                    u32.GetWindowRect(ov, ctypes.byref(rc))
+                    w_, h_ = rc.right - rc.left, rc.bottom - rc.top
+                    on = rc.right > 0 and rc.bottom > 0 and w_ > 1
+                    OV_SIZES.append(w_ * h_ if on else 0)
             if proc and now() >= 140 and not EVENTS_BREAKDOWN:
                 try:
                     rows = []
@@ -307,6 +336,10 @@ def main():
             if p and p.poll() is None:
                 p.kill()
         log(f"가장 느린 응답 {worst:.2f}초")
+        if OV_SIZES:
+            shown_n = sum(1 for x in OV_SIZES if x)
+            log(f"게임 화면 표시 창: 화면에 있던 때 {shown_n}/{len(OV_SIZES)} · 가장 클 때 {max(OV_SIZES)}픽셀 (게임 창 {1024 * 700})")
+        log(f"게임 포커스 빼앗김: {len(FOCUS_STOLEN)}번")
         for line in EVENTS_BREAKDOWN:
             log("메모리 " + line)
         if usage:
@@ -334,7 +367,16 @@ def main():
                     want_names = [n for n in e["offers"] if n]
                     shown = next((x for x in ev[i + 1:] if x["kind"] == "shown" and x.get("cards")
                                   and all(any(c and c.startswith(n) for c in x["cards"]) for n in want_names)), None)
-                    log(f"카드 표시까지 {round(shown['t'] - e['t'], 1) if shown else '안 뜸'}초 ({' / '.join(want_names)})")
+                    wall = next((x.get("wall") for x in ev if x["kind"] == "start"), None)
+                    if wall and GAME_T0:
+                        seen = wall + e["t"] - GAME_T0
+                        appear = max((a for a in APPEAR if a <= seen + 0.5), default=None)
+                        if appear is not None:
+                            READ_DELAY.append(round(seen - appear, 1))
+                            log(f"선택 화면이 뜨고 읽기까지 {seen - appear:.1f}초 ({' / '.join(want_names)})")
+                    lat = round(shown['t'] - e['t'], 1) if shown else None
+                    log(f"카드 표시까지 {lat if shown else '안 뜸'}초 ({' / '.join(want_names)})")
+                    LATENCY.append(lat)
         for f in ("diag.log",):
             src = udir / "logs" / f
             if src.exists():
@@ -349,7 +391,16 @@ def main():
             "상점 창: 열림"]
     # 못 정한 고르기는 증강 칸 그림으로 채운다 (그 판 선택 화면에 뜬 증강하고만 비교)
     want += ["고른 증강: 골드 강탈 (증강 칸 그림으로 확인", "증강 칸: 골드 강탈"]
+    want.append("증강 선택지: 정신 변환 / 눈 폭발 / 강타자")  # 조용한 전투 중에 연 선택 화면도 읽는다
     miss = [w for w in want if w not in diag]
+    if FOCUS_STOLEN:
+        miss.append(f"게임 포커스를 {len(FOCUS_STOLEN)}번 빼앗음")
+    # 선택 화면을 읽은 순간 → 게임 화면 카드 (읽기 주기가 6초여도, 읽은 뒤엔 바로 떠야 한다)
+    if any(d > 9 for d in READ_DELAY):  # 조용한 전투 중엔 6초에 한 번 읽는다 (+ 한 번 읽는 데 걸리는 시간)
+        miss.append(f"선택 화면을 늦게 읽음 {READ_DELAY}")
+    slow = [x for x in LATENCY if x is None or x > 3]
+    if slow:
+        miss.append(f"카드가 늦게 뜸 {slow}")
     print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")
     sys.exit(1 if hung or (miss and a.check_ocr) else 0)
 

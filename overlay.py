@@ -48,6 +48,17 @@ class _Win:
         u.GetParent.argtypes = [wintypes.HWND]
         u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
         u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+        u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        self.hwnd = None
+
+    def place(self, x, y, w, h):
+        """표시 창을 옮기고 맨 위로 — 활성화하지 않는다 (게임이 키 입력을 잃지 않게)"""
+        if not self.hwnd:
+            return False
+        HWND_TOPMOST = self.wt.HWND(-1)
+        SWP_NOACTIVATE, SWP_SHOWWINDOW, SWP_NOOWNERZORDER = 0x10, 0x40, 0x200
+        return bool(self.user32.SetWindowPos(self.hwnd, HWND_TOPMOST, int(x), int(y), int(w), int(h),
+                                             SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER))
 
     def game_rect(self):
         """롤 게임 창의 화면 좌표 (x, y, w, h) 와 맨 앞 여부. 없거나 최소화면 None"""
@@ -68,6 +79,7 @@ class _Win:
         """표시 창을 클릭 통과·작업 표시줄 숨김·포커스 안 받게"""
         u = self.user32
         hwnd = u.GetParent(tk_root.winfo_id()) or tk_root.winfo_id()
+        self.hwnd = hwnd
         GWL_EXSTYLE = -20
         WS_EX_LAYERED, WS_EX_TRANSPARENT = 0x80000, 0x20
         WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_TOPMOST = 0x80, 0x8000000, 0x8
@@ -200,6 +212,9 @@ def draw(canvas, payload, w, h, scale=1.0):
             canvas.tag_raise(t)
 
 
+PARK = (-4000, -4000)  # 보여 줄 게 없을 때 표시 창을 치워 두는 자리 (화면 밖)
+
+
 # ---------------------------------------------------------------- 표시 창 스레드 (윈도우)
 class Overlay(threading.Thread):
     def __init__(self):
@@ -244,15 +259,19 @@ class Overlay(threading.Thread):
         except Exception as e:  # 표시 창을 못 만들면 이유를 상태로 보여 준다
             self.status = f"표시 창을 만들 수 없음: {str(e)[:80]}"
             return
+        root.title("칼바람 표시")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         root.attributes("-transparentcolor", KEY)
         root.configure(bg=KEY)
         canvas = tk.Canvas(root, bg=KEY, highlightthickness=0)
         canvas.pack(fill="both", expand=True)
+        # 창은 켤 때(게임 전) 한 번만 띄워 두고, 보여 줄 게 없으면 화면 밖 1픽셀로 치운다.
+        # 게임 중에 숨겼다 다시 띄우면(deiconify) 창이 활성화돼 게임이 키 입력을 잃을 수 있다
+        root.geometry(f"1x1+{PARK[0]}+{PARK[1]}")
         root.update_idletasks()
         win.click_through(root)
-        root.withdraw()
+        root.update()
         shown, last, placed = False, None, None
         self._running = True
 
@@ -293,8 +312,11 @@ class Overlay(threading.Thread):
             visible = self.enabled and rect and (front or self.preview) and entries and self.mode != "전체 화면"
             if not visible:
                 if shown:
-                    root.withdraw()
-                    shown = False
+                    canvas.delete("all")
+                    # Tk 가 기억하는 크기·위치도 같이 바꾼다 (안 그러면 Tk 가 나중에 예전 자리로 되돌린다)
+                    root.geometry(f"1x1+{PARK[0]}+{PARK[1]}")
+                    win.place(PARK[0], PARK[1], 1, 1)
+                    shown, last, placed = False, None, None
                 if rect and self.mode == "전체 화면":
                     self.status = "전체 화면이라 표시할 수 없어요 → 롤 설정 > 비디오 > 창 모드를 '테두리 없음'으로"
                 else:
@@ -316,13 +338,11 @@ class Overlay(threading.Thread):
                     placed = None
                 bx0, by0, bw, bh = self._box
                 where = (x + bx0, y + by0, bw, bh)
-                if where != placed:  # 게임 창이 움직이면 위치만 옮긴다
+                if where != placed:  # 게임 창이 움직이면 위치만 옮긴다 (활성화 없이 맨 위로)
                     root.geometry(f"{bw}x{bh}+{where[0]}+{where[1]}")
+                    win.place(*where)
                     placed = where
-                if not shown:
-                    root.deiconify()
-                    root.attributes("-topmost", True)
-                    shown = True
+                shown = True
                 self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h}"
             return rect
 
