@@ -31,7 +31,7 @@ import overlay
 
 APP = "AramAugment"  # 사용자 폴더 이름 (설정 유지를 위해 바꾸지 않는다)
 TITLE = "칼바람 증강 Addon"
-APP_VERSION = "0.1.28"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
+APP_VERSION = "0.1.29"  # 릴리스 태그(v0.1.5)와 같아야 한다 (빌드 워크플로가 확인)
 RELEASES_API = "https://api.github.com/repos/theddack/kalbaram-addon/releases/latest"
 RELEASES_PAGE = "https://github.com/theddack/kalbaram-addon/releases/latest"
 
