@@ -841,6 +841,34 @@ class HudIcons(unittest.TestCase):
         self.assertIsNone(r._recover, "새 칸에 짐작한 증강 그림이 있으면 확인 끝")
         self.assertEqual(r.hud_ids, ["V", "FB", "OK"], "정해진 칸은 그대로, 새 칸은 선택지에 떴던 이름으로")
 
+    def test_shop_window_image_when_found(self):
+        # 상점 창 안 아이템에 표시하려면 실제 상점 모습이 필요하다 → 알아봤을 때 가운데 넓게 한 장 (한 판 최대 SHOP_IMGS, 간격 SHOP_IMG_GAP)
+        import augocr
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                return b"\0" * ((tw or w) * (th or h) * 4)
+
+        class Ocr:
+            def words(self, img, tw, th):
+                return [("판매", 300, 20, 40, 15), ("되돌리기", 420, 20, 70, 15)]
+
+        class Rec:
+            def image(self, kind, img, w, h):
+                return f"{kind}.png"
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.rec, r._changed = Rec(), lambda: None
+        got = []
+        r._rec = lambda k, d, **kw: got.append((k, d))
+        for i in range(6):
+            r.scan_shop_only(Cap(), Ocr(), (0, 0, 2520, 1575))
+            if i == 2:
+                r.shop = None  # 닫았다 다시 연다
+        shops = [d for k, d in got if k == "shop"]
+        self.assertEqual(shops[0]["image"], "shop.png")
+        self.assertEqual(shops[0]["window"], [2520, 1575])
+        self.assertNotIn("image", shops[1], "곧바로 다시 열면 또 찍지 않는다")
+
     def test_shop_probe_only_after_purchase(self):
         # 2026-10-15 베인 판: 그림 3번 중 1번은 물약을 마셔 아이템이 사라진 때 (상점과 무관) → 골드가 줄었을 때만
         import augocr

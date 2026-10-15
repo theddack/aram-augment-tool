@@ -21,7 +21,8 @@ SHOP_BAND = (0.06, 0.45)  # 상점 창 위쪽 탭('추천 · 모든 아이템 ·
 SHOP_PROBE_AREA = (0.25, 0.04, 0.85, 0.84)  # 못 알아봤을 때 남기는 그림 범위 (가로·세로 비율). 채팅(왼쪽 아래)은 빼고 가운데 상점 자리
 # 상점 창 아래쪽 버튼 줄 '판매 · 되돌리기' (영어 Sell · Undo). 2026-10-15 베인 판 증강 칸 그림에 상점이 열린 채 찍혔다:
 # 2520x1575 창에서 버튼 줄 y ≈ 0.81, x ≈ 0.35~0.63. 위쪽 탭보다 글자가 또렷하고 띠가 작아 가볍다 → 먼저 본다
-SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))  # (가로 범위, 세로 범위)
+SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))
+SHOP_IMGS, SHOP_IMG_GAP = 2, 300.0  # 상점을 알아봤을 때 상점 창 그림: 한 판 최대 장수, 다음 장까지 최소 간격(초)  # (가로 범위, 세로 범위)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
@@ -482,6 +483,7 @@ class Reader(threading.Thread):
         self._slot_ids = {}
         self._shop_probe = 0.0  # 아이템을 산 직후(상점이 열려 있었을 것) 상점을 못 알아봤으면 이 시각까지 한 번 그림을 남긴다
         self._shop_probes = 0
+        self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
 
     @property
@@ -679,7 +681,6 @@ class Reader(threading.Thread):
             self._new_game()
 
     def _new_game(self):
-        self._shop_img = False
         self._hud_logged = False
         self._area_saved = False
         # 게임 시작 직후엔 첫 선택 화면을 기다린다 (그 전에 읽으면 증강 215개 전부와 비교해야 해서 무겁다)
@@ -694,6 +695,7 @@ class Reader(threading.Thread):
         self._shop_probes = 0
         self._shop_probe = 0.0
         self._slot_ids = {}
+        self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
         if self.hud:
             self.hud.reset()
@@ -906,6 +908,15 @@ class Reader(threading.Thread):
             self._shop_probe = time.time()
         self._inv = (inv, gold)
 
+    def _grab_area(self, cap, rect, area, max_w):
+        """게임 창의 (x0, y0, x1, y1) 비율 영역을 너비 max_w 이하로 줄여 찍는다 → (이미지, 너비, 높이)"""
+        gx, gy, gw, gh = rect
+        ax0, ay0, ax1, ay1 = area
+        aw, ah = int(gw * (ax1 - ax0)), int(gh * (ay1 - ay0))
+        k = min(1.0, max_w / max(1, aw))
+        tw, th = max(1, int(aw * k)), max(1, int(ah * k))
+        return cap.grab(gx + int(gw * ax0), gy + int(gh * ay0), aw, ah, tw, th), tw, th
+
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
         gx, gy, gw, gh = rect
@@ -927,22 +938,21 @@ class Reader(threading.Thread):
         if self._shop_probe and not shop and self.rec:
             # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 읽은 글자와 가운데 넓은 그림을 남긴다 (상점이 어디 어떻게 보이는지)
             self._shop_probes += 1
-            ax0, ay0, ax1, ay1 = SHOP_PROBE_AREA
-            aw, ah = int(gw * (ax1 - ax0)), int(gh * (ay1 - ay0))
-            k = min(1.0, 1280 / max(1, aw))
-            wide = cap.grab(gx + int(gw * ax0), gy + int(gh * ay0), aw, ah, max(1, int(aw * k)), max(1, int(ah * k)))
+            wide, ww, wh = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1280)
             self._rec("shopmiss", {"read": [t for t, _, _ in segments(sw, gap=gw * 0.02)][:40],
-                                   "image": self.rec.image("shopmiss", wide, max(1, int(aw * k)), max(1, int(ah * k)))})
+                                   "image": self.rec.image("shopmiss", wide, ww, wh)})
         self._shop_probe = 0.0
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
-            if shop and self.rec and not getattr(self, "_shop_img", False):
-                # 알아본 글자 줄만 (처음 한 번)
-                ty = max(0, int(shop["top"] * gh) - 10)
-                x0, x1 = max(0, int(shop["left"] * gw) - 20), min(gw, int(shop["right"] * gw) + 20)
-                rows = cap.grab(gx + x0, gy + ty, x1 - x0, int(gh * 0.06))
-                data["image"] = self.rec.image("shop", rows, x1 - x0, int(gh * 0.06))
-                self._shop_img = True
+            now = time.time()
+            if shop and self.rec and self._shop_imgs < SHOP_IMGS and now >= self._shop_img_at:
+                # 상점 창 안 아이템 아이콘에 표시하려면 상점이 실제로 어떻게 생겼는지 봐야 한다 → 가운데 넓게 (채팅 제외)
+                # 처음 열었을 때 + SHOP_IMG_GAP 초 뒤 한 번 더 (아이템이 바뀐 모습)
+                img, iw, ih = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1600)
+                data["image"] = self.rec.image("shop", img, iw, ih)
+                data["area"], data["window"] = list(SHOP_PROBE_AREA), [gw, gh]
+                self._shop_imgs += 1
+                self._shop_img_at = now + SHOP_IMG_GAP
             self._rec("shop", data)
             self.shop = shop
             self._changed()
