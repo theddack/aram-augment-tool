@@ -8,7 +8,7 @@
 표시 내용은 화면(app.js)이 api.set_overlay(payload) 로 넘긴다:
   {"cards": [ {name, label, icon, color, reason} | null ] x3,   # 왼쪽·가운데·오른쪽 증강 카드 밑
    "hud": ["고른 증강: …", "다음 구매: …"],                     # 오른쪽 위 작은 상자
-   "timers": [{name, kind: "auto"|"hp", period|cd, base, readyAt, below}],  # 증강 쿨타임 (예상, 표시 창이 매초 센다)
+   "timers": [{id, name, kind: "auto"|"hp", period|cd, base, readyAt, below}],  # 증강 쿨타임 아이콘 (예상, 표시 창이 매초 센다)
    "pos": {"y": 0.80, "spread": 0.17}}                          # 카드 밑 표시 세로 위치, 카드 간격 (게임 창 비율)
 """
 import queue
@@ -179,33 +179,72 @@ def layout(payload, w, h):
     # 오른쪽 위에 늘 띄우면 게임을 가렸고, 상점 위치를 따라가면 읽을 때마다 위치가 달라 너무 움직였다 (2026-10-14 지적)
     if hud and payload.get("shop"):
         items.append(("hud", BOX_X, int(h * BOX_Y), (hud, "nw")))
-    lines = timer_lines(payload.get("timers"))
-    if lines:
-        items.append(("timers", TIMER_X, int(h * TIMER_Y), lines))
+    st = timer_state(payload.get("timers"))
+    if st:
+        items.append(("timers", TIMER_X, int(h * TIMER_Y), tuple(st)))
     return items
 
 
-def timer_lines(timers, now=None):
-    """증강 쿨타임 줄: 표시 창이 스스로 1초마다 센다 (화면과 매초 주고받지 않게). 초가 바뀔 때만 다시 그려진다 (layout 비교).
-    모두 예상값: 게임 연동은 증강 발동을 알려 주지 않아서 고른 시각·내 체력으로 짐작한다"""
+TIMER_ICON = (24, 32, 40)  # 쿨타임 아이콘 크기(픽셀): (가장 작게, 1080p 기준, 가장 크게). 게임 창 높이에 비례 (창 모드면 작아진다)
+TIMER_STEPS = 36  # 덮개 각도 단계 (10도씩): 그림을 이 수만큼만 만들어 두고 다시 쓴다
+
+
+def timer_size(h):
+    lo, base, hi = TIMER_ICON
+    return max(lo, min(hi, round(base * h / 1080)))
+
+
+def timer_state(timers, now=None):
+    """증강 쿨타임 상태: 표시 창이 스스로 1초마다 센다 (화면과 매초 주고받지 않게). 초가 바뀔 때만 다시 그려진다 (layout 비교).
+    모두 예상값: 게임 연동은 증강 발동을 알려 주지 않아서 고른 시각·내 체력으로 짐작한다.
+    (id, 이름, 남은 초, 남은 비율 단계 0~TIMER_STEPS, 준비됨) 목록"""
     if not timers:
         return []
     now = time.time() if now is None else now
-    out = ["증강 쿨 (예상)"]
+    out = []
     for t in timers:
-        name = t.get("name", "?")
         if t.get("kind") == "auto" and t.get("period"):
-            left = t["period"] - ((now - t.get("base", now)) % t["period"])
-            out.append(f"⏳ {name} {int(left + 0.999)}초 뒤 자동 발동")
-        elif t.get("kind") == "hp":
-            left = (t.get("readyAt") or 0) - now
-            out.append(f"⏳ {name} {int(left + 0.999)}초" if left > 0
-                       else f"✅ {name} 준비 (체력 {round((t.get('below') or 0) * 100)}% 아래에서 발동)")
-    return out if len(out) > 1 else []
+            total = t["period"]
+            left = total - ((now - t.get("base", now)) % total)
+        elif t.get("kind") == "hp" and t.get("cd"):
+            total = t["cd"]
+            left = max(0.0, (t.get("readyAt") or 0) - now)
+        else:
+            continue
+        secs = int(left + 0.999)
+        out.append((t.get("id"), t.get("name", "?"), secs, round(TIMER_STEPS * min(1.0, left / total)), secs == 0))
+    return out
 
 
-def draw(canvas, payload, w, h, scale=1.0):
+_ICON_CACHE = {}
+
+
+def timer_image(path, size, step):
+    """증강 아이콘 + 남은 만큼 어두운 덮개 (게임 스킬 쿨 표시처럼 12시부터 시계 방향으로 걷힘). Pillow 그림(RGB)"""
+    from PIL import Image, ImageDraw
+    key = (path, size, step)
+    if key in _ICON_CACHE:
+        return _ICON_CACHE[key]
+    img = Image.new("RGBA", (size, size), (17, 24, 32, 255))
+    try:
+        img.alpha_composite(Image.open(path).convert("RGBA").resize((size, size)))
+    except (OSError, ValueError):
+        pass  # 아이콘이 없으면 어두운 칸에 숫자만
+    if step > 0:
+        shade = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        start = -90 + 360 * (1 - step / TIMER_STEPS)  # 지나간 만큼 12시부터 걷힌다
+        ImageDraw.Draw(shade).pieslice([-size, -size, size * 2, size * 2], start=start, end=270, fill=(0, 0, 0, 170))
+        img.alpha_composite(shade)
+    out = img.convert("RGB")
+    if len(_ICON_CACHE) > 400:
+        _ICON_CACHE.clear()
+    _ICON_CACHE[key] = out
+    return out
+
+
+def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
     canvas.delete("all")
+    canvas.images = []  # 그림을 붙잡아 둔다 (안 그러면 Tk 그림이 지워진다)
     font = "Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo"
     big, small = max(11, int(15 * scale)), max(9, int(11 * scale))
     for kind, x, y, c in layout(payload, w, h):
@@ -226,13 +265,7 @@ def draw(canvas, payload, w, h, scale=1.0):
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
         elif kind == "timers":
-            t = canvas.create_text(x + 10, y, text="\n".join(c), anchor="nw", font=(font, small), fill="#e6e9ec")
-            hb = canvas.bbox(t)
-            if hb:
-                ready = any(line.startswith("✅") for line in c)
-                canvas.create_rectangle(hb[0] - 10, hb[1] - 6, hb[2] + 10, hb[3] + 6, fill="#111820",
-                                        outline="#4caf50" if ready else "#c8aa6e")
-            canvas.tag_raise(t)
+            draw_timers(canvas, c, x, y, h, icon_dir)
         elif kind == "hud":
             lines_list, anchor = c if isinstance(c, tuple) else (c, "ne")
             lines = "\n".join(lines_list)
@@ -242,6 +275,39 @@ def draw(canvas, payload, w, h, scale=1.0):
             if hb:
                 canvas.create_rectangle(hb[0] - 10, hb[1] - 8, hb[2] + 10, hb[3] + 8, fill="#111820", outline="#c8aa6e")
             canvas.tag_raise(t)
+
+
+def draw_timers(canvas, states, x, y, h, icon_dir):
+    """쿨타임 아이콘 한 줄: 아이콘 + 덮개 + 가운데 남은 초. 준비되면 초록 테두리, 돌고 있으면 점선 테두리(예상값)"""
+    import os
+    size = timer_size(h)
+    gap = max(4, size // 6)
+    font = ("Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo", max(9, size * 2 // 5), "bold")
+    try:
+        from PIL import ImageTk
+    except ImportError:
+        ImageTk = None
+    for i, (aid, name, secs, step, ready) in enumerate(states):
+        x0 = x + i * (size + gap)
+        path = os.path.join(icon_dir, f"{aid}.webp") if icon_dir and aid else ""
+        if path and not os.path.exists(path):
+            path = os.path.join(icon_dir, f"{aid}.png")
+        if ImageTk:
+            try:
+                img = ImageTk.PhotoImage(timer_image(path, size, step), master=canvas)
+                canvas.images.append(img)
+                canvas.create_image(x0, y, image=img, anchor="nw")
+            except Exception:
+                canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="")
+        else:
+            canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="")
+        if ready:
+            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#4caf50", width=2)
+        else:
+            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#c8aa6e", width=1, dash=(3, 2))
+            cx, cy = x0 + size / 2, y + size / 2
+            canvas.create_text(cx + 1, cy + 1, text=str(secs), font=font, fill="#000000")  # 그림자 (밝은 아이콘 위에서도 보이게)
+            canvas.create_text(cx, cy, text=str(secs), font=font, fill="#ffffff")
 
 
 KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임"}
@@ -262,6 +328,7 @@ class Overlay(threading.Thread):
         self._running = False
         self.beat = None  # 표시 창이 마지막으로 확인한 시각 (멈춤 진단용, 돌기 시작하면 채운다)
         self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
+        self.icon_dir = None  # 증강 아이콘 폴더 (쿨타임 표시)
 
     # 표시 창이 돌고 있지 않으면(맥, Tk 실패) 큐에 쌓지 않고 값만 바꾼다 (끝없이 쌓이지 않게)
     def _send(self, k, v):
@@ -359,7 +426,7 @@ class Overlay(threading.Thread):
                 key = (w, h, repr(entries))
                 if key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
                     canvas.config(width=w, height=h)
-                    draw(canvas, self.payload, w, h, scale=h / 1080)
+                    draw(canvas, self.payload, w, h, scale=h / 1080, icon_dir=self.icon_dir)
                     # 창은 그린 것 둘레만큼만 (게임 크기 투명 창 X): 겹치는 영역이 작을수록 게임 화면 합성이 가볍다
                     bb = canvas.bbox("all") or (0, 0, 1, 1)
                     bx0, by0 = max(0, bb[0] - 4), max(0, bb[1] - 4)

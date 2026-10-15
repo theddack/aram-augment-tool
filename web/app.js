@@ -802,7 +802,7 @@ function trackTimers(L) {
 function timersPayload() {
   return Object.entries(augTimers).map(([id, t]) => {
     const a = state.data.augments.find((x) => x.id === id);
-    return { name: a ? a.name : id, ...AUG_TIMERS[id], base: t.base, readyAt: t.readyAt, trigHp: t.trigHp ?? null };
+    return { id, name: a ? a.name : id, ...AUG_TIMERS[id], base: t.base, readyAt: t.readyAt, trigHp: t.trigHp ?? null };
   });
 }
 

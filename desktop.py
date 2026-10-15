@@ -1159,6 +1159,7 @@ def main():
     watcher.start()
     ov = overlay.Overlay()
     ov.name = "게임 화면 표시"
+    ov.icon_dir = str(user_dir() / "web" / "icons" / "augment")  # 쿨타임 아이콘
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")

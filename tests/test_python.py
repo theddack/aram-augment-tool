@@ -8,6 +8,7 @@ import json
 import os
 import pathlib
 import sys
+from pathlib import Path
 import tempfile
 import time
 import types
@@ -770,21 +771,41 @@ class ShopBox(unittest.TestCase):
         self.assertEqual(api._rec.ev[0][1]["reasons"][0], "🔗 강한 연계 · 이유")
         self.assertEqual(api._rec.ev[1][1]["timers"][0], {"name": "도주 계획", "kind": "hp", "picked": 1000, "readyAt": 1081, "hp": 33})
 
-    def test_timer_lines(self):
-        # 증강 쿨타임: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준. 모두 '예상'
+    def test_timer_icons(self):
+        # 증강 쿨타임 아이콘: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준 (모두 예상)
         import overlay
         now = 1000.0
-        timers = [{"name": "퀸카", "kind": "auto", "period": 35, "base": now - 10},
-                  {"name": "도주 계획", "kind": "hp", "cd": 75, "below": 0.35, "readyAt": now + 40.2},
-                  {"name": "빛의 인도자 결의", "kind": "hp", "cd": 45, "below": 0.5, "readyAt": 0}]
-        lines = overlay.timer_lines(timers, now)
-        self.assertEqual(lines[0], "증강 쿨 (예상)")
-        self.assertIn("⏳ 퀸카 25초 뒤 자동 발동", lines)
-        self.assertIn("⏳ 도주 계획 41초", lines)
-        self.assertIn("✅ 빛의 인도자 결의 준비 (체력 50% 아래에서 발동)", lines)
-        self.assertEqual(overlay.timer_lines([], now), [])
+        timers = [{"id": "PromQueen", "name": "퀸카", "kind": "auto", "period": 35, "base": now - 10},
+                  {"id": "EscapePlan", "name": "도주 계획", "kind": "hp", "cd": 75, "below": 0.35, "readyAt": now + 40.2},
+                  {"id": "ARAM_DawnbringersResolve", "name": "빛의 인도자 결의", "kind": "hp", "cd": 45, "below": 0.5, "readyAt": 0}]
+        st = overlay.timer_state(timers, now)
+        self.assertEqual([(n, secs, ready) for _, n, secs, _, ready in st],
+                         [("퀸카", 25, False), ("도주 계획", 41, False), ("빛의 인도자 결의", 0, True)])
+        self.assertEqual(st[0][3], round(overlay.TIMER_STEPS * 25 / 35), "덮개 = 남은 비율")
+        self.assertEqual(overlay.timer_state([], now), [])
         items = overlay.layout({"timers": timers}, 1920, 1080)
-        self.assertEqual([k for k, *_ in items], ["timers"], "쿨타임만 있어도 표시 창이 뜬다 (그 크기만큼)")
+        self.assertEqual([k for k, *_ in items], ["timers"], "쿨타임만 있어도 표시 창이 뜬다 (아이콘 크기만큼)")
+        # 게임을 가리지 않는 크기: 1080p 32px, 창 모드(작은 창)는 작게, 큰 화면도 40px 까지만
+        self.assertEqual(overlay.timer_size(1080), 32)
+        self.assertEqual(overlay.timer_size(600), 24)
+        self.assertEqual(overlay.timer_size(2160), 40)
+
+    def test_timer_image(self):
+        # 덮개: 남은 만큼 어둡고 12시부터 시계 방향으로 걷힌다. 아이콘 파일이 없어도 그림은 만든다
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow 없음")
+        import overlay
+        icon = Path(__file__).resolve().parent.parent / "web" / "icons" / "augment" / "PromQueen.webp"
+        full = overlay.timer_image(str(icon), 32, overlay.TIMER_STEPS)
+        clear = overlay.timer_image(str(icon), 32, 0)
+        quarter = overlay.timer_image(str(icon), 32, overlay.TIMER_STEPS * 3 // 4)  # 1/4 지남 → 오른쪽 위만 밝다
+        lum = lambda im, xy: sum(im.getpixel(xy))
+        self.assertLess(lum(full, (24, 8)), lum(clear, (24, 8)))
+        self.assertEqual(lum(quarter, (24, 8)), lum(clear, (24, 8)), "오른쪽 위(지난 부분)는 걷힘")
+        self.assertEqual(lum(quarter, (8, 24)), lum(full, (8, 24)), "왼쪽 아래(남은 부분)는 덮여 있다")
+        self.assertEqual(overlay.timer_image("없는파일.webp", 32, 0).size, (32, 32))
 
     def test_find_shop_and_layout(self):
         import augocr
