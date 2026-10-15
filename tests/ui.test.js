@@ -73,6 +73,11 @@ test("이번 선택지: 3개 비교·추천 1개·새로고침 권장", async ()
   assert.equal(rows.length, 3);
   assert.equal(rows.filter((r) => r.classList.contains("best")).length, 1, "추천은 하나");
   assert.equal(p.qa(".offer-table .how").length, 3, "선택지마다 쓰는 법");
+  // 몰빵 빌드는 평가를 먼저 보여 준 다음 채운다 (게임 화면 카드가 늦지 않게)
+  assert.match(p.text("#offer-result"), /계산 중/);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.doesNotMatch(p.text("#offer-result"), /계산 중/);
+  assert.equal(p.qa(".offer-table .mini-build").filter((td) => td.querySelector("img")).length, 3, "몰빵 빌드 아이콘");
   assert.ok(p.qa(".offer-table .chip.fun").length <= 1, "재미 픽은 많아야 하나");
   assert.ok(!rows.find((r) => r.classList.contains("best")).querySelector(".chip.fun"), "재미 픽은 추천과 다른 것");
   assert.deepEqual(p.errors, []);

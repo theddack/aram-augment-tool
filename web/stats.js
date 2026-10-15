@@ -43,6 +43,17 @@
     return v;
   }
 
+  // 출처(src)를 붙인 효과 목록은 아이템·패시브마다 한 번만 만든다 (빌드 탐색에서 계산마다 복사하던 것. 읽기 전용으로 쓴다)
+  const SRC_FX = new WeakMap();
+  function withSrc(owner, src) {
+    if (!owner || !owner.effects || !owner.effects.length) return [];
+    let m = SRC_FX.get(owner);
+    if (!m) SRC_FX.set(owner, (m = new Map()));
+    let fx = m.get(src);
+    if (!fx) m.set(src, (fx = owner.effects.map((e) => ({ ...e, src }))));
+    return fx;
+  }
+
   // 아이템·증강 능력치 합산 후 최종 능력치. augStats = 고른 증강들의 statsResolved 목록
   function computeStats(champ, L, items, augStats, opts = {}) {
     const base = baseStats(champ, L);
@@ -63,10 +74,8 @@
     // 중첩형 패시브·스킬(베이가·쓰레쉬 등)의 게임 중반 평균 능력치도 항상 들어간다
     const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean), ...(champ.stackStats ? [champ.stackStats] : [])];
     // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
-    const effects = [
-      ...((champ.passive && champ.passive.effects) || []).map((e) => ({ ...e, src: "패시브" })),
-      ...items.flatMap((it) => (it.effects || []).map((e) => ({ ...e, src: it.name }))),
-    ];
+    const effects = [...withSrc(champ.passive, "패시브")];
+    for (const it of items) effects.push(...withSrc(it, it.name));
     for (const s of mods) {
       for (const [k, raw] of Object.entries(s || {})) {
         if (k === "_effects") { effects.push(...raw); continue; }
@@ -179,55 +188,78 @@
   }
 
   // 같은 스킬 안에서 최소/최대 같은 대체 수치는 큰 쪽만, 같은 이름은 한 번만 센다
-  function spellTotals(effects, rank, L, t) {
+  // 이름으로 정하는 부분(묶기·빼기·치명타 여부)은 스킬마다 한 번만 계산해 둔다 (spellPlan). 계산마다 정규식을 수천 번 돌려서
+  // 빌드 탐색(능력치 계산 수천 번)의 37%가 여기였다 (2026-10-15 실측). 값에 따라 정하는 부분(카드 중 최대·치명타 기대값)만 매번 계산
+  const PLANS = new WeakMap();
+  function spellPlan(effects) {
+    let plan = PLANS.get(effects);
+    if (plan) return plan;
     const seen = new Set();
-    const vals = [];
+    const uniq = [];
     for (const e of effects) {
       if (seen.has(e.name)) continue;
       seen.add(e.name);
-      vals.push({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t) });
+      uniq.push(e);
     }
     // 최소/최대(또는 기본/최대) 같은 대체 수치는 같은 이름 줄기끼리 묶어서 큰 쪽 하나만 센다
     // (다리우스 R damage·maximumdamage, 그라가스 Q mindamage·maxdamage …)
     // 치명타 버전(미스 포츈 Q totaldamagecrit)은 같은 줄기로 묶고, 치명타 확률만큼만 더한 기대값으로 센다
     const stem = (n) => String(n).toLowerCase().replace(/^spell\.[^:]+:/, "")
       .replace(/(minimum|maximum|min|max|tooltip|total|floor|base|calc|crit(ical)?)/g, "");
-    const groups = new Map();
-    for (const v of vals) {
-      if (DMG_KINDS.includes(v.kind) && STAT_BUFF.test(String(v.name).replace(/^spell\.[^:]+:/, ""))) continue;  // 능력치 증가 수치(리븐 R bonusad)는 피해가 아니다
-      const k = v.kind + "|" + stem(v.name);
+    const groups = new Map();  // 키 → uniq 번호 목록
+    uniq.forEach((e, idx) => {
+      if (DMG_KINDS.includes(e.kind) && STAT_BUFF.test(String(e.name).replace(/^spell\.[^:]+:/, ""))) return;  // 능력치 증가 수치(리븐 R bonusad)는 피해가 아니다
+      const k = e.kind + "|" + stem(e.name);
       if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(v);
-    }
+      groups.get(k).push(idx);
+    });
     // 같은 종류 안에서: 총합(total)이 있으면 한 번당(per wave·bullet·tick…) 값은 뺀다 (루시안 R, 미스 포츈 R)
     // 강화·벽·지형 같은 조건부 대체 버전은 기본 버전이 있으면 뺀다 (볼리베어 W, 제리 W, 키아나 Q)
     const PER = /per(wave|bullet|tick|second|sec|missile|hit|shot|dagger|blade|stack|bolt)/i;
     const ALT = /(empowered|enhanced|wall|tremor|terrain)/i;  // 재사용(리 신 Q2)·두 번째 공격은 실제로 한 번 더 맞아서 빼지 않는다
+    const name = (i) => String(uniq[i].name);
     const byKind = new Map();
-    for (const [k, list] of groups) {
+    for (const k of groups.keys()) {
       const kind = k.split("|")[0];
       if (!byKind.has(kind)) byKind.set(kind, []);
       byKind.get(kind).push(k);
     }
     for (const keys of byKind.values()) {
-      const names = keys.flatMap((k) => groups.get(k).map((v) => String(v.name)));
+      const names = keys.flatMap((k) => groups.get(k).map(name));
       const hasTotal = names.some((n) => /total/i.test(n) && !PER.test(n));
       const hasBase = names.some((n) => !ALT.test(n) && !/crit/i.test(n));
       for (const k of keys) {
-        const kept = groups.get(k).filter((v) => !(hasTotal && PER.test(v.name) && !/total/i.test(v.name)) && !(hasBase && ALT.test(v.name)));
+        const kept = groups.get(k).filter((i) => !(hasTotal && PER.test(name(i)) && !/total/i.test(name(i))) && !(hasBase && ALT.test(name(i))));
         if (kept.length) groups.set(k, kept); else groups.delete(k);
       }
     }
-    // 하나만 고르는 버전(트위스티드 페이트 W 파랑·빨강·노랑 카드)은 가장 큰 것 하나
-    for (const keys of byKind.values()) {
-      const cards = keys.filter((k) => groups.has(k) && groups.get(k).every((v) => /^(blue|red|gold)/i.test(String(v.name).replace(/^spell\.[^:]+:/, ""))));
+    const crit = uniq.map((e) => /crit/i.test(e.name));
+    const kinds = [...byKind.values()].map((keys) => {
+      const live = keys.filter((k) => groups.has(k));
+      // 하나만 고르는 버전(트위스티드 페이트 W 파랑·빨강·노랑 카드)
+      const cards = live.filter((k) => groups.get(k).every((i) => /^(blue|red|gold)/i.test(name(i).replace(/^spell\.[^:]+:/, ""))));
+      return { keys: live, cards: cards.length > 1 ? cards : [] };
+    });
+    plan = { uniq, groups, kinds, crit };
+    PLANS.set(effects, plan);
+    return plan;
+  }
+
+  function spellTotals(effects, rank, L, t) {
+    const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t) }));
+    const groups = new Map();
+    for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
+    const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
+    const isCrit = (v) => (isCritV.has(v) ? isCritV.get(v) : /crit/i.test(v.name));
+    for (const { keys, cards } of kinds) {
       if (cards.length > 1) {
         const best = cards.reduce((a, b) => (Math.max(...groups.get(b).map((v) => v.value)) > Math.max(...groups.get(a).map((v) => v.value)) ? b : a));
         for (const k of cards) if (k !== best) groups.delete(k);
       }
       // 치명타 버전이 다른 이름 줄기에 있어도(탈론 Q leap·critical) 같은 종류의 기본 값이 있으면 치명타 확률만큼만
       const live = keys.filter((k) => groups.has(k));
-      const critKeys = live.filter((k) => groups.get(k).every((v) => /crit/i.test(v.name)));
+      const critKeys = live.filter((k) => groups.get(k).every(isCrit));
       const normKeys = live.filter((k) => !critKeys.includes(k));
       if (critKeys.length && normKeys.length) {
         const nTop = Math.max(...normKeys.flatMap((k) => groups.get(k).map((v) => v.value)));
@@ -239,11 +271,10 @@
     }
     const out = [];
     for (const list of groups.values()) {
-      const isCrit = (v) => /crit/i.test(v.name);
-      const crit = list.filter(isCrit), normal = list.filter((v) => !isCrit(v));
+      const cr = list.filter(isCrit), normal = list.filter((v) => !isCrit(v));
       const top = (l) => l.reduce((a, b) => (b.value > a.value ? b : a));
-      if (crit.length && normal.length) {
-        const n = top(normal), c = top(crit);
+      if (cr.length && normal.length) {
+        const n = top(normal), c = top(cr);
         out.push({ ...n, value: n.value + Math.min(1, t.CRIT || 0) * Math.max(0, c.value - n.value) });
       } else out.push(top(list));
     }

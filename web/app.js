@@ -628,6 +628,7 @@ function renderOfferResult() {
   const out = $("#offer-result");
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
   if (!state.champ || !offers.length) {
+    offerSeq++;  // 미뤄 둔 몰빵 빌드 계산 취소
     if (!$("#ov-preview") || !$("#ov-preview").checked) pushOverlay([]);  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
     out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
@@ -645,15 +646,21 @@ function renderOfferResult() {
     return { top: (idx + 1) / pool.length, n: pool.length, rank: idx + 1 };
   };
   const twistNow = S.twistSupport(state.weights, S.augContext(state.chosen, d.rules)).s;
+  // 몰빵 빌드(선택지마다 빌드 다시 짜기)는 무거워서 뒤로 미룬다: 게임 화면 카드 평가(등급·연계·이유)를 먼저 보낸다.
+  // 게임 중엔 CPU 를 0.5코어로 묶어서, 같이 계산하면 카드가 1.5초까지 늦게 떴다 (2026-10-15 윈도우 측정)
   const rows = offers.map(({ a, i }) => {
     const sc = ranked.find((r) => r.aug.id === a.id) || { score: 0 };
-    const aug = S.buildConcepts(d.items, state.weights, [...state.chosen, a], state.items, d.rules, state.champ, o, ["augment"])[0];
-    const changed = aug.pick.filter((p) => !p.fixed && !nowBal.pick.some((q) => q.item.name === p.item.name)).length;
     // 변칙 열쇠: 이 증강을 고르면 '변칙' 빌드를 받쳐 주는 증강이 생긴다 (성향만 뒤집은 실험 → 증강 덕분에 바뀌는 변칙)
     const twistKey = S.twistSupport(state.weights, S.augContext([...state.chosen, a], d.rules)).s - twistNow >= 0.5;
-    const newItems = aug.pick.filter((p) => !p.fixed && !nowBal.pick.some((q) => q.item.name === p.item.name)).map((p) => p.item.name);
-    return { a, i, sc, p: pctile(a), aug, changed, twistKey, newItems };
+    return { a, i, sc, p: pctile(a), aug: null, changed: 0, twistKey, newItems: [] };
   });
+  const addBuilds = () => {
+    for (const r of rows) {
+      r.aug = S.buildConcepts(d.items, state.weights, [...state.chosen, r.a], state.items, d.rules, state.champ, o, ["augment"])[0];
+      r.newItems = r.aug.pick.filter((p) => !p.fixed && !nowBal.pick.some((q) => q.item.name === p.item.name)).map((p) => p.item.name);
+      r.changed = r.newItems.length;
+    }
+  };
   // 추천: 숫자로 평가되는 선택지 중 빌드 가치 증가가 가장 큰 것. 셋 다 숫자가 없으면 효과 점수로
   const tiers = getTiers();
   // 추천: 연계 티어가 가장 높은 것, 같으면 빌드 가치(없으면 효과 점수)가 큰 것
@@ -667,42 +674,54 @@ function renderOfferResult() {
     return Math.abs(dd) < 0.005 ? `<span class="muted">±0%</span>` : `<span class="${dd > 0 ? "up" : "down"}">${dd > 0 ? "+" : ""}${fmt(dd * 100)}%</span>`;
   };
   const nf = nowBal.final;
-  out.innerHTML = `<table class="offer-table">
-    <tr><th>선택지</th><th>평가</th><th title="빌드 가치">강해지는 정도</th><th>같은 등급 순위</th><th title="콤보">스킬 피해</th><th title="DPS">초당 피해</th><th title="유효 체력">버티는 힘</th><th>이걸 고르면 살 아이템</th><th></th></tr>
-    ${rows.map((r) => {
-      const f = r.aug.final;
-      return `<tr class="${r === best ? "best" : ""}">
-        <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-          ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
-          ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
-          ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
-          ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
-          <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
-          ${howLine(r)}</td>
-        <td>${tierBadge(tiers[r.a.id])}${linkChip(tiers[r.a.id])}</td>
-        <td>${gains[r.a.id] ? `<span class="${gains[r.a.id].gain >= 0 ? "up" : "down"}">${gains[r.a.id].gain >= 0 ? "+" : ""}${fmt(gains[r.a.id].gain * 100)}</span>` : `<span class="muted" title="효과 점수 ${r.sc.score.toFixed(2)}">숫자 없음</span>`}</td>
-        <td>${r.p ? `${r.p.rank}위 / ${r.p.n}개 (상위 ${fmt(r.p.top * 100)}%)` : `<span class="muted">평가 불가</span>`}</td>
-        <td>${fmt(f.combo)} ${delta(f.combo, nf.combo)}</td>
-        <td>${fmt(f.dps)} ${delta(f.dps, nf.dps)}</td>
-        <td>${fmt(f.ehp)} ${delta(f.ehp, nf.ehp)}</td>
-        <td class="mini-build">${r.aug.pick.filter((p) => !p.fixed).map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</td>
-        <td><button data-pick="${r.i}">이걸로 선택</button></td></tr>`;
-    }).join("")}</table>
-    <p class="muted small">강해지는 정도(빌드 가치) = 지금 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 스킬 피해·초당 피해·버티는 힘·회복/보호막이 오르는 정도(가중합 ×100).
-      등급 내 위치는 같은 등급에서 숫자로 평가되는 증강끼리 비교한 순위예요. "숫자 없음"은 소환사 주문 변경·증강 변환·퀘스트처럼 고정 수치가 없는 증강이라 직접 판단이 필요해요.
-      콤보·DPS·유효 체력 칸은 그 증강에 맞춰 빌드를 다시 짰을 때(몰빵) 지금 대비 변화예요.
-      새로고침 권장 = 새로고침을 안 쓴 칸 중 같은 등급 하위 ${REROLL_PCT * 100}% 안에 드는 가장 낮은 칸.
-      추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
+  const wait = `<span class="muted small">계산 중…</span>`;
+  const draw = () => {
+    out.innerHTML = `<table class="offer-table">
+      <tr><th>선택지</th><th>평가</th><th title="빌드 가치">강해지는 정도</th><th>같은 등급 순위</th><th title="콤보">스킬 피해</th><th title="DPS">초당 피해</th><th title="유효 체력">버티는 힘</th><th>이걸 고르면 살 아이템</th><th></th></tr>
+      ${rows.map((r) => {
+        const f = r.aug && r.aug.final;
+        return `<tr class="${r === best ? "best" : ""}">
+          <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
+            ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
+            ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
+            ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
+            <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
+            ${howLine(r)}</td>
+          <td>${tierBadge(tiers[r.a.id])}${linkChip(tiers[r.a.id])}</td>
+          <td>${gains[r.a.id] ? `<span class="${gains[r.a.id].gain >= 0 ? "up" : "down"}">${gains[r.a.id].gain >= 0 ? "+" : ""}${fmt(gains[r.a.id].gain * 100)}</span>` : `<span class="muted" title="효과 점수 ${r.sc.score.toFixed(2)}">숫자 없음</span>`}</td>
+          <td>${r.p ? `${r.p.rank}위 / ${r.p.n}개 (상위 ${fmt(r.p.top * 100)}%)` : `<span class="muted">평가 불가</span>`}</td>
+          <td>${f ? `${fmt(f.combo)} ${delta(f.combo, nf.combo)}` : wait}</td>
+          <td>${f ? `${fmt(f.dps)} ${delta(f.dps, nf.dps)}` : wait}</td>
+          <td>${f ? `${fmt(f.ehp)} ${delta(f.ehp, nf.ehp)}` : wait}</td>
+          <td class="mini-build">${r.aug ? r.aug.pick.filter((p) => !p.fixed).map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("") : wait}</td>
+          <td><button data-pick="${r.i}">이걸로 선택</button></td></tr>`;
+      }).join("")}</table>
+      <p class="muted small">강해지는 정도(빌드 가치) = 지금 빌드(완성 6칸, 18레벨)에 이 증강을 더했을 때 스킬 피해·초당 피해·버티는 힘·회복/보호막이 오르는 정도(가중합 ×100).
+        등급 내 위치는 같은 등급에서 숫자로 평가되는 증강끼리 비교한 순위예요. "숫자 없음"은 소환사 주문 변경·증강 변환·퀘스트처럼 고정 수치가 없는 증강이라 직접 판단이 필요해요.
+        콤보·DPS·유효 체력 칸은 그 증강에 맞춰 빌드를 다시 짰을 때(몰빵) 지금 대비 변화예요.
+        새로고침 권장 = 새로고침을 안 쓴 칸 중 같은 등급 하위 ${REROLL_PCT * 100}% 안에 드는 가장 낮은 칸.
+        추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
+    out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
+      const a = state.offers[Number(el.dataset.pick)];
+      if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      clearOffers();
+      renderAll();
+    }));
+  };
+  draw();
   // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
   if (state.offersClosed) pushOverlay([]);
   else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
-  out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
-    const a = state.offers[Number(el.dataset.pick)];
-    if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
-    clearOffers();
-    renderAll();
-  }));
+  // 다음 차례에 몰빵 빌드를 채운다. 그 사이 선택지가 바뀌었으면(새 화면) 버린다
+  const seq = ++offerSeq;
+  setTimeout(() => {
+    if (seq !== offerSeq) return;
+    addBuilds();
+    draw();
+  }, 0);
 }
+let offerSeq = 0;
 
 // ---- 게임 화면 표시 (윈도우 프로그램): 카드 밑 평가 + 오른쪽 위 상자
 let overlayCards = [null, null, null];
