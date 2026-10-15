@@ -828,9 +828,9 @@
     },
     "Ability_SelfAOE_DoubleCast": {
       "tags": {
-        "AP": 0.6,
-        "HASTE": 0.4
-      }
+        "HASTE": 0.6
+      },
+      "note": "스킬을 한 번 더 쓰는 효과라 물리·마법 스킬 모두 두 배. 주문력 전용이 아니에요"
     },
     "SpellVolley": {
       "tags": {

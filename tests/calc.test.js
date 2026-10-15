@@ -254,3 +254,51 @@ test("추천 품질 점검: 몰빵 빌드가 증강을 살리는 비율 95% 이�
   assert.ok(sum.mollppang.n > 30 && sum.mollppang.rate >= 0.95, JSON.stringify(sum));
   assert.ok(sum.twist.rate >= 0.9, JSON.stringify(sum));
 });
+
+// ---- 연계 상태 (등급과 따로): 강한 연계·일반·없음·충돌·불확실
+const tiersOf = (cid, chosenIds) => {
+  const c = champ(cid);
+  return S.augmentTiers(d.augments, d.items, S.profile(c, d.tags), chosenIds.map(aug), [], d.rules, c, {}, "synergy");
+};
+const byName = (name) => d.augments.find((a) => a.name === name);
+
+test("연계: 고른 증강이 없으면 연계 표시 없음", () => {
+  const t = tiersOf("Lux", []);
+  assert.ok(Object.values(t).every((x) => x.link === null));
+});
+
+test("연계: 궁극기 봉인(기본으로 돌아가기) + 궁극기 증강 = 효과 충돌, 이유 문장, 등급 한 단계 아래", () => {
+  const t = tiersOf("Lux", ["ARAM_BacktoBasics"]);
+  const ult = Object.entries(t).filter(([, x]) => x.link && x.link.kind === "conflict");
+  assert.ok(ult.length > 0);
+  assert.ok(ult.every(([, x]) => /궁극기/.test(x.link.why)), ult.map(([, x]) => x.link.why).join("\n"));
+});
+
+test("연계: 반대 방향 환산(적응형 능력치 ↔ 마법사 (물리))은 충돌", () => {
+  assert.match(S.ruleConflict(aug("ARAM_escAPADe"), [aug("ARAM_ADAPt")], d.rules), /환산/);
+  assert.equal(S.ruleConflict(byName("부식"), [aug("ARAM_ADAPt")], d.rules), null, "상관없는 증강은 충돌 아님");
+});
+
+test("연계: 숫자상 손해만으로는 충돌이라 하지 않는다 (규칙으로 아는 충돌만)", () => {
+  const t = tiersOf("Lux", ["ARAM_BacktoBasics"]);
+  for (const x of Object.values(t)) if (x.link && x.link.kind === "conflict") assert.ok(x.link.why, "충돌이면 이유가 있다");
+  assert.ok(Object.values(t).some((x) => x.link && x.link.kind === "none" && x.interaction < 0), "음수 궁합은 '직접 연계 없음'");
+});
+
+test("연계: 숫자로 계산 못 하는 쪽이 있으면 판정 불확실, 계산되면 강한/일반/없음", () => {
+  const t = tiersOf("Sona", [byName("흡수").id]);
+  const kinds = new Set(Object.values(t).map((x) => x.link && x.link.kind));
+  for (const k of ["strong", "none", "unsure"]) assert.ok(kinds.has(k), `${k} 없음: ${[...kinds]}`);
+  for (const [id, x] of Object.entries(t)) {
+    if (!x.link) continue;
+    if (!S.hasNumbers(aug(id), d.rules)) assert.ok(["unsure", "conflict", "strong", "some"].includes(x.link.kind), `${aug(id).name}: 숫자 없는 증강을 '연계 없음'이라 단정`);
+    if (x.link.kind === "strong") assert.ok(x.interaction >= S.SYNERGY_MARK);
+  }
+});
+
+test("연계: 두 번째·세 번째 증강까지 누적 (고른 증강 2개 기준 궁합)", () => {
+  const one = tiersOf("Sona", [byName("흡수").id]);
+  const two = tiersOf("Sona", [byName("흡수").id, "ARAM_BigBrain"]);
+  const id = byName("응급처치 키트").id;
+  assert.notEqual(one[id].interaction, two[id].interaction);
+});

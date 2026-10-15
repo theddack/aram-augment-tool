@@ -55,7 +55,7 @@ function check(d, champIds = REPS, augIds = null) {
       };
       const changed = picks.filter((it) => !base.includes(it.name)).length;
       const wanted = (rule.items || []).filter((n) => legendary.some((i) => i.name === n));
-      let kind, ok, why = "";
+      let kind, ok, why = "", gap = 0;
       if (wanted.length) {
         kind = "업그레이드";
         ok = picks.some((it) => wanted.includes(it.name));
@@ -66,6 +66,7 @@ function check(d, champIds = REPS, augIds = null) {
         const usual = S.augContribution(baseItems, w, [], a, d.rules, c);
         ok = mine >= usual - 0.002;
         if (!ok) why = `몰빵 ${(mine * 100).toFixed(1)} < 평소 ${(usual * 100).toFixed(1)}`;
+        if (!ok) gap = (usual - mine) / Math.max(Math.abs(usual), 1e-9);
       } else {
         const tags = rule.tags || a.tags || {};
         const zero = new Set(rule.zero || []);
@@ -76,7 +77,7 @@ function check(d, champIds = REPS, augIds = null) {
         ok = miss.length < key.length;
         if (!ok) why = miss.map((t) => S.TAG_LABEL[t] || t).join(",");
       }
-      rows.push({ champ: c.id, aug: a.id, name: a.name, kind, ok, why, changed });
+      rows.push({ champ: c.id, aug: a.id, name: a.name, kind, ok, why, changed, cause: ok ? null : causeOf(kind, why, gap) });
 
       const sup = S.twistSupport(w, S.augContext([a], d.rules));
       if (sup.s >= 0.5) {
@@ -91,11 +92,24 @@ function check(d, champIds = REPS, augIds = null) {
   return { rows, twist };
 }
 
+// 실패 원인 분류 (2026-10-15 실패 41개 분석):
+//   한계-회복   회복·보호막만 키우는 증강(효과 종류만 있음)을 회복 스킬 없는 챔피언이 고름 → 살릴 아이템이 없는 게 맞다
+//   작은 차이   몰빵이 평소보다 증강 가치를 덜 살리지만 차이가 10% 미만 (빌드 전체 가치를 같이 보느라 생기는 차이)
+//   확인 필요   그 밖 (데이터·계산을 사람이 볼 것)
+const CAUSE = { heal: "한계-회복", small: "작은 차이", check: "확인 필요" };
+function causeOf(kind, why, gap) {
+  if (kind === "효과" && /회복·보호막/.test(why)) return CAUSE.heal;
+  if (kind === "숫자" && gap < 0.1) return CAUSE.small;
+  return CAUSE.check;
+}
+
 function summary({ rows, twist }) {
   const ok = rows.filter((r) => r.ok).length;
   const tok = twist.filter((r) => r.ok).length;
   const avgChanged = rows.reduce((t, r) => t + r.changed, 0) / Math.max(1, rows.length);
-  return { mollppang: { n: rows.length, ok, rate: ok / Math.max(1, rows.length), avgChanged }, twist: { n: twist.length, ok: tok, rate: tok / Math.max(1, twist.length) } };
+  const causes = {};
+  for (const r of rows) if (!r.ok) causes[r.cause] = (causes[r.cause] || 0) + 1;
+  return { mollppang: { n: rows.length, ok, rate: ok / Math.max(1, rows.length), avgChanged, causes }, twist: { n: twist.length, ok: tok, rate: tok / Math.max(1, twist.length) } };
 }
 
 if (require.main === module) {
@@ -106,8 +120,10 @@ if (require.main === module) {
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   console.log(`증강 몰빵: ${sum.mollppang.ok}/${sum.mollppang.n} 살림 (${pct(sum.mollppang.rate)}) · 균형 대비 평균 ${sum.mollppang.avgChanged.toFixed(1)}개 바뀜`);
   console.log(`변칙: ${sum.twist.ok}/${sum.twist.n} 정상 (${pct(sum.twist.rate)})`);
+  console.log(`못 살린 원인: ${Object.entries(sum.mollppang.causes).map(([k, v]) => `${k} ${v}`).join(" · ") || "없음"}`);
+  console.log("※ 계산끼리의 일관성 검사예요. 실제 게임에서의 추천 정확도가 아니에요.");
   const byAug = {};
-  for (const r of res.rows.filter((x) => !x.ok)) (byAug[`${r.name} [${r.kind}]`] = byAug[`${r.name} [${r.kind}]`] || []).push(`${r.champ}(${r.why})`);
+  for (const r of res.rows.filter((x) => !x.ok)) (byAug[`${r.name} [${r.cause}]`] = byAug[`${r.name} [${r.cause}]`] || []).push(`${r.champ}(${r.why})`);
   const list = Object.entries(byAug).sort((a, b) => b[1].length - a[1].length);
   if (list.length) console.log("\n몰빵 빌드가 못 살린 증강:");
   for (const [n, cs] of list) console.log(`  ${n}: ${cs.join(" ")}`);

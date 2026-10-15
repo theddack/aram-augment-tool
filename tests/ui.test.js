@@ -78,6 +78,18 @@ test("이번 선택지: 3개 비교·추천 1개·새로고침 권장", async ()
   assert.deepEqual(p.errors, []);
 });
 
+test("연계 상태 칩: 고른 증강이 있으면 선택지·목록에 등급과 따로 보인다", async () => {
+  const p = await loadPage();
+  p.pickChamp("Lux");
+  assert.equal(p.qa("#aug-list .link").length, 0, "첫 증강 전엔 연계 표시 없음");
+  p.click(p.augRow("ARAM_BacktoBasics"));
+  assert.ok(p.qa("#aug-list .link").length > 0);
+  assert.ok(p.qa("#aug-list .link.l-conflict").length > 0, "궁극기 증강은 효과 충돌");
+  const conflict = p.qa("#aug-list .aug").find((e) => e.querySelector(".link.l-conflict"));
+  assert.match(conflict.textContent, /궁극기/, "충돌 이유 문장");
+  assert.deepEqual(p.errors, []);
+});
+
 test("쓰는 법·재미 픽·변칙 설명", async () => {
   const p = await loadPage();
   p.pickChamp("Jinx");
@@ -97,6 +109,10 @@ test("쓰는 법·재미 픽·변칙 설명", async () => {
     for (const t of ["input", "change"]) inp.dispatchEvent(new p.w.Event(t, { bubbles: true }));
   });
   assert.match(p.text("#offer-result"), /변칙 열쇠/);
+  // 재미 픽은 플레이 방향이 실제로 바뀌는 것(변신·변칙 열쇠)만
+  for (const row of p.qa(".offer-table tr").slice(1)) {
+    if (row.querySelector(".chip.fun")) assert.match(row.textContent, /변신|변칙 열쇠/);
+  }
   assert.match(p.text("#offer-result"), /같이 살 것|🎮/);
   assert.deepEqual(p.errors, []);
 });

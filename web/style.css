@@ -129,6 +129,10 @@ body.mini .refs { display: none; }
 .tier { display: inline-block; padding: 1px 6px; border-radius: 4px; font-weight: 700; font-size: 12px; color: #111; margin-right: 4px; white-space: nowrap; }
 .why { font-size: 12px; margin-top: 2px; color: var(--text); }
 .why .chip { margin-right: 6px; }
+.link { display: inline-block; padding: 0 5px; border: 1px solid var(--line, #8884); border-radius: 4px; font-size: 11px; margin-right: 4px; white-space: nowrap; }
+.link.l-strong { border-color: var(--syn); color: var(--syn); }
+.link.l-conflict { border-color: #e06c5a; color: #e06c5a; }
+.link.l-unsure, .link.l-none { opacity: .8; }
 .how { font-size: 12px; margin-top: 2px; color: var(--text); opacity: .9; }
 .how-list { grid-column: 1 / -1; margin-top: 4px; }
 .chip.fun { border-color: #e8a33d; color: #e8a33d; }

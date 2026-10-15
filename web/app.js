@@ -380,6 +380,22 @@ function tierBadge(t) {
   return `<span class="tier t-${t.tier}" title="${detail}">${icon} ${name}</span>`;
 }
 
+// 연계 상태 칩: 등급과 따로, 고른 증강과 실제로 맞는지 (숫자로 확인 못 하면 '판정 불확실')
+const LINK_LABEL = {
+  strong: ["🔗", "강한 연계", "같이 고르면 따로 고를 때보다 확실히 더 강해져요"],
+  some: ["➕", "일반 연계", "서로 조금 보완해요"],
+  none: ["➖", "직접 연계 없음", "서로 영향을 주지 않아요. 그 자체로 쓰는 증강이에요"],
+  conflict: ["⚠️", "효과 충돌", "한 증강이 다른 증강의 효과를 깎거나 막아요"],
+  unsure: ["❔", "판정 불확실", "숫자로 계산할 수 없는 효과가 있어 연계를 확인하지 못했어요"],
+};
+function linkChip(t) {
+  if (!t || !t.link) return "";
+  const [icon, name, why] = LINK_LABEL[t.link.kind];
+  const num = t.interaction != null ? ` · 궁합 ${t.interaction > 0 ? "+" : ""}${fmt(t.interaction * 100)} (같이 고를 때 − 따로 고를 때)` : "";
+  const tip = (t.link.why || why) + (t.link.hint ? " · 효과 종류로는 맞을 수도 있어요 (추정)" : "") + num;
+  return `<span class="link l-${t.link.kind}" title="${esc(tip)}">${icon} ${name}</span>`;
+}
+
 // 출처 링크 (클릭해도 증강·아이템이 선택되지 않게)
 function refLinks(refs) {
   if (!refs || !refs.length) return "";
@@ -454,16 +470,17 @@ const STAT_TIP = [
   [["controlSec", "fearPerCast"], "적을 묶고 아군과 같이 들어가세요."],
   [["HASTE", "basicHaste", "slotHaste", "AStoHASTE", "APtoHASTE", "refundPct", "refundAll"], "스킬을 쉬지 않고 돌리세요."],
   [["ultHaste", "ultHasteAdd", "ultRefundEvery"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
-  [["AS", "ASmult", "CRIT", "onhitCdr"], "기본 공격을 꾸준히 넣는 게 핵심이에요."],
+  [["AS", "ASmult", "onhitCdr"], "기본 공격을 꾸준히 넣는 게 핵심이에요."],
+  [["CRIT"], "치명타 아이템과 잘 맞아요."],
   [["HP", "HPmult", "ARMOR", "MR", "ehpMult", "drSec", "invulnSec"], "앞에 서서 버티며 싸울 수 있어요."],
   [["MS", "MSP", "MSmult", "dashHaste"], "많이 움직이며 치고 빠지세요."],
-  [["goldValue"], "골드가 빨리 모이니 핵심 아이템을 먼저 사세요."],
+  [["goldValue"], "보상을 바로 받으니 핵심 아이템을 먼저 맞추세요."],
 ];
 const TAG_TIP = [
   [["AS", "ONHIT", "CRIT"], "기본 공격을 꾸준히 넣는 게 핵심이에요."],
-  [["HP", "ARMOR", "MR"], "앞에 서서 버티며 싸울 수 있어요."],
-  [["AP", "MPEN"], "스킬 위주로 싸우세요."],
-  [["AD", "LETHAL"], "물리 피해로 약한 적부터 노리세요."],
+  [["HP", "ARMOR", "MR"], "체력이 높을수록 세지니 체력 아이템과 잘 맞아요."],
+  [["AP", "MPEN"], "주문력 아이템과 잘 맞아요."],
+  [["AD", "LETHAL"], "공격력 아이템과 잘 맞아요."],
   [["HEALSHIELD", "VAMP"], "오래 붙어 싸울수록 이득이에요."],
   [["HASTE"], "스킬을 쉬지 않고 돌리세요."],
   [["ULT"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
@@ -472,6 +489,15 @@ const TAG_TIP = [
   [["TRUE"], "탱커 상대로 특히 세요."],
   [["MANA"], "마나 걱정 없이 스킬을 쓰세요."],
 ];
+// 한 번 발동(조건부) 문구 → 문장. 모르는 문구는 지어내지 않고 뺀다
+const ONCE_TIP = (from) => {
+  if (!from) return null;
+  if (from === "사망 시") return "죽을 때 발동해요.";
+  if (from === "처치") return "적을 처치할 때 발동해요.";
+  const hp = /^체력이 (\d+%)/.exec(from);
+  if (hp) return `체력이 ${hp[1]} 아래로 떨어지면 발동해요.`;
+  return null;
+};
 function playTip(a) {
   const rule = state.data.rules.augments[a.id] || {};
   if (CATEGORY_TIP[a.category]) return CATEGORY_TIP[a.category];
@@ -483,16 +509,21 @@ function playTip(a) {
   if (conv) out.push(`${S.TAG_LABEL[conv[0]] || conv[0]} 아이템을 사도 ${josa(S.TAG_LABEL[conv[1]] || conv[1], "으로", "로")} 바뀌니 섞어 사도 돼요.`);
   if ((rule.zero || []).includes("ULT")) out.push("궁극기를 못 쓰니 기본 스킬을 쉬지 않고 쓰세요.");
   const feat = rule.requires && state.data.rules.features[rule.requires];
-  if (feat && !["melee", "ranged"].includes(rule.requires)) out.push(`${feat}을 쓸 때 발동해요.`);
-  const trig = (a.effects || []).map((e) => e.trigger || {}).find((t) => TRIGGER_TIP[t.type]);
+  if (feat && !["melee", "ranged"].includes(rule.requires)) out.push(`${/CC$/.test(feat) ? feat + "를" : josa(feat, "을", "를")} 쓸 때 발동해요.`);
+  // '주기적' 발동은 '7초마다'·'자동 사용'처럼 정말 저절로 터지는 것만 (재사용 대기시간만 있는 것은 조건이 따로 있다)
+  const trig = (a.effects || []).map((e) => e.trigger || {})
+    .find((t) => TRIGGER_TIP[t.type] && (t.type !== "time" || (!feat && /마다|자동/.test(t.from || ""))));
   if (out.length < 2 && trig) out.push(TRIGGER_TIP[trig.type]);
+  const once = !trig && (a.effects || []).map((e) => e.trigger || {}).find((t) => t.type === "once" && ONCE_TIP(t.from));
+  if (out.length < 2 && once) out.push(ONCE_TIP(once.from));
   const attackTip = trig && ["onhit", "attacks"].includes(trig.type);  // '기본 공격마다'와 '기본 공격이 핵심'을 겹쳐 쓰지 않는다
   const add = (tip) => { if (out.length < 2 && !out.includes(tip) && !(attackTip && tip.includes("기본 공격"))) out.push(tip); };
   const st = rule.statsResolved || {};
-  const stat = STAT_TIP.find(([keys]) => keys.some((k) => k in st));
+  const stat = STAT_TIP.find(([keys]) => keys.some((k) => k in st) && !(up.length && keys.includes("goldValue")));
   if (stat) add(stat[1]);
   if (out.length < 2) {
     const tags = augLift(a);
+    if ((tags.AD || 0) >= 0.5 && (tags.AP || 0) >= 0.5) add("공격력·주문력 어느 쪽 아이템이든 잘 맞아요.");
     const top = TAG_TIP.map(([ts, tip]) => [Math.max(...ts.map((t) => tags[t] || 0)), tip]).sort((x, y) => y[0] - x[0])[0];
     if (top && top[0] >= 0.5) add(top[1]);
   }
@@ -530,7 +561,8 @@ function augReason(a, t, sc, g) {
   const trText = tr ? ` 고르면 ${josa(STYLE_LABEL[tr], "으로", "로")} 가볼 수 있어요.` : "";
   if (t.reasons.includes("손해")) return `지금 빌드로는 ${partText(topPart(-1), "줄지만")}, 빌드를 바꾸면 색다르게 쓸 수 있어요.${trText}`;
   if (t.reasons.includes("연계 없음")) return `${josa(names, "과", "와")} 직접 연계는 없어요.${g && g.gain > 0 ? " 그래도 그 자체로는 강해요 (종합 보기에서 확인)." : ""}${trText}`;
-  if (t.reasons.includes("충돌")) return `${josa(names, "과", "와")} 잘 안 맞아요. 서로 효과를 깎아먹어요.`;
+  if (t.link && t.link.kind === "conflict" && t.link.why) return t.link.why;
+  if (t.reasons.includes("충돌")) return `${josa(names, "과", "와")} 같이 고르면 따로 고를 때보다 덜 강해져요 (계산상).`;
   if (t.reasons.includes("궁합")) return `${josa(names, "과", "와")} 잘 맞아요. ${partText(topPart(1), "늘어요.")}`;
   if (state.chosen.length && tierMode() === "synergy" && g && TIER_ORDER[t.tier] >= TIER_ORDER.C) {
     return `그 자체로는 ${partText(topPart(1), "늘지만")} ${josa(names, "과", "와")} 연계는 약해요.${trText}`;
@@ -576,10 +608,12 @@ function renderOffers() {
 }
 
 // 재미 픽: 점수가 낮아도 해 볼 가치가 있는 선택 (모토 "어떤 증강도 재밌게"). 추천(가장 강한 것)과 따로 하나만.
-// 기준 = 플레이 방향이 바뀌거나(변신), 변칙을 받쳐 주거나, 아이템이 3개 이상 바뀌는 것. 효과가 아예 없는 것은 빼고
+// 기준 = 플레이 방향이 바뀌거나(변신), 변칙을 받쳐 주는 것. 효과가 없거나 고른 증강과 충돌하는 것은 빼고
 function funPick(rows, best, tiers) {
-  const score = (r) => (transform(r.a) ? 2 : 0) + (r.twistKey ? 2 : 0) + (r.changed >= 3 ? r.changed / 2 : 0);
-  const pool = rows.filter((r) => r !== best && !noEffect(tiers[r.a.id]) && score(r) >= 2);
+  // 아이템 수만 다른 건 근거가 약하다: 플레이 방향이 실제로 바뀌는 것(변신·변칙 열쇠)만 후보, 빌드 변화는 순서만 가른다
+  const score = (r) => (transform(r.a) ? 2 : 0) + (r.twistKey ? 2 : 0) + (r.changed >= 3 ? 1 : 0);
+  const conflict = (r) => ((tiers[r.a.id] || {}).link || {}).kind === "conflict";
+  const pool = rows.filter((r) => r !== best && !noEffect(tiers[r.a.id]) && !conflict(r) && (transform(r.a) || r.twistKey));
   return pool.length ? pool.reduce((x, y) => (score(y) > score(x) ? y : x)) : null;
 }
 // 선택지 밑 '쓰는 법': 이 증강을 고르면 어떻게 싸우고 뭘 사면 되나 (몰빵 빌드에서 새로 들어오는 아이템 2개)
@@ -645,7 +679,7 @@ function renderOfferResult() {
           ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
           <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
           ${howLine(r)}</td>
-        <td>${tierBadge(tiers[r.a.id])}</td>
+        <td>${tierBadge(tiers[r.a.id])}${linkChip(tiers[r.a.id])}</td>
         <td>${gains[r.a.id] ? `<span class="${gains[r.a.id].gain >= 0 ? "up" : "down"}">${gains[r.a.id].gain >= 0 ? "+" : ""}${fmt(gains[r.a.id].gain * 100)}</span>` : `<span class="muted" title="효과 점수 ${r.sc.score.toFixed(2)}">숫자 없음</span>`}</td>
         <td>${r.p ? `${r.p.rank}위 / ${r.p.n}개 (상위 ${fmt(r.p.top * 100)}%)` : `<span class="muted">평가 불가</span>`}</td>
         <td>${fmt(f.combo)} ${delta(f.combo, nf.combo)}</td>
@@ -682,7 +716,8 @@ function pushOverlay(rows) {
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
       // 게임 화면은 짧게: '고르면 ○○형으로 가볼 수 있어요'는 변신 표시와 겹쳐서 뺀다
-      reason: (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
+      reason: (t && t.link && ["strong", "conflict"].includes(t.link.kind) ? `${LINK_LABEL[t.link.kind][0]} ${LINK_LABEL[t.link.kind][1]} · ` : "")
+        + (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
     };
   }
   sendOverlay();
@@ -751,7 +786,7 @@ function renderAugs() {
     <div class="aug" data-id="${r.aug.id}">
       <img src="${icon("augment", r.aug.id)}" alt="" loading="lazy">
       <div>
-        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${esc(r.aug.rarityName)}</span>${newChips(r.aug)}
+        <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])}${linkChip(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${esc(r.aug.rarityName)}</span>${newChips(r.aug)}
           ${gains[r.aug.id] ? `<span class="chip adv ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
         <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
         ${basisBlock([...(((state.data.rules.augments[r.aug.id] || {}).basisView) || []), ...effectBasis(r.aug.effects)])}

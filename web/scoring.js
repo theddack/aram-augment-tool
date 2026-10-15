@@ -539,6 +539,45 @@
   const TIER_CUTS = [["S", 0.1], ["A", 0.3], ["B", 0.6], ["C", 0.85], ["D", 1]];
   const SYNERGY_MARK = 0.05; // 궁합 표시 기준 (가치 ×100 기준 ±5)
 
+  // ---- 연계 상태: 등급(S~D, 같은 등급 증강끼리의 순위)과 따로 '고른 증강과 실제로 맞는가'를 보여 준다 (2026-10-15 기획)
+  // strong 강한 연계 / some 일반 연계 / none 직접 연계 없음 / conflict 효과 충돌 / unsure 판정 불확실
+  // 숫자 근거 = 궁합(같이 골랐을 때 가치 − 따로 골랐을 때 가치, 고른 증강 전부 누적). 숫자가 없으면 연계라고 단정하지 않는다
+  const LINK_STRONG = SYNERGY_MARK; // 화면 '궁합'과 같은 기준 (가치 ×100 기준 +5)
+  const LINK_SOME = 0.01;
+  const ULT_STATS = ["ultHaste", "ultHasteAdd", "ultRefundEvery", "ultTriggerHaste", "ultTriggerDur", "ultTriggerMs"];
+  const setsMelee = (r) => ((r.setsFeatures || {}).add || []).includes("melee");
+  const usesUlt = (rules, a) => (effTags(rules, a).ULT || 0) >= 0.6 || ULT_STATS.some((k) => k in (ruleOf(rules, a).statsResolved || {}));
+  // 규칙으로 아는 충돌: 한 증강이 다른 증강의 발동·효과를 막는 경우만 (단순히 안 맞는 건 '직접 연계 없음')
+  function ruleConflict(a, chosen, rules) {
+    const ra = ruleOf(rules, a);
+    for (const c of chosen) {
+      const rc = ruleOf(rules, c);
+      if ((rc.zero || []).includes("ULT") && usesUlt(rules, a)) return `${c.name} 때문에 궁극기를 못 써서 이 증강의 궁극기 효과가 사라져요.`;
+      if ((ra.zero || []).includes("ULT") && usesUlt(rules, c)) return `궁극기를 봉인해서 ${c.name}의 궁극기 효과가 사라져요.`;
+      for (const [f, to] of Object.entries(ra.convert || {})) {
+        if ((rc.convert || {})[to] === f) return `${c.name}의 능력치 환산과 방향이 반대라 서로 효과를 지워요.`;
+        if (f === "AS" && (effTags(rules, c).AS || 0) >= 0.6) return `공격 속도가 스킬 가속으로 바뀌어서 ${c.name}의 공격 속도 효과가 사라져요.`;
+      }
+      if ((rc.convert || {}).AS && (effTags(rules, a).AS || 0) >= 0.6) return `${c.name} 때문에 공격 속도가 스킬 가속으로 바뀌어서 이 증강의 공격 속도 효과가 사라져요.`;
+      if (setsMelee(rc) && ra.requires === "ranged") return `${c.name}로 근접이 돼서 원거리 전용 효과가 사라져요.`;
+      if (setsMelee(ra) && rc.requires === "ranged") return `근접이 돼서 ${c.name}의 원거리 전용 효과가 사라져요.`;
+    }
+    return null;
+  }
+  function linkOf(a, chosen, rules, interaction, numeric, synTag) {
+    if (!chosen.length) return null;
+    const why = ruleConflict(a, chosen, rules);
+    if (why) return { kind: "conflict", why };
+    // 숫자상 손해(궁합 음수)는 '충돌'이라 하지 않는다: 같이/따로 비교할 때 기준 빌드가 달라 생기는 차이가 섞여 있다.
+    // 충돌은 규칙으로 아는 것(궁극기 봉인·반대 환산·근접 전환)만
+    const sure = numeric && chosen.every((c) => hasNumbers(c, rules));
+    if (interaction != null && interaction >= LINK_STRONG) return { kind: "strong" };
+    if (interaction != null && interaction >= LINK_SOME) return { kind: "some" };
+    if (sure) return { kind: "none" };
+    // 숫자로 계산이 안 되는 쪽이 있으면 '연계 없음'이라고도 '강한 연계'라고도 하지 않는다
+    return { kind: "unsure", hint: synTag > 0 };
+  }
+
   // mode: "total"(같이 골랐을 때 총 가치 + 궁합 보정) / "synergy"(고른 증강과의 궁합만)
   function augmentTiers(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}, mode = "total") {
     const synergyMode = mode === "synergy" && chosen.length > 0;
@@ -577,7 +616,13 @@
             else if (interaction <= -SYNERGY_MARK) { tier = order[Math.min(4, order.indexOf(tier) + 1)]; reasons.push("충돌"); }
           }
           if (synergyMode && interaction != null && interaction > 0) reasons.push("궁합");
-          out[a.id] = { tier, pct, basis, gain: g ? g.gain : null, interaction, reasons, rank: i + 1, n: list.length, mode: synergyMode ? "synergy" : "total" };
+          const link = sc.req && !sc.req.met ? null : linkOf(a, chosen, rules, interaction, !!g, synTag(a));
+          // 규칙으로 아는 충돌(궁극기 봉인 + 궁극기 증강 등)은 숫자에 안 잡히는 경우가 있어 등급도 한 단계 내린다
+          if (link && link.kind === "conflict" && link.why && !reasons.includes("충돌")) {
+            reasons.push("충돌");
+            if (tier !== "D") tier = order[Math.min(4, order.indexOf(tier) + 1)];
+          }
+          out[a.id] = { tier, pct, basis, gain: g ? g.gain : null, interaction, reasons, link, rank: i + 1, n: list.length, mode: synergyMode ? "synergy" : "total" };
         });
       }
     }
@@ -633,7 +678,7 @@
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
-    numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, SYNERGY_MARK, itemSynergy,
+    numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
     conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures,
   };
   if (typeof module !== "undefined") module.exports = api;
