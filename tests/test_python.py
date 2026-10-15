@@ -133,6 +133,32 @@ class Logs(unittest.TestCase):
         self.assertNotIn("game_00.json", left)
 
 
+class DataSanity(unittest.TestCase):
+    def test_big_drop_blocks_refresh(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import data_sanity
+        old = {"champions": [{"id": "A", "name": "a"}] * 170, "augments": [{}] * 215, "items": [{}] * 300}
+        self.assertEqual(data_sanity.problems(old, old), [])
+        self.assertEqual(data_sanity.problems(old, {**old, "augments": [{}] * 210}), [], "패치로 몇 개 빠지는 건 괜찮다")
+        self.assertTrue(data_sanity.problems(old, {**old, "augments": [{}] * 100}), "절반으로 줄면 막는다")
+        self.assertTrue(data_sanity.problems(old, {**old, "items": []}))
+
+
+class LockfileCheck(unittest.TestCase):
+    def test_bad_lockfile_rejected(self):
+        import tempfile
+        from pathlib import Path
+        import lcu
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "lockfile"
+            for bad in ("L:1:abc:pw:https", "L:1:99999:pw:https", "L:1:2999:pw:ftp"):
+                p.write_text(bad, encoding="utf-8")
+                with self.assertRaises(ValueError, msg=bad):
+                    lcu.Lcu(str(p))
+            p.write_text("L:1:2999:pw:https", encoding="utf-8")
+            self.assertEqual(lcu.Lcu(str(p)).base, "https://127.0.0.1:2999")
+
+
 class Lcu(unittest.TestCase):
     def test_clean_item_set(self):
         self.assertEqual(lcu.clean_item_set("222", "x" * 99, [{"type": "a", "items": ["3031"]}])[1], "x" * 60)

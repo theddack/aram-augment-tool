@@ -300,11 +300,11 @@ test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산�
   p.w.applyLive({ ...base, enemies: ["Lux", "Vladimir", "Soraka", "Malphite", "Sejuani"] });
   assert.ok(p.w.enemyInfo().magic >= 0.6);
   const adv = p.text("#next-buy");
-  assert.match(adv, /적 피해: 마법 \d+%/);
+  assert.match(adv, /적 구성 추정: 마법 \d+%/);
   assert.match(adv, /적 탱커 많음/);
   assert.notEqual(adv, before);
   p.w.sendOverlay();
-  assert.match(sent.at(-1).hud.join("\n"), /적 피해: 마법/);
+  assert.match(sent.at(-1).hud.join("\n"), /적 구성 추정: 마법/);
   assert.deepEqual(p.errors, []);
 });
 

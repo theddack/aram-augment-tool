@@ -35,7 +35,8 @@ function enemyAdvice() {
   if (!e || !state.champ) return [];
   const out = [];
   const pct = Math.round(e.magic * 100);
-  out.push(`적 피해: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
+  // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)으로 짐작한 비율이라 '추정'이라고 쓴다
+  out.push(`적 구성 추정: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
   const items = state.data.items.filter((i) => i.kind === "legendary");
   const mineType = state.champ.damageType === "magic" ? "magic" : "physical";
   // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것

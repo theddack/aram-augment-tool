@@ -35,6 +35,8 @@ jobs:
         run: |
           cp web/data.json /tmp/old.json
           python build_data.py --refresh
+          # 챔피언·증강·아이템 수가 갑자기 크게 줄면(덜 받음) 반영하지 않는다
+          python tools/data_sanity.py /tmp/old.json web/data.json
           python tools/changelog.py html
 
       # 새 데이터로 테스트: 데이터 형식이 바뀌어 화면이 깨지면 반영·배포하지 않는다

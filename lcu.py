@@ -53,7 +53,11 @@ def find_lockfile(extra=()):
 class Lcu:
     def __init__(self, lockfile_path):
         name, pid, port, password, proto = open(lockfile_path, encoding="utf-8").read().strip().split(":")
-        self.base = f"{proto}://127.0.0.1:{port}"
+        # 롤 클라이언트는 이 컴퓨터(127.0.0.1)의 https 를 쓴다 (http 는 윈도우 재현 도구의 가짜 클라이언트).
+        # 이상한 lockfile 이면 연결하지 않는다 (주소를 함부로 만들지 않게)
+        if proto not in ("https", "http") or not port.isdigit() or not 0 < int(port) < 65536:
+            raise ValueError("lockfile 형식이 이상함")
+        self.base = f"{proto}://127.0.0.1:{int(port)}"
         self.auth = "Basic " + base64.b64encode(f"riot:{password}".encode()).decode()
 
     def req(self, method, path, body=None):
