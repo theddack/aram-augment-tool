@@ -721,7 +721,7 @@ function renderOfferResult() {
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
   if (!state.champ || !offers.length) {
     offerSeq++;  // 미뤄 둔 몰빵 빌드 계산 취소
-    if (!$("#ov-preview") || !$("#ov-preview").checked) pushOverlay([]);  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
+    if (!$("#ov-preview") || !$("#ov-preview").checked) pushOverlay([], "clear:no-offers");  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
     out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
     return;
@@ -803,7 +803,7 @@ function renderOfferResult() {
   };
   draw();
   // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
-  if (state.offersClosed) pushOverlay([]);
+  if (state.offersClosed) pushOverlay([], "clear:closed");
   else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   // 다음 차례에 몰빵 빌드를 채운다. 그 사이 선택지가 바뀌었으면(새 화면) 버린다
   const seq = ++offerSeq;
@@ -817,7 +817,7 @@ let offerSeq = 0;
 
 // ---- 게임 화면 표시 (윈도우 프로그램): 카드 밑 평가 + 오른쪽 위 상자
 let overlayCards = [null, null, null];
-function pushOverlay(rows) {
+function pushOverlay(rows, src) {
   overlayCards = [null, null, null];
   for (const x of rows || []) {
     const t = x.t;
@@ -831,7 +831,7 @@ function pushOverlay(rows) {
         + (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
     };
   }
-  sendOverlay();
+  sendOverlay(src || (rows && rows.length ? "cards" : "clear"));
 }
 // 산 아이템 평가: 이 챔피언(+고른 증강)에 잘 맞는지. 그 아이템을 빼고 다시 순위를 매겨서 몇 등인지로 판단
 let verdictCache = { key: null, value: [] };
@@ -889,7 +889,7 @@ function trackTimers(L) {
   }
   augTimers = next;
   const key = JSON.stringify(augTimers);
-  if (key !== timersSent) { timersSent = key; sendOverlay(); }
+  if (key !== timersSent) { timersSent = key; sendOverlay("timers"); }
 }
 function timersPayload() {
   return Object.entries(augTimers).map(([id, t]) => {
@@ -898,7 +898,7 @@ function timersPayload() {
   });
 }
 
-function sendOverlay() {
+function sendOverlay(src) {
   const api = window.pywebview && window.pywebview.api;
   if (!api || !api.set_overlay || !state.champ) return;
   const hud = [];
@@ -918,7 +918,7 @@ function sendOverlay() {
     builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name) })),
     advice: enemyAdvice(),
   } : null;
-  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload(), enemy });
+  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null });
 }
 
 function renderAugs() {
@@ -1187,7 +1187,7 @@ function renderNextBuy(rows) {
   state.nextTop = pick.length ? pick[0].item : null;
   renderBuyNow();
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
-  sendOverlay();
+  sendOverlay("next");
 }
 
 function renderItemList() {
@@ -1283,6 +1283,15 @@ function applyAug(A) {
   }
   if (A.offers && A.seq !== augSeq) {
     augSeq = A.seq;
+    if (state.chosen.length >= 4) {
+      // 선택 화면이 또 떴다 = 아직 4개를 다 고르지 않았다 → 증강 칸에서 확인 못 한 것(클릭 짐작)을 뒤에서부터 뺀다
+      // (2026-10-15 케일 판: 틀린 짐작이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다)
+      const sure = new Set(A.hudPicked || []);
+      const keep = [...state.chosen];
+      for (let i = keep.length - 1; i >= 0 && keep.length >= 4; i--) if (!sure.has(keep[i].id)) keep.splice(i, 1);
+      state.chosen = keep.slice(0, 3);
+      full = true;
+    }
     if (state.chosen.length < 4) {
       state.offers = A.offers.map(byName);
       state.offersClosed = false;
@@ -1324,6 +1333,7 @@ function setAutoChamp() {
 let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0;
+const BOX_START = 75;  // 초. 게임 시작 후 이 시간까지는 상자를 띄운다 (처음 아이템을 사는 때)
 let enemyBuildKey = "";
 function applyLive(L) {
   const el = $("#live-status");
@@ -1364,7 +1374,10 @@ function applyLive(L) {
   // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다.
   // 골드는 칼바람에서 1초마다 오른다 → 상점이 열려 있을 때(게임 화면 상자에 보일 때)·부품이 바뀌었을 때만 바로,
   // 그 밖엔 10초에 한 번만 (게임 중 CPU 를 아낀다)
-  const shopOpen = !!(L.aug && L.aug.shop);
+  // 게임 화면 상자(다음 구매·조언)를 띄울 때: 상점 창이 열림 · 죽어 있음(상점에서 사는 때) · 시작 직후(첫 구매).
+  // 상점 창만 보면 상점 인식이 안 될 때 상자가 한 번도 안 떴다 (2026-10-15 케일 판: 상점을 한 번도 못 알아봄)
+  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead" : L.gameTime != null && L.gameTime < BOX_START ? "start" : null;
+  const shopOpen = !!state.boxWhy;
   const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
   const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
     && (shopOpen || shopOpen !== liveShop || Date.now() - goldDrawnAt > 10000));
@@ -1393,7 +1406,7 @@ function applyLive(L) {
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
   if (key === liveLast) {
-    if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay(); }
+    if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));

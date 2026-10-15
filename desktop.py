@@ -694,6 +694,9 @@ class Api:
             # 증강 인식이 카드 위치를 읽었으면 그 자리에 붙인다 (짐작한 비율·블리츠 같은 다른 표시와 안 겹치게)
             # 상점 창이 열려 있으면 그 옆에 상자를 (평소엔 상자를 안 띄운다: 게임을 가린다)
             payload["shop"] = self._reader.state.get("shop") if self._reader else None
+            # 상점 인식이 안 돼도 죽어 있을 때·시작 직후엔 상자를 띄운다 (화면이 정해 보낸다: box = "dead"·"start")
+            if not payload["shop"] and payload.get("box"):
+                payload["shop"] = payload["box"]
             cards = (self._reader.state.get("pos") if self._reader else None)
             if cards:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME}
@@ -703,8 +706,10 @@ class Api:
             cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]
             # 카드 밑 이유(연계·재미 픽·쓰는 법 문장)도: 체감과 맞았는지 나중에 대조
             reasons = [c and (c.get("reason") or "")[:120] for c in (payload.get("cards") or [])]
+            # box = 상자를 띄운 이유 (shop·dead·start), src = 화면의 어느 갱신이 보냈는지 (카드가 깜박이면 누가 지웠는지)
             self._rec.event("shown", {"cards": cards, "reasons": reasons, "box": payload.get("hud"),
-                                      "shop": bool(payload.get("shop"))}, dedupe=True)
+                                      "shop": bool(self._reader and self._reader.state.get("shop")),
+                                      "boxWhy": payload.get("box"), "src": payload.get("src")}, dedupe=True)
             # 증강 쿨타임: 언제 골랐다고/발동했다고 봤는지 (실제 발동과 대조). 시각은 컴퓨터 시각(초) 그대로 —
             # 이 판 기록의 start.wall 을 빼면 기록 시각(t)과 맞는다. 바뀔 때만 남는다 (남은 초를 남기면 매번 달라진다)
             # 상대 아이템 반영: 적이 산 아이템으로 잡은 상대 능력치와 조언 (바뀔 때만)

@@ -752,6 +752,27 @@ class HudIcons(unittest.TestCase):
         finally:
             self.h.REGION = old
 
+    def test_late_hud_fixes_unverified_click(self):
+        # 2026-10-15 케일 판: 클릭 짐작(극악무도)의 확인 시간이 끝난 뒤에야 증강 칸에 실제로 고른 것(광휘의 검 업그레이드)이 잡혔다.
+        # 확인을 못 한 짐작은 기억해 두고, 그 선택지 중 다른 것이 증강 칸에 나타나면 그걸로 고친다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        by = {n: i for i, n in self.names.items()}
+        frm = ["극악무도", "광휘의 검 업그레이드", "영혼의 정화"]
+        r._id_names = self.names
+        r._picked_names = {"극악무도"}
+        r._unverified = [{"from": frm, "click": "극악무도"}]
+        r._apply_hud([], {}, [], [])
+        self.assertIsNone(r._fix, "증강 칸에 아직 없으면 그대로")
+        r._apply_hud([], {}, [by["광휘의 검 업그레이드"]], [])
+        self.assertEqual(r._fix, ("광휘의 검 업그레이드", frm, "극악무도"))
+        self.assertEqual(r._unverified, [])
+        # 짐작한 것이 나중에 나타나면 맞은 것: 고치지 않는다
+        r._fix, r._unverified = None, [{"from": frm, "click": "극악무도"}]
+        r._apply_hud([], {}, [by["극악무도"]], [])
+        self.assertIsNone(r._fix)
+        self.assertEqual(r._unverified, [])
+
     def test_short_name_one_letter_off(self):
         import augocr
         m = augocr.Matcher([a for a in self.names.values()])
@@ -781,6 +802,24 @@ class ShopBox(unittest.TestCase):
         self.assertEqual(kinds, ["shown", "timers"], "같은 내용은 한 번만")
         self.assertEqual(api._rec.ev[0][1]["reasons"][0], "🔗 강한 연계 · 이유")
         self.assertEqual(api._rec.ev[1][1]["timers"][0], {"name": "도주 계획", "kind": "hp", "picked": 1000, "readyAt": 1081, "hp": 33})
+
+    def test_box_when_dead_or_start(self):
+        # 상점 창을 못 알아봐도 죽어 있을 때·시작 직후엔 상자를 띄운다 (2026-10-15 케일 판: 상점 인식 0번 → 상자가 한 번도 안 뜸)
+        import overlay
+
+        class Ov:
+            def update(self, p):
+                self.p = p
+
+        class Reader:
+            state = {"shop": None}
+        api = desktop.Api.__new__(desktop.Api)
+        api._ov, api._rec, api._reader = Ov(), None, Reader()
+        api._settings = {}
+        api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": "dead"})
+        self.assertEqual([k for k, *_ in overlay.layout(api._ov.p, 1920, 1080)], ["hud"])
+        api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": None})
+        self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [], "평소엔 안 띄운다")
 
     def test_timer_icons(self):
         # 증강 쿨타임 아이콘: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준 (모두 예상)

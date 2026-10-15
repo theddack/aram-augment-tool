@@ -18,6 +18,7 @@ IS_WINDOWS = sys.platform == "win32"
 NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다 (게임 창 높이 비율)
 SHOP_BAND = (0.06, 0.32)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위 (실제 기록: 탭 줄 0.10~0.29)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
+SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
 HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
@@ -463,6 +464,13 @@ class Reader(threading.Thread):
         self._picked_names = set()  # 이번 게임에서 고른 증강 이름 (넓혀 찾기에서 빼려고)
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
         self._fix = None  # 증강 칸으로 고친 결과 (증강 칸 스레드 → 읽기 스레드로 넘긴다)
+        # 확인 시간 안에 증강 칸에서 못 찾은 클릭 짐작 [{"from", "click"}]. 나중에 증강 칸에 그 선택지 중 다른 것이
+        # 나타나면 그걸로 고친다 (2026-10-15 케일 판: 확인은 2초 차이로 끝났고, 틀린 짐작 '극악무도'가 끝까지 남아
+        # 고른 증강이 4개로 차서 마지막 선택 화면 카드가 안 떴다)
+        self._unverified = []
+        self._shop_probe = 0.0  # 아이템을 산 직후(상점이 열려 있었을 것) 상점을 못 알아봤으면 이 시각까지 한 번 그림을 남긴다
+        self._shop_probes = 0
+        self._inv = None
 
     @property
     def state(self):
@@ -539,10 +547,31 @@ class Reader(threading.Thread):
                 self._picked_names.add(found[0])
                 if found[0] != v["click"]:
                     self._fix = (found[0], v["from"], v["click"])
+        self._settle_unverified(ids)
         changed = ids != self.hud_ids
         self.hud_ids, self.hud_unsure = ids, unsure
         if changed:
             self._changed()
+
+    def _settle_unverified(self, ids):
+        """확인 못 한 클릭 짐작: 증강 칸에 짐작한 것이 나타나면 맞은 것, 그 선택지 중 다른 것이 새로 나타나면 그걸로 고친다"""
+        if not self._unverified or self._fix:
+            return
+        names = self.id_names()
+        hud = [names.get(i) for i in ids]
+        for u in list(self._unverified):
+            if u["click"] in hud:
+                self._unverified.remove(u)
+                continue
+            others = self._picked_names - {u["click"]}
+            new = [n for n in hud if n in u["from"] and n not in others]
+            if len(new) == 1:
+                self._unverified.remove(u)
+                self._rec("verify", {"from": u["from"], "click": u["click"], "result": new[0], "late": True})
+                self._picked_names.discard(u["click"])
+                self._picked_names.add(new[0])
+                self._fix = (new[0], u["from"], u["click"])
+                return
 
     def run(self):
         if not IS_WINDOWS:
@@ -620,6 +649,10 @@ class Reader(threading.Thread):
         self._fix = None
         self._recover = None
         self._picked_names = set()
+        self._unverified = []
+        self._shop_probes = 0
+        self._shop_probe = 0.0
+        self._inv = None
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -729,6 +762,8 @@ class Reader(threading.Thread):
         now = time.time()
         if self._verify and (now > self._verify["until"] or self._verify.get("tries", 1) <= 0):
             self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
+            if self._verify["click"]:
+                self._unverified.append({"from": self._verify["from"], "click": self._verify["click"]})
             if self._verify.get("unsure"):
                 # 선택지를 잘못(덜) 읽어 고른 증강이 비교 대상에 없었을 수 있다 → 증강 전체와 몇 번 (아주 확실한 그림만)
                 self._recover = {"from": self._verify["from"], "click": self._verify["click"], "tries": RECOVER_TRIES,
@@ -810,17 +845,40 @@ class Reader(threading.Thread):
         return bool(self.tracker.showing or self._verify or now < self._fast_until
                     or (live and live.get("dead")) or not self.live_fn or not live or not live.get("inGame"))
 
+    def _watch_inventory(self):
+        """내 아이템이 바뀌면(샀거나 팔았음 = 상점이 열려 있었을 것) 다음 상점 읽기에서 못 알아봤을 때 그림을 남기게 한다"""
+        if self._shop_probes >= SHOP_PROBES or self.shop:
+            return
+        try:
+            live = (self.live_fn() or {}) if self.live_fn else {}
+        except Exception:
+            live = {}
+        inv = live.get("items")
+        if inv is None:
+            return
+        inv = tuple(inv)
+        if self._inv is not None and inv != self._inv:
+            self._shop_probe = time.time()
+        self._inv = inv
+
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
         gx, gy, gw, gh = rect
+        self._watch_inventory()
         self._shop_n = getattr(self, "_shop_n", 0) + 1
-        if self._shop_n % SHOP_EVERY:
+        if self._shop_n % SHOP_EVERY and not self._shop_probe:
             return
         s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
         t0 = time.time()
-        sw, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
+        sw, simg, siw, sih = self.read_band(cap, ocr, rect, SHOP_BAND)
         self._time("상점", t0)
         shop = find_shop(sw, gw, gh)
+        if self._shop_probe and not shop and self.rec:
+            # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 그 띠의 그림과 읽은 글자를 남긴다 (탭 글자가 다른지 보려고)
+            self._shop_probes += 1
+            self._rec("shopmiss", {"read": [t for t, _, _ in segments(sw, gap=gw * 0.02)][:40],
+                                   "image": self.rec.image("shopmiss", simg, siw, sih)})
+        self._shop_probe = 0.0
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
             if shop and self.rec and not getattr(self, "_shop_img", False):

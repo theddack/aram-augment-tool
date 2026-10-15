@@ -19,7 +19,7 @@ import zipfile
 from pathlib import Path
 
 KEEP = 15  # 최근 몇 판 기록을 남길지 (실게임 확인 기간: 지인들과 여러 판 한 뒤 한꺼번에 보내도 남게)
-MAX_IMAGES = 20
+MAX_IMAGES = 32  # 한 판 그림 수 한도 (20개였을 땐 2026-10-15 케일 판에서 마지막 선택 화면·증강 칸 그림이 잘렸다)
 
 
 class GameRecorder:

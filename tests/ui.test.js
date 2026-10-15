@@ -366,6 +366,40 @@ test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로
   assert.match(p.text("#chosen"), /골드 강탈/, "클릭으로 잡은 것은 지우지 않는다");
 });
 
+test("고른 증강이 4개인데 선택 화면이 또 뜨면 증강 칸에서 확인 못 한 것을 빼고 카드를 띄운다", async () => {
+  // 2026-10-15 케일 판: 틀린 클릭 짐작(극악무도)이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Kayle", level: 15, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  p.w.applyAug({ offers: null, seq: 1, picked: "극악무도", pickSeq: 1 });
+  const real = ["광휘의 검 업그레이드", "시작부터 끝까지", "미친 과학자"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 1, hudPicked: real.map(id) });
+  assert.match(p.text("#chosen"), /극악무도/);
+  p.w.applyAug({ offers: ["속전속결", "민병대", "조준경 부착"], seq: 2, pickSeq: 1, hudPicked: real.map(id) });
+  assert.doesNotMatch(p.text("#chosen"), /극악무도/, "확인 못 한 짐작만 뺀다");
+  for (const n of real) assert.match(p.text("#chosen"), new RegExp(n));
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "게임 화면에 카드 3장");
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 화면 상자: 상점·죽음·시작 직후에만 띄우라고 보낸다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kayle", level: 9, items: [], gold: 100, ...x });
+  live({ gameTime: 30 });
+  assert.equal(sent.at(-1).box, "start");
+  live({ gameTime: 300, gold: 120 });
+  assert.equal(sent.at(-1).box, null);
+  live({ gameTime: 310, dead: true, gold: 130 });
+  assert.equal(sent.at(-1).box, "dead");
+  live({ gameTime: 320, dead: false, gold: 140, aug: { shop: { left: 0.2 } } });
+  assert.equal(sent.at(-1).box, "shop");
+  assert.deepEqual(p.errors, []);
+});
+
 test("증강 칸 결과와 고른 증강이 한 번에 오면 화면은 한 번만 다시 그린다", async () => {
   const p = await loadPage({ simple: true });
   p.w.applyLive({ enabled: true, inGame: true, champion: "Naafiri", level: 9, items: [] });
