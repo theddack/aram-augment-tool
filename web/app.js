@@ -985,6 +985,9 @@ function applyAug(A) {
     augPickSeq = A.pickSeq;
     const a = byName(A.picked);
     if (a) {
+      // 증강 칸 그림으로 확인했더니 클릭으로 짐작한 것과 달랐다 → 짐작한 것을 빼고 바꾼다
+      const wrong = A.by === "hud" && byName(A.replaces);
+      if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
       if (state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
       clearOffers();
       renderAll();

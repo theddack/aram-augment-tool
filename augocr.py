@@ -184,6 +184,7 @@ def card_at(pos, x, y):
 
 
 SURE_SCORE = 0.93  # 선택 화면을 못 본 경우(게임 중간에 켬) 증강 칸만으로 인정할 점수
+VERIFY_FOR = 25  # 초. 고른 뒤 이만큼 증강 칸에서 그 증강을 찾는다 (선택 화면이 사라지는 연출·상점 창에 가려질 때)
 
 
 def resolve_groups(groups, id_names, offered, scores=None):
@@ -254,7 +255,7 @@ class Tracker:
         if self._miss >= self.CLOSE_AFTER:
             p = self._last[self._click] if self._click is not None else None
             self.state = {**self.state, "offers": None, "pos": None, "picked": p, "pickedFrom": self._last,
-                          "pickSeq": self.state["pickSeq"] + 1}
+                          "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._click, self._miss = None, None, 0
 
 
@@ -444,6 +445,11 @@ class Reader(threading.Thread):
         self.on_ready = None
         self.on_change = None  # 선택지·고른 증강·상점 열림이 바뀌면 부른다 (애드온 화면을 바로 깨워 카드 평가를 늦지 않게)
         self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
+        # 가벼운 모드: 증강 칸은 고른 직후에만, 방금 떴던 3개하고만 비교한다 (215개 전부 X · 30초마다 X).
+        # numpy·Pillow 는 처음 고를 때 불러온다
+        self.hud_light = False
+        self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
+        self._fix = None  # 증강 칸으로 고친 결과 (증강 칸 스레드 → 읽기 스레드로 넘긴다)
 
     @property
     def state(self):
@@ -486,6 +492,15 @@ class Reader(threading.Thread):
                 self._hud_logged = True
         if game_n is not None and game_n != getattr(self, "_game_n", 0):
             return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 버린다
+        v = self._verify
+        if v:
+            names = self.id_names()
+            found = [names.get(i) for i in ids if names.get(i) in v["from"]]
+            if len(found) == 1:
+                self._verify = None
+                self._rec("verify", {"from": v["from"], "click": v["click"], "result": found[0]})
+                if found[0] != v["click"]:
+                    self._fix = (found[0], v["from"], v["click"])
         changed = ids != self.hud_ids
         self.hud_ids, self.hud_unsure = ids, unsure
         if changed:
@@ -501,7 +516,7 @@ class Reader(threading.Thread):
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
         self.lang = ocr.lang
-        if self.icon_dir:
+        if self.icon_dir and not self.hud_light:
             try:
                 import hudicons
                 self.hud = hudicons.HudReader(hudicons.Templates(self.icon_dir, self.id_names()))
@@ -551,6 +566,8 @@ class Reader(threading.Thread):
         self._area_saved = False
         self._hud_at = 0
         self._game_n = getattr(self, "_game_n", 0) + 1
+        self._verify = None
+        self._fix = None
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -589,8 +606,21 @@ class Reader(threading.Thread):
         words = [(t, x / k, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
         return words, img, tw, th
 
+    def apply_fix(self):
+        """증강 칸이 고른 증강을 알려 주면 클릭으로 짐작한 것을 고친다 (못 정했으면 채운다)"""
+        fix, self._fix = self._fix, None
+        if not fix:
+            return
+        name, frm, click = fix
+        st = self.tracker.state
+        self.tracker.state = {**st, "picked": name, "pickedFrom": frm, "replaces": click, "by": "hud",
+                              "pickSeq": st["pickSeq"] + 1}
+        self._rec("picked", {"picked": name, "from": frm, "by": "hud", "replaces": click})
+        self._changed()
+
     def scan(self, cap, ocr, matcher, rect):
         gx, gy, gw, gh = rect
+        self.apply_fix()
         # 상점이 열려 있으면 증강 선택 화면은 아니다 → 이름 줄은 3번에 한 번만 (상점 아이템 이름을 증강 일부로 읽고 CPU 도 아끼게)
         self._name_n = getattr(self, "_name_n", 0) + 1
         if self.shop and not self.tracker.showing and self._name_n % 3:
@@ -621,13 +651,20 @@ class Reader(threading.Thread):
             self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
             self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
             self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
+            if self.icon_dir and after.get("pickedFrom"):
+                self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
+                                "until": time.time() + VERIFY_FOR}
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
         # 증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서)
         now = time.time()
         # 따로 낮은 우선순위로 돈다: 같이 돌면 그동안 선택 화면 읽기·클릭 기록이 멈췄다 (전체 모드, 2026-10-15 가상 PC 10초)
-        if self.hud and now >= getattr(self, "_hud_at", 0) and not getattr(self, "_hud_busy", False):
+        if self._verify and now > self._verify["until"]:
+            self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
+            self._verify = None
+        want = self._verify if self.hud_light else self.hud
+        if self.icon_dir and want and now >= getattr(self, "_hud_at", 0) and not getattr(self, "_hud_busy", False):
             self._hud_busy = True
             threading.Thread(target=self._hud_job, args=(rect, getattr(self, "_game_n", 0)), daemon=True, name="증강 칸 읽기").start()
         self.scan_shop_only(cap, ocr, rect)
@@ -637,12 +674,27 @@ class Reader(threading.Thread):
             lower_thread()
             if getattr(self, "_hud_cap", None) is None:
                 self._hud_cap = _Capture()  # 화면 캡처 도구는 스레드마다 따로
+            if self.hud_light:
+                v = self._verify
+                if not v:
+                    return
+                import hudicons
+                names = {i: n for i, n in self.id_names().items() if n in v["from"]}
+                key = tuple(sorted(names))
+                if getattr(self, "_tpl_key", None) != key:
+                    tpl = hudicons.Templates(self.icon_dir, names)
+                    if self.hud is None:
+                        self.hud = hudicons.HudReader(tpl)
+                    else:
+                        self.hud.tpl, self.hud._seen = tpl, {}
+                    self._tpl_key = key
             self.scan_hud(self._hud_cap, rect, game_n)
         except Exception as e:
             self._rec("error", {"error": "증강 칸: " + str(e)[:200]}, dedupe=True)
         finally:
             soon, self._hud_soon = getattr(self, "_hud_soon", False), False
-            self._hud_at = time.time() + (2 if soon else HUD_EVERY if self.hud.size else HUD_EVERY_MISSING)
+            # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
+            self._hud_at = time.time() + (2 if soon or self._verify else HUD_EVERY if self.hud and self.hud.size else HUD_EVERY_MISSING)
             self._hud_busy = False
 
     def scan_shop_only(self, cap, ocr, rect):

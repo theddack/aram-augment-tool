@@ -630,6 +630,51 @@ class HudIcons(unittest.TestCase):
         r.scan(img, 900)
         self.assertEqual(r.scan(img, 900), [])
 
+    def _light_reader(self, fixture, offers, click):
+        """가벼운 모드 Reader: 고른 직후 방금 뜬 3개하고만 증강 칸을 비교한다 (가짜 화면 캡처)"""
+        import numpy as np
+        from PIL import Image
+        import augocr
+        img = np.asarray(Image.open(ROOT / "tests" / "data" / fixture).convert("RGB"))
+        H, W = 1359, img.shape[1]
+        canvas = np.zeros((H, W, 4), np.uint8)
+        canvas[: img.shape[0], :, :3] = img[..., ::-1]  # BGRA
+
+        class Cap:
+            def grab(self, x, y, w, h, *a):
+                return canvas[y:y + h, x:x + w].tobytes()
+
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.icon_dir = str(ROOT / "web" / "icons" / "augment")
+        r.hud_light = True
+        r._id_names = self.names
+        r._hud_cap = Cap()
+        r.offered = set(offers)
+        r._verify = {"from": offers, "click": click, "until": time.time() + 30}
+        return r, (0, 0, W, H)
+
+    def test_light_mode_fixes_wrong_click(self):
+        # 가벼운 모드도 정확하게: 클릭 짐작(강타자)이 틀렸으면 증강 칸 그림(골드 강탈)으로 고친다
+        old = self.h.REGION
+        self.h.REGION = (0, 0, 1, 1)
+        try:
+            r, rect = self._light_reader("hud_naafiri_goldrend_endlesshunt.png", ["강타자", "골드 강탈", "정신 변환"], "강타자")
+            r._hud_job(rect, r._game_n if hasattr(r, "_game_n") else 0)
+            r._hud_job(rect, getattr(r, "_game_n", 0))  # 연속 2번 보여야 인정
+            self.assertEqual(r._fix, ("골드 강탈", ["강타자", "골드 강탈", "정신 변환"], "강타자"))
+            self.assertEqual(len(r.hud.tpl.groups), 3, "방금 뜬 3개하고만 비교")
+            r.apply_fix()
+            st = r.tracker.state
+            self.assertEqual((st["picked"], st["replaces"], st["by"], st["pickSeq"]), ("골드 강탈", "강타자", "hud", 1))
+            self.assertIsNone(r._verify)
+            # 바닥 타일 조각: 아무것도 아니어야 (엉뚱하게 고치지 않는다)
+            r, rect = self._light_reader("hud_false_floor.png", ["광신자", "도취", "존야 업그레이드"], "광신자")
+            r._hud_job(rect, 0)
+            r._hud_job(rect, 0)
+            self.assertIsNone(r._fix)
+        finally:
+            self.h.REGION = old
+
     def test_short_name_one_letter_off(self):
         import augocr
         m = augocr.Matcher([a for a in self.names.values()])

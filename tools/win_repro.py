@@ -347,7 +347,9 @@ def main():
     want = ["증강 선택지: 눈 폭발 / 강타자 / 정신 변환", "고른 증강: 강타자",
             "증강 선택지: 눈 폭발 / 골드 강탈 / 정신 변환", "고른 증강: 못 정함",
             "상점 창: 열림"]
-    if '"light": false' in a.settings:  # 전체 모드에서만 증강 칸 아이콘 읽기 (가벼운 모드가 기본)
+    # 못 정한 고르기는 증강 칸 그림으로 채운다 (가벼운 모드도: 방금 뜬 3개하고만 비교)
+    want.append("고른 증강: 골드 강탈 (증강 칸 그림으로 확인")
+    if '"light": false' in a.settings:  # 증강 칸 전체 읽기는 전체 모드만
         want.append("증강 칸: 골드 강탈")
     miss = [w for w in want if w not in diag]
     print("증강 인식:", "전부 확인" if not miss else f"빠짐 {miss}")

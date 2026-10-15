@@ -555,7 +555,11 @@ class Diag(threading.Thread):
             if names or unsure:
                 self.write("증강 칸: " + ", ".join(names) + (f" (못 정함: {unsure})" if unsure else ""))
         if a.get("pickSeq") != self._last_aug.get("pickSeq") and a.get("pickSeq"):
-            self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
+            if a.get("by") == "hud":
+                self.write(f"고른 증강: {a.get('picked')} (증강 칸 그림으로 확인"
+                           + (f" · 클릭 짐작 {a['replaces']} 를 고침)" if a.get("replaces") else ")"))
+            else:
+                self.write(f"고른 증강: {a.get('picked') or '못 정함 (화면에서 직접 선택)'}")
         self._last_aug = a
 
     FREEZE_AFTER = 45  # 초. 진단 스레드조차 이만큼 못 돌면 프로그램 전체가 멈춘 것
@@ -1098,7 +1102,8 @@ def main():
         reader.enabled = watcher.enabled
         # 증강 칸 아이콘 읽기: 받은 데이터의 증강 아이콘과 비교 (고른 증강의 정답).
         # 가벼운 모드(저사양 PC)에선 끈다: numpy·Pillow 를 아예 안 불러와 메모리·CPU 를 아낀다 (고른 증강은 클릭으로)
-        reader.icon_dir = None if light_mode(settings) else str(user_dir() / "web" / "icons" / "augment")
+        reader.icon_dir = str(user_dir() / "web" / "icons" / "augment")
+        reader.hud_light = light_mode(settings)  # 가벼운 모드: 고른 직후에만 방금 뜬 3개와 비교
         try:
             reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
         except (OSError, ValueError, KeyError):
