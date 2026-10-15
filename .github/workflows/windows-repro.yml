@@ -24,8 +24,8 @@ jobs:
           # 기본 + 게임 중 애드온 창 내려 두기 (메모리·갱신)
           - settings: '{"geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr --minimize
-          # 예전에 '가벼운 모드'를 끈 설정 파일이 남아 있어도 같게
-          - settings: '{"light": false, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
+          # 예전에 '가벼운 모드'를 끈 설정 파일이 남아 있어도 같게 + 지난 게임에서 증강 칸 크기를 기억한 두 번째 판부터 (가짜 게임 창 높이 700)
+          - settings: '{"light": false, "hud_size": {"700": 0.048}, "geometry": {"w": 420, "h": 500, "x": 1030, "y": 0}}'
             check: --check-ocr
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
