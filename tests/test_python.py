@@ -808,3 +808,12 @@ class LowResource(unittest.TestCase):
         self.assertFalse(hasattr(desktop, "light_mode"))
         self.assertLess(desktop.CPU_CAP["game"], desktop.CPU_CAP["idle"])
         self.assertIn("--disable-gpu", desktop.WEBVIEW2_ARGS)
+
+    def test_child_priority_safe(self):
+        # 화면 엔진 우선순위 바꾸기: 윈도우가 아니면 아무것도 안 하고 0, 게임 시작·끝에 연결돼 있다
+        if sys.platform != "win32":
+            self.assertEqual(desktop.child_priority(True), 0)
+        from pathlib import Path
+        src = Path(desktop.__file__).read_text(encoding="utf-8")
+        self.assertIn("child_priority(True)", src)
+        self.assertIn("child_priority(False)", src)

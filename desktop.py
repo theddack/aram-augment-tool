@@ -594,6 +594,8 @@ class Diag(threading.Thread):
                     added = cap_children()
                     if added:
                         self.write(f"CPU 상한 묶음에 화면 엔진 프로세스 {added}개 추가")
+                        if self.in_game and self.in_game():
+                            child_priority(True)  # 게임 중 새로 뜬 화면 엔진 프로세스도 우선순위를 내린다
                 except Exception as e:
                     self.write(f"CPU 상한 묶기 실패: {str(e)[:100]}")
             try:
@@ -985,6 +987,30 @@ def child_pids(root_pid):
     return out
 
 
+def child_priority(low):
+    """윈도우: 화면 엔진(WebView2 자손 프로세스)의 우선순위. 게임 중엔 '보통 아래'로 내려서
+    같은 CPU 상한(0.5개분) 안에서 증강 이름 읽기가 먼저 돌게 한다. 게임 시작 직후 화면 다시 계산이 몰리면
+    글자 인식 한 번이 11초 걸려 선택 화면을 15초 늦게 읽었다 (2026-10-15 윈도우 측정). 바꾼 개수를 돌려준다"""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    k.OpenProcess.restype = wintypes.HANDLE
+    k.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    n = 0
+    for pid in child_pids(os.getpid()):
+        h = k.OpenProcess(0x0200, False, pid)  # PROCESS_SET_INFORMATION
+        if not h:
+            continue
+        try:
+            if k.SetPriorityClass(h, 0x4000 if low else 0x20):  # BELOW_NORMAL / NORMAL
+                n += 1
+        finally:
+            k.CloseHandle(h)
+    return n
+
+
 def cap_children():
     """화면 엔진(WebView2)이 상한 묶음 밖에서 따로 뜨는 경우가 있어서 (측정: 상한 0.5개분인데 순간 77~93%),
     뜬 자손 프로세스를 찾아 같은 작업 개체에 넣는다. 넣은 개수를 돌려준다"""
@@ -1164,6 +1190,10 @@ def main():
         webmem.set(in_game=True)
         if capped:
             cap_cpu(CPU_CAP["game"])
+        try:
+            diag.write(f"화면 엔진 우선순위: 낮춤 ({child_priority(True)}개 프로세스, 게임 중 증강 읽기 먼저)")
+        except Exception as e:
+            diag.write(f"화면 엔진 우선순위 바꾸기 실패: {str(e)[:100]}")
         rec.start(st.get("champion"), {"mode": st.get("gameMode"), "enemies": st.get("enemies"), "version": APP_VERSION,
                                        "wall": round(time.time(), 1)})  # 기록 시각(t)의 기준 (윈도우 재현 도구가 지연을 잰다)
 
@@ -1180,6 +1210,10 @@ def main():
         webmem.set(in_game=False)
         if capped:
             cap_cpu(CPU_CAP["idle"])
+        try:
+            child_priority(False)
+        except Exception:
+            pass
         trim_memory()
 
     watcher.on_game_end = on_game_end
