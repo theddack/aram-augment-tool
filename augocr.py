@@ -450,6 +450,7 @@ class Reader(threading.Thread):
         # 증강 칸은 그 판 선택 화면에 떴던 증강하고만 비교한다 (215개 전부와 비교하던 전체 모드보다 훨씬 가볍다.
         # 안 뜬 증강은 어차피 인정하지 않았다). 선택 화면을 하나도 못 봤으면(게임 중간에 켬) 전부와 · 60초마다.
         # numpy·Pillow 는 게임에서 처음 읽을 때 불러온다
+        self.on_heavy = None  # 한 번 크게 쓰고 끝난 작업 뒤에 부른다 (메모리 반납)
         self.live_fn = None  # 게임 데이터 (레벨·죽음)를 돌려주는 함수
         self._level = None
         self._fast_until = 0.0
@@ -694,6 +695,8 @@ class Reader(threading.Thread):
                 else:
                     self.hud.tpl, self.hud._seen = tpl, {}
                 self._tpl_key = key
+                if self.on_heavy:
+                    self.on_heavy()  # 아이콘을 읽느라 한 번 크게 쓴 메모리를 돌려준다 (게임 중 주기적 반납은 안 한다)
             v = self._verify
             gh = rect[3]
             if self.hud.size is None and self.size_hint:

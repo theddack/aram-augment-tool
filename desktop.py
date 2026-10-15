@@ -1144,6 +1144,7 @@ def main():
         # 증강 칸 아이콘 크기를 해상도(게임 창 높이)별로 기억: 다음 게임부터 13가지 크기로 다 찾지 않는다
         reader.size_hint = lambda gh: (settings.get("hud_size") or {}).get(str(gh))
         reader.size_save = lambda gh, sz: settings.set(hud_size={**(settings.get("hud_size") or {}), str(gh): sz})
+        reader.on_heavy = trim_memory
         reader.live_fn = lambda: watcher.state  # 레벨·죽음 → 증강 선택 화면을 자주 읽을 때
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
