@@ -184,6 +184,7 @@ def card_at(pos, x, y):
 
 
 SURE_SCORE = 0.93  # 선택 화면을 못 본 경우(게임 중간에 켬) 증강 칸만으로 인정할 점수
+VERIFY_TRIES = 3  # 클릭으로 잡은 고르기는 증강 칸을 이만큼만 본다 (2초 간격)
 VERIFY_FOR = 25  # 초. 고른 뒤 이만큼 증강 칸에서 그 증강을 찾는다 (선택 화면이 사라지는 연출·상점 창에 가려질 때)
 
 
@@ -652,15 +653,16 @@ class Reader(threading.Thread):
             self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
             self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
             if self.icon_dir and after.get("pickedFrom"):
+                # 클릭으로 잡았으면 몇 번만 맞는지 보고, 못 잡았으면 VERIFY_FOR 초까지 (확인이 CPU 를 쓴다: 25초 내내면 평균 5→9%)
                 self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
-                                "until": time.time() + VERIFY_FOR}
+                                "until": time.time() + VERIFY_FOR, "tries": VERIFY_TRIES if after.get("picked") else 99}
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
         # 증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서)
         now = time.time()
         # 따로 낮은 우선순위로 돈다: 같이 돌면 그동안 선택 화면 읽기·클릭 기록이 멈췄다 (전체 모드, 2026-10-15 가상 PC 10초)
-        if self._verify and now > self._verify["until"]:
+        if self._verify and (now > self._verify["until"] or self._verify.get("tries", 1) <= 0):
             self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
             self._verify = None
         want = self._verify if self.hud_light else self.hud
@@ -688,7 +690,10 @@ class Reader(threading.Thread):
                     else:
                         self.hud.tpl, self.hud._seen = tpl, {}
                     self._tpl_key = key
+            v = self._verify
             self.scan_hud(self._hud_cap, rect, game_n)
+            if v is not None and "tries" in v:
+                v["tries"] -= 1
         except Exception as e:
             self._rec("error", {"error": "증강 칸: " + str(e)[:200]}, dedupe=True)
         finally:
