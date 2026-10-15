@@ -253,11 +253,11 @@ class Overlay(threading.Thread):
         root.update_idletasks()
         win.click_through(root)
         root.withdraw()
-        shown, last = False, None
+        shown, last, placed = False, None, None
         self._running = True
 
         def tick():
-            nonlocal shown, last
+            nonlocal shown, last, placed
             self.beat = time.time()
             rect = None
             try:
@@ -269,7 +269,7 @@ class Overlay(threading.Thread):
                 root.after(200 if rect else 1000, tick)
 
         def step():
-            nonlocal shown, last
+            nonlocal shown, last, placed
             while not self.q.empty():
                 k, v = self.q.get_nowait()
                 if k == "payload":
@@ -278,7 +278,7 @@ class Overlay(threading.Thread):
                     self.enabled = v
                 elif k == "preview":
                     self.preview = v
-                last = None  # 다시 그리기
+                # 같은 내용을 다시 받으면 다시 그리지 않는다 (아래 key 로 비교)
             rect, front = win.game_rect()
             # 게임 창이 새로 잡히면 화면 모드를 한 번 읽는다 (게임 중 설정을 바꿔도 다음 게임에 반영)
             if rect and not self._mode_checked:
@@ -287,7 +287,10 @@ class Overlay(threading.Thread):
             if not rect:
                 self.mode = None
                 self._mode_checked = False
-            visible = self.enabled and rect and (front or self.preview) and self.payload and self.mode != "전체 화면"
+            # 실제로 그릴 것(카드 평가·상점 상자)이 있을 때만 띄운다. 예전엔 그릴 게 없어도 게임 크기의 투명 창이
+            # 게임 위에 늘 떠 있어서, 화면 합성(DWM)이 게임 프레임마다 그 창까지 섞느라 렉이 생길 수 있었다
+            entries = layout(self.payload, rect[2], rect[3]) if rect else []
+            visible = self.enabled and rect and (front or self.preview) and entries and self.mode != "전체 화면"
             if not visible:
                 if shown:
                     root.withdraw()
@@ -298,12 +301,24 @@ class Overlay(threading.Thread):
                     self.status = "게임 창 없음" if not rect else ("게임 창이 뒤에 있음" if not front else "표시할 내용 없음")
             else:
                 x, y, w, h = rect
-                key = (rect, repr(self.payload))
-                if key != last:
-                    root.geometry(f"{w}x{h}+{x}+{y}")
+                key = (w, h, repr(entries))
+                if key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
                     canvas.config(width=w, height=h)
                     draw(canvas, self.payload, w, h, scale=h / 1080)
+                    # 창은 그린 것 둘레만큼만 (게임 크기 투명 창 X): 겹치는 영역이 작을수록 게임 화면 합성이 가볍다
+                    bb = canvas.bbox("all") or (0, 0, 1, 1)
+                    bx0, by0 = max(0, bb[0] - 4), max(0, bb[1] - 4)
+                    bw, bh = min(w, bb[2] + 4) - bx0, min(h, bb[3] + 4) - by0
+                    canvas.move("all", -bx0, -by0)
+                    canvas.config(width=bw, height=bh)
+                    self._box = (bx0, by0, bw, bh)
                     last = key
+                    placed = None
+                bx0, by0, bw, bh = self._box
+                where = (x + bx0, y + by0, bw, bh)
+                if where != placed:  # 게임 창이 움직이면 위치만 옮긴다
+                    root.geometry(f"{bw}x{bh}+{where[0]}+{where[1]}")
+                    placed = where
                 if not shown:
                     root.deiconify()
                     root.attributes("-topmost", True)

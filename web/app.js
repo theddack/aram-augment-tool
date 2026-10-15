@@ -788,9 +788,12 @@ function setMini(on) {
 
 function renderBuild() {
   if (!state.champ) { $("#build").innerHTML = ""; $("#concept-tabs").innerHTML = ""; $("#concept-desc").textContent = ""; return; }
-  const builds = S.buildConcepts(state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts());
-  const cur = builds.find((b) => b.key === state.concept) || builds[0];
-  $("#concept-tabs").innerHTML = builds.map((b) =>
+  // 작게 보기(3종을 한 줄씩)일 때만 3종을 다 찾는다. 보통은 지금 고른 탭 하나만 (다른 탭은 누를 때)
+  const mini = document.body.classList.contains("mini");
+  const key = S.CONCEPTS.some((c) => c.key === state.concept) ? state.concept : S.CONCEPTS[0].key;
+  const builds = S.buildConcepts(state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts(), mini ? null : [key]);
+  const cur = builds.find((b) => b.key === key) || builds[0];
+  $("#concept-tabs").innerHTML = S.CONCEPTS.map((b) =>
     `<button data-k="${b.key}" class="${b.key === cur.key ? "on" : ""}">${b.label}</button>`).join("");
   $("#concept-tabs").querySelectorAll("button").forEach((el) => el.addEventListener("click", () => {
     state.concept = el.dataset.k;
@@ -798,7 +801,7 @@ function renderBuild() {
   }));
   $("#concept-desc").textContent = cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
   // 작게 보기용 한 줄 요약: 컨셉 3개의 빌드 아이콘
-  $("#mini-build").innerHTML = `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}</b>
+  $("#mini-build").innerHTML = !mini ? "" : `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}</b>
     ${b.pick.map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");
   const f = cur.final;
   $("#build").innerHTML = (f ? `<div class="build-sum">완성 시 (18레벨): 스킬 한 바퀴 피해 <b>${fmt(f.combo)}</b> · 초당 피해 <b>${fmt(f.dps)}</b> · 버티는 힘 <b>${fmt(f.ehp)}</b>${f.support ? ` · 회복·보호막 <b>${fmt(f.support)}</b>` : ""}</div>` : "")

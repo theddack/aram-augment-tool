@@ -25,6 +25,8 @@ CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
 INTERVAL = 1.0  # 초 (글자 읽기: 증강 선택 화면이 떠 있거나 막 닫혔을 때)
+CALM_EVERY = 3  # 레벨이 그대로인 전투 중엔 증강 이름 줄을 이만큼에 한 번만 (2초 x 3 = 6초). 글자 인식이 CPU 를 가장 많이 쓴다
+FAST_AFTER_LEVEL = 20  # 초. 레벨이 오르면 이만큼은 매번 (증강은 레벨에 맞춰 생긴다. 미뤘다 여는 화면은 6초 안에)
 IDLE_INTERVAL = 2.0  # 초 (선택 화면이 아닐 때. 뜨면 2초 안에 알아채고 그때부터 1초마다)
 CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
 
@@ -448,6 +450,9 @@ class Reader(threading.Thread):
         # 증강 칸은 그 판 선택 화면에 떴던 증강하고만 비교한다 (215개 전부와 비교하던 전체 모드보다 훨씬 가볍다.
         # 안 뜬 증강은 어차피 인정하지 않았다). 선택 화면을 하나도 못 봤으면(게임 중간에 켬) 전부와 · 60초마다.
         # numpy·Pillow 는 게임에서 처음 읽을 때 불러온다
+        self.live_fn = None  # 게임 데이터 (레벨·죽음)를 돌려주는 함수
+        self._level = None
+        self._fast_until = 0.0
         self.size_hint = None  # 게임 창 높이 → 지난 게임에서 찾은 증강 칸 아이콘 크기 (함수)
         self.size_save = None  # (게임 창 높이, 크기) 를 저장하는 함수
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
@@ -561,6 +566,7 @@ class Reader(threading.Thread):
         # 게임 시작 직후엔 첫 선택 화면을 기다린다 (그 전에 읽으면 증강 215개 전부와 비교해야 해서 무겁다)
         self._hud_at = time.time() + HUD_EVERY_MISSING
         self._game_n = getattr(self, "_game_n", 0) + 1
+        self._level = None
         self._verify = None
         self._fix = None
         if self.hud:
@@ -621,6 +627,10 @@ class Reader(threading.Thread):
         if self.shop and not self.tracker.showing and self._name_n % 3:
             self.scan_shop_only(cap, ocr, rect)
             return
+        if not self.urgent() and self._name_n % CALM_EVERY:
+            self._hud_tick(rect)
+            self.scan_shop_only(cap, ocr, rect)
+            return
         n0, n1 = int(gh * NAME_BAND[0]), int(gh * NAME_BAND[1])
         words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         offers = find_offers(words, gw, gh, matcher)
@@ -653,9 +663,13 @@ class Reader(threading.Thread):
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
-        # 증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서)
+        self._hud_tick(rect)
+        self.scan_shop_only(cap, ocr, rect)
+
+    def _hud_tick(self, rect):
+        """증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서).
+        따로 낮은 우선순위로 돈다: 같이 돌면 그동안 선택 화면 읽기·클릭 기록이 멈췄다 (2026-10-15 가상 PC 10초)"""
         now = time.time()
-        # 따로 낮은 우선순위로 돈다: 같이 돌면 그동안 선택 화면 읽기·클릭 기록이 멈췄다 (전체 모드, 2026-10-15 가상 PC 10초)
         if self._verify and (now > self._verify["until"] or self._verify.get("tries", 1) <= 0):
             self._rec("verify", {"from": self._verify["from"], "click": self._verify["click"], "result": "증강 칸에서 못 찾음"})
             self._verify = None
@@ -663,7 +677,6 @@ class Reader(threading.Thread):
                 and not getattr(self, "_hud_busy", False):
             self._hud_busy = True
             threading.Thread(target=self._hud_job, args=(rect, getattr(self, "_game_n", 0)), daemon=True, name="증강 칸 읽기").start()
-        self.scan_shop_only(cap, ocr, rect)
 
     def _hud_job(self, rect, game_n):
         try:
@@ -700,6 +713,24 @@ class Reader(threading.Thread):
             # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
             self._hud_at = time.time() + (2 if soon or self._verify else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
             self._hud_busy = False
+
+    def urgent(self, now=None):
+        """증강 선택 화면이 곧 뜨거나 떠 있을 때: 선택 화면이 보임·고른 뒤 확인 중·레벨이 막 오름·죽어 있음"""
+        now = now or time.time()
+        live = None
+        if self.live_fn:
+            try:
+                live = self.live_fn() or {}
+            except Exception:
+                live = {}
+        if live:
+            lv = live.get("level")
+            if lv is not None and lv != self._level:
+                # 게임 시작(첫 증강)은 60초, 레벨이 오르면 FAST_AFTER_LEVEL 초
+                self._fast_until = now + (FAST_AFTER_LEVEL if self._level is not None else 60)
+                self._level = lv
+        return bool(self.tracker.showing or self._verify or now < self._fast_until
+                    or (live and live.get("dead")) or not self.live_fn or not live or not live.get("inGame"))
 
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""

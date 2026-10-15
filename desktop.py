@@ -215,6 +215,7 @@ def parse_live(raw):
         "champion": champ_id,
         "championName": mine.get("championName") if mine else None,
         "level": ap.get("level"),
+        "dead": bool(mine.get("isDead")) if mine else False,  # 죽어 있는 동안 증강을 고르는 일이 많다 (증강 인식을 자주)
         "items": [str(i.get("itemID")) for i in (mine.get("items") if mine else []) if i.get("itemID")],
         "gold": ap.get("currentGold"),  # 지금 골드 ('지금 살 것' 안내)
         "stats": ap.get("championStats") or {},
@@ -492,6 +493,7 @@ class Diag(threading.Thread):
 
     def __init__(self, path, beats, status=None, aug=None):
         super().__init__(daemon=True, name="진단")
+        self.in_game = None  # 게임 중인지 돌려주는 함수
         self.aug = aug  # 증강 인식 상태를 돌려주는 함수 (선택지·고른 증강·인식 상태가 바뀌면 남긴다)
         self._last_aug = {}
         self.path = path
@@ -568,7 +570,7 @@ class Diag(threading.Thread):
         gb = total_ram_gb()
         self.write(f"시작 v{APP_VERSION} · {sys.platform} {platform_name()} · pywebview {getattr(webview, '__version__', '?')}"
                    + (f" · 메모리 {gb:.0f}GB" if gb else "") 
-                   + (f" · CPU 상한 코어 {CPU_CAP['idle']}개분 (게임 중 {CPU_CAP['game']}개분)" if getattr(self, "cpu_cap", None) else " · CPU 상한 없음"))
+                   + (f" · CPU 상한 게임 중 코어 {CPU_CAP['game']}개분" if getattr(self, "cpu_cap", None) else " · CPU 상한 없음"))
         # 프로그램 전체가 멈추면(파이썬 잠금 교착) 이 스레드도 못 돌아서 위의 '멈춤' 기록을 못 남긴다 (v0.1.12 실제 PC:
         # 20:21:06 뒤로 한 줄도 없음). faulthandler 는 파이썬 잠금 없이 도는 감시라, 다시 못 맞추면 모든 스레드 위치를 쓴다
         import faulthandler
@@ -583,7 +585,9 @@ class Diag(threading.Thread):
                 faulthandler.dump_traceback_later(self.FREEZE_AFTER, repeat=False, file=fh)  # 다시 부르면 앞 예약은 취소된다
             time.sleep(self.CHECK)
             self._n = getattr(self, "_n", 0) + 1
-            if self._n % (self.TRIM_EVERY // self.CHECK) == 0:
+            # 게임 중엔 하지 않는다: 메모리를 통째로 내보내면 다시 쓸 때 페이지를 읽어 오느라 2분마다 잠깐 끊길 수 있다
+            # (게임이 끝나면 따로 한 번 돌려준다)
+            if self._n % (self.TRIM_EVERY // self.CHECK) == 0 and not (self.in_game and self.in_game()):
                 trim_memory()
             if getattr(self, "cpu_cap", None) and self._n % 6 == 1:  # 30초마다 새로 뜬 화면 엔진 프로세스도 상한에
                 try:
@@ -899,9 +903,9 @@ def total_ram_gb():
 
 
 # 모드는 하나 (2026-10-15 사용자 요청: 가벼운/전체로 나누지 말고 최적화로). 애드온 전체가 쓸 수 있는 CPU (코어 몇 개분):
-# 게임 밖(켤 때·챔피언 선택 상점 추천 계산)은 넉넉히, 게임 중엔 게임 몫을 뺏지 않게 반 개분.
-# 켤 때까지 반 개분으로 묶으면 화면이 처음 그려지는 동안 창이 잠깐 굳었다 (가상 PC 0.6초)
-CPU_CAP = {"idle": 1.0, "game": 0.5}
+# 게임 중엔 게임 몫을 뺏지 않게 반 개분. 게임 밖(켤 때·챔피언 선택 상점 추천 계산)은 묶지 않는다:
+# 상한이 차면 윈도우가 애드온 창 스레드까지 통째로 세워서 켤 때 창이 최대 3초 굳었다 (가상 PC, 1개분으로 묶었을 때도)
+CPU_CAP = {"idle": float(os.cpu_count() or 4), "game": 0.5}
 _job = None  # 작업 개체 핸들 (프로그램이 끝날 때까지 들고 있어야 상한이 유지된다)
 _job_cores = None
 
@@ -1140,6 +1144,7 @@ def main():
         # 증강 칸 아이콘 크기를 해상도(게임 창 높이)별로 기억: 다음 게임부터 13가지 크기로 다 찾지 않는다
         reader.size_hint = lambda gh: (settings.get("hud_size") or {}).get(str(gh))
         reader.size_save = lambda gh, sz: settings.set(hud_size={**(settings.get("hud_size") or {}), str(gh): sz})
+        reader.live_fn = lambda: watcher.state  # 레벨·죽음 → 증강 선택 화면을 자주 읽을 때
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
@@ -1196,6 +1201,7 @@ def main():
         "증강 인식": (lambda: reader.beat if reader else None, 30),
     }, status=lambda: ov.status, aug=lambda: reader.state if reader else None)
     diag.cpu_cap = capped
+    diag.in_game = lambda: bool(watcher.state.get("inGame"))
     diag.start()
     webmem.log = diag.write
     window.events.loaded += lambda: webmem.apply()

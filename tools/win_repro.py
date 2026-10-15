@@ -43,7 +43,7 @@ def live_data():
     g = max(0.0, now() - 45)
     raw["gameData"]["gameTime"] = g
     ap = raw["activePlayer"]
-    ap["level"] = min(18, 3 + int(g // 15))
+    ap["level"] = min(18, 3 + int(g // 40))  # 두 번째 선택지(게임 50초쯤) 전에 레벨이 한 번 오른다
     ap["currentGold"] = 1400 + 20 * g
     me = next(p for p in raw["allPlayers"] if p["riotId"] == ap["riotId"])
     # 15초마다 아이템이 하나씩 늘어난다 (화면 전체 다시 계산되는 경우)

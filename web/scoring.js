@@ -368,7 +368,8 @@
     return chosen.map((a) => {
       const rule = ruleOf(rules, a);
       const unmet = champ && (a.eligible ? !a.eligible.includes(champ.id) : rule.requires && !(champ.features || []).includes(rule.requires));
-      return { ...(rule.statsResolved || {}), _effects: unmet ? [] : (a.effects || []).map((e) => ({ ...e, src: a.name })) };
+      // 조건을 못 맞추면 능력치도 효과도 없다 (능력치만 남아 'D등급인데 계산상 강해짐'이 나왔다: 럭스 + 승리를 위한 회전)
+      return unmet ? { _effects: [] } : { ...(rule.statsResolved || {}), _effects: (a.effects || []).map((e) => ({ ...e, src: a.name })) };
     });
   }
 
@@ -513,10 +514,14 @@
   let MEMO_MAX = 40;  // 가벼운 모드(저사양 PC)에선 setMemoMax 로 줄인다
   const memo = new Map();
   const ids = (list) => (list || []).map((x) => x.id);
-  function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra) {
+  // 목록·규칙은 내용(id)으로 구분한다 (길이만 보면 다른 후보 목록에 앞 결과가 나왔다). 규칙은 객체마다 번호 (데이터 갱신)
+  const objNo = new WeakMap();
+  let objSeq = 0;
+  const objId = (o) => (o && typeof o === "object" ? (objNo.get(o) || (objNo.set(o, ++objSeq), objSeq)) : null);
+  function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra, rules = null) {
     const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
-    return JSON.stringify([name, (list || []).length, champ && champ.id, (champ && champ.features) || null, ids(chosen), ids(fixed),
-      w, statOpts, extra, [T.ARMOR, T.MR, T.HP]]);
+    return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null, ids(chosen), ids(fixed),
+      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP]]);
   }
   function remember(key, fn) {
     if (memo.has(key)) {
@@ -530,12 +535,14 @@
     return v;
   }
   function numericAugmentGains(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}) {
-    return remember(memoKey("gains", augs, w, chosen, fixed, champ, statOpts, itemPool.length),
+    return remember(memoKey("gains", augs, w, chosen, fixed, champ, statOpts, ids(itemPool).join(","), rules),
       () => numericAugmentGainsRaw(augs, itemPool, w, chosen, fixed, rules, champ, statOpts));
   }
+  // 빌드는 종류(증강 몰빵·균형·변칙)마다 따로 기억한다: 균형만 계산해 둔 뒤 3종을 달라고 하면 균형을 다시 찾던 중복을 없앤다
   function buildConcepts(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
-    return remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, keys),
-      () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, keys));
+    return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) =>
+      remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, c.key, rules),
+        () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
   const clearMemo = () => memo.clear();
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };

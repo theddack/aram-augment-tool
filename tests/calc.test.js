@@ -49,15 +49,37 @@ test("상대 바꾸기: setTarget 후 기본값 복귀", () => {
 
 test("계산 기억: 같은 조건이면 같은 결과, 증강이 다르면 새로 계산", () => {
   const c = champ("Jinx"), w = S.profile(c, d.tags);
-  const a1 = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
-  const a2 = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
+  const [a1] = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
+  const [a2] = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
   assert.equal(a1, a2, "같은 조건 → 기억된 결과");
-  const b = S.buildConcepts(d.items, w, [aug("ARAM_DrawYourSword")], [], d.rules, c, {}, ["balanced"]);
+  const all = S.buildConcepts(d.items, w, [], [], d.rules, c, {});
+  assert.equal(all.length, 3);
+  assert.equal(all.find((x) => x.key === "balanced"), a1, "3종을 달라고 해도 균형 빌드는 다시 찾지 않는다");
+  const [b] = S.buildConcepts(d.items, w, [aug("ARAM_DrawYourSword")], [], d.rules, c, {}, ["balanced"]);
   assert.notEqual(a1, b);
   St.setTarget({ ARMOR: 300, MR: 200, HP: 5000 });
-  const t = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
+  const [t] = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"]);
   St.setTarget(null);
   assert.notEqual(a1, t, "상대가 바뀌면 다시 계산");
+});
+
+test("계산 기억: 길이가 같아도 다른 후보 목록이면 새로 계산", () => {
+  const c = champ("Lux"), w = S.profile(c, d.tags);
+  const nums = d.augments.filter((a) => S.hasNumbers(a, d.rules));
+  const g1 = S.numericAugmentGains([nums[0]], d.items, w, [], [], d.rules, c);
+  const g2 = S.numericAugmentGains([nums[1]], d.items, w, [], [], d.rules, c);
+  assert.ok(nums[1].id in g2.gains && !(nums[0].id in g2.gains), "B 를 물으면 B 의 결과 (A 결과가 나오면 안 된다)");
+  assert.ok(nums[0].id in g1.gains);
+});
+
+test("조건을 못 맞춘 증강은 능력치도 효과도 0 (럭스 + 승리를 위한 회전)", () => {
+  const lux = champ("Lux"), spin = aug("ARAM_SpinToWin");
+  assert.ok(spin.eligible && !spin.eligible.includes("Lux"));
+  const [st] = S.augStatsOf([spin], d.rules, lux);
+  assert.deepEqual(st, { _effects: [] });
+  const ok = champ(spin.eligible[0]);
+  const [st2] = S.augStatsOf([spin], d.rules, ok);
+  assert.ok(Object.keys(st2).length >= 1, "맞는 챔피언이면 그대로");
 });
 
 test("빌드: 6칸, 신발 1개, 같은 계열 중복 없음 (전 챔피언)", () => {
