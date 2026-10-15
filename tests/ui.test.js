@@ -421,12 +421,13 @@ test("상대 아이템 반영: 적이 산 아이템으로 상대 능력치·관�
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
   const id = (n) => p.data.items.find((i) => i.name === n).id;
   const foes = ["Malphite", "Leona", "Soraka", "Vayne", "Lux"];
-  const live = (builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 12, items: [], enemies: foes,
-    enemyBuilds: foes.map((c, k) => ({ champion: c, level: 12, items: builds[k] || [] })) });
+  const live = (builds, lv = 12) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c, k) => ({ champion: c, level: lv, items: builds[k] || [] })) });
   const T = () => ({ ...p.w.Stats.TARGET });
   live([]);
   const t0 = T();
-  assert.match(p.text("#target-info"), /이번 판 적 5명이 산 아이템 기준/);
+  assert.match(p.text("#target-info"), /아이템·증강 비교: 이번 판 적 5명 18레벨 예상/);
+  assert.match(p.text("#target-info"), /지금 적 \(평균 12레벨, 산 아이템만\)/);
   assert.ok(Math.abs(t0.MR - p.w.Stats.DEFAULT_TARGET.MR) < 15, "아직 안 산 칸은 평균 빌드: 기준 상대와 비슷");
   live([[id("가시 갑옷"), id("태양불꽃 방패")], [id("대자연의 힘"), id("정령의 형상"), id("케이닉 루컨")], [], [id("몰락한 왕의 검")], [id("케이닉 루컨")]]);
   const t1 = T();
@@ -435,9 +436,21 @@ test("상대 아이템 반영: 적이 산 아이템으로 상대 능력치·관�
   const e = sent.at(-1).enemy;
   assert.ok(e && e.auto && e.target.MR === t1.MR, "기록용으로 상대 능력치를 보낸다");
   assert.ok(e.builds.find((b) => b.champ === "Leona").items.includes("케이닉 루컨"));
+  // 지금 상대(실제 레벨·산 아이템)는 18레벨 예상보다 약하다 (아직 안 산 칸·레벨 차이)
+  assert.ok(e.now && e.now.level === 12 && e.now.MR < e.target.MR && e.now.HP < e.target.HP, JSON.stringify(e.now));
+  assert.equal(e.resistItems.MR, 4, "실제로 산 마법 저항 아이템 수");
   const advice = e.advice.join("\n");
-  assert.match(advice, /마법 저항력 높음 \(평균 \d+, 보통 63\) → 관통/);
+  assert.match(advice, /적이 마법 저항 아이템 4개 \(지금 평균 마법 저항력 \d+\) → 관통/);
   assert.match(advice, /회복 많음 \([^)]*베인/, "흡혈 아이템을 산 적은 회복 많음");
+  // 레벨만 오르면 예상 상대는 그대로, 지금 상대만 바뀐다
+  const tBefore = T();
+  live([[id("가시 갑옷"), id("태양불꽃 방패")], [id("대자연의 힘"), id("정령의 형상"), id("케이닉 루컨")], [], [id("몰락한 왕의 검")], [id("케이닉 루컨")]], 16);
+  assert.deepEqual(T(), tBefore);
+  assert.match(p.text("#target-info"), /지금 적 \(평균 16레벨/);
+  // 방어 아이템이 2개뿐이면 관통 조언은 탱커 기준만 (예상 빌드로 채운 값으로는 조언하지 않는다)
+  live([[], [id("대자연의 힘")], [], [], [id("케이닉 루컨")]]);
+  p.w.sendOverlay();
+  assert.doesNotMatch(sent.at(-1).enemy.advice.join("\n"), /마법 저항 아이템/);
   // 상대를 직접 고르면 그대로 둔다
   const sel = p.q("#target-champ");
   sel.value = "Garen"; sel.dispatchEvent(new p.w.Event("change", { bubbles: true }));

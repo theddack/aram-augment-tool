@@ -59,6 +59,35 @@ function enemyTarget() {
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
   return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50 };
 }
+// 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
+// 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
+function enemyNow() {
+  const b = state.enemyBuilds || [];
+  if (!b.length) return null;
+  const sum = { ARMOR: 0, MR: 0, HP: 0, level: 0 };
+  for (const e of b) {
+    const L = Math.max(1, Math.min(18, e.level || 1));
+    const t = St.computeStats(e.champ, L, e.items, [], { aram: state.aram }).total;
+    for (const k of ["ARMOR", "MR", "HP"]) sum[k] += t[k] / b.length;
+    sum.level += L / b.length;
+  }
+  return { ARMOR: Math.round(sum.ARMOR), MR: Math.round(sum.MR), HP: Math.round(sum.HP), level: Math.round(sum.level * 10) / 10 };
+}
+// 지금 상대 기준으로 잠깐 바꿔서 계산 (끝나면 원래 기준으로)
+function withNowTarget(fn) {
+  const now = !state.target && enemyNow();
+  if (!now) return fn();
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
+  St.setTarget(now);
+  try { return fn(); } finally { St.setTarget(saved); }
+}
+// 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
+function enemyResistItems() {
+  const n = { ARMOR: 0, MR: 0 };
+  for (const e of state.enemyBuilds || []) for (const i of e.items) for (const k of Object.keys(n)) if (((i.tags || {})[k] || 0) >= 0.5) n[k]++;
+  return n;
+}
+
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
   const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
@@ -70,7 +99,9 @@ function showTarget() {
   const T = St.TARGET, id = state.target;
   const enemy = id && state.data.champions.find((c) => c.id === id);
   const n = (state.enemyBuilds || []).length;
-  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : n ? `이번 판 적 ${n}명이 산 아이템 기준 (안 산 칸은 평균 빌드로)` : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`;
+  const now = !enemy && n ? enemyNow() : null;
+  $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : n ? `아이템·증강 비교: 이번 판 적 ${n}명 18레벨 예상 (산 아이템 + 안 산 칸은 평균 빌드)` : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`
+    + (now ? ` / 지금 적 (평균 ${fmt(now.level, Number.isInteger(now.level) ? 0 : 1)}레벨, 산 아이템만): 체력 ${fmt(now.HP)} · 방어력 ${fmt(now.ARMOR)} · 마법 저항력 ${fmt(now.MR)}` : "");
 }
 const healItem = (i) => (i.tags && (i.tags.VAMP || 0) >= 0.5) || (i.stats && !Array.isArray(i.stats) && ("LS" in i.stats || "OMNIVAMP" in i.stats));
 const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0) >= 0.5 || (i.tags.MR || 0) >= 0.5)
@@ -104,14 +135,16 @@ function enemyAdvice() {
     out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
-  const T = St.TARGET, D = St.DEFAULT_TARGET;
+  // 근거는 적이 실제로 산 아이템만 (예상 빌드로 채운 값이 아니라): 내 피해 쪽 방어 아이템을 팀이 3개 이상 샀으면
   const resKey = mineType === "magic" ? "MR" : "ARMOR";
-  const resHigh = !state.target && (state.enemyBuilds || []).length > 0 && T[resKey] >= D[resKey] * 1.25;
+  const resN = (state.enemyBuilds || []).length ? enemyResistItems()[resKey] : 0;
+  const resHigh = resN >= 3;
+  const now = resHigh ? enemyNow() : null;
   if (e.tanks.length >= 2 || resHigh) {
     const pen = items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
       : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name).slice(0, 2);
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
-      resHigh ? `적 ${resKey === "MR" ? "마법 저항력" : "방어력"} 높음 (평균 ${fmt(T[resKey])}, 보통 ${fmt(D[resKey])})` : ""].filter(Boolean).join(" · ");
+      resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
   }
   return out;
@@ -311,6 +344,11 @@ function aramChips(c) {
 }
 
 function renderStats() {
+  withNowTarget(renderStatsNow);  // 능력치 패널은 지금 레벨 → 지금 상대(실제 레벨·산 아이템) 기준
+  const now = !state.target && enemyNow();
+  if (now) $("#metrics").insertAdjacentHTML("beforeend", `<p class="muted small">상대: 지금 적 평균 ${fmt(now.level, Number.isInteger(now.level) ? 0 : 1)}레벨·산 아이템 기준 (방어력 ${fmt(now.ARMOR)} · 마법 저항력 ${fmt(now.MR)})</p>`);
+}
+function renderStatsNow() {
   const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);  // 검을 뽑아라 → 근접
   if (!c) { $("#metrics").innerHTML = ""; $("#stat-table").innerHTML = ""; $("#skills").innerHTML = ""; return; }
   const L = state.level, o = statOpts();
@@ -873,8 +911,11 @@ function sendOverlay() {
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
   // 기록용: 적이 산 아이템으로 잡은 상대 능력치와 조언 (잘 돌아가는지 나중에 확인)
   const enemy = (state.enemyBuilds || []).length ? {
-    auto: !state.target, target: { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP },
-    builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, items: e.items.map((i) => i.name) })),
+    auto: !state.target,
+    target: { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP },  // 아이템·증강 비교용 (18레벨 예상)
+    now: enemyNow(),  // 지금 상대 (실제 레벨 + 산 아이템)
+    resistItems: enemyResistItems(),
+    builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name) })),
     advice: enemyAdvice(),
   } : null;
   api.set_overlay({ cards: overlayCards, hud, timers: timersPayload(), enemy });
@@ -1337,11 +1378,17 @@ function applyLive(L) {
   // 적이 산 아이템 (완성 아이템·신발만: 부품은 계산에 넣지 않는다). 바뀌면 상대 능력치를 다시 잡는다
   const eb = (L.enemyBuilds || []).map((x) => ({
     champ: d.champions.find((c) => c.id.toLowerCase() === String(x.champion).toLowerCase()),
+    level: x.level || 1,
     items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
       .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
   })).filter((x) => x.champ);
   const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort()]));
   if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
+  else if (eb.length) {
+    // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로
+    const lv = eb.map((x) => x.level).join(",");
+    if (lv !== (state.enemyBuilds || []).map((x) => x.level).join(",")) { state.enemyBuilds = eb; showTarget(); }
+  }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
