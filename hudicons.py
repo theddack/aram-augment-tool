@@ -191,6 +191,7 @@ class HudReader:
     def __init__(self, tpl):
         self.tpl = tpl
         self.size = None  # 찾은 아이콘 크기 (게임 창 높이 비율). 찾기 전엔 여러 크기로
+        self.hint = None  # 지난 게임에서 찾은 크기 (같은 해상도). 먼저 이 크기로만 찾고, 없으면 여러 크기로
         self.picked = []
         self._seen = {}
         self.last = []
@@ -198,15 +199,19 @@ class HudReader:
     def scan(self, crop, H, offset=(0, 0)):
         """crop: 게임 창의 REGION 부분 (h, w, 3), H: 게임 창 높이, offset: crop 의 게임 창 기준 왼쪽 위"""
         np = self.tpl.np
-        sizes = [self.size] if self.size else SIZES
+        # 크기를 모르면 13가지 크기로 다 찾아야 해서 무겁다 → 지난 게임 크기(hint)부터
+        tries = [[self.size]] if self.size else ([[self.hint], SIZES] if self.hint else [SIZES])
         best, best_size = [], None
         best_mean = 0.0
-        for s in sizes:
-            hits = find_icons(self.tpl, crop, max(GRID, s * H))
-            m = float(np.mean([h[1] for h in hits])) if hits else 0.0
-            # 크기가 맞으면 점수가 확 오른다 → 평균 점수가 가장 높은 크기 (개수로 고르면 엇나간 크기의 오답이 이겼다)
-            if m > best_mean:
-                best, best_size, best_mean = hits, s, m
+        for sizes in tries:
+            for s in sizes:
+                hits = find_icons(self.tpl, crop, max(GRID, s * H))
+                m = float(np.mean([h[1] for h in hits])) if hits else 0.0
+                # 크기가 맞으면 점수가 확 오른다 → 평균 점수가 가장 높은 크기 (개수로 고르면 엇나간 크기의 오답이 이겼다)
+                if m > best_mean:
+                    best, best_size, best_mean = hits, s, m
+            if best:
+                break
         if best and not self.size:
             self.size = best_size
         if self.size:

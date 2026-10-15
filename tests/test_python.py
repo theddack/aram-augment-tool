@@ -605,6 +605,21 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
+    def test_size_hint(self):
+        # 지난 게임 크기부터 찾는다: 맞으면 그 크기로 바로, 틀렸으면(해상도·HUD 크기 바뀜) 여러 크기로 다시
+        import numpy as np
+        from PIL import Image
+        img = np.asarray(Image.open(ROOT / "tests" / "data" / "hud_naafiri_goldrend_endlesshunt.png").convert("RGB"))
+        base = self.h.HudReader(self.tpl)
+        base.scan(img, 1359)
+        want = base.scan(img, 1359)
+        for hint in (base.size, 0.2):
+            r = self.h.HudReader(self.tpl)
+            r.hint = hint
+            r.scan(img, 1359)
+            self.assertEqual(r.scan(img, 1359), want, f"hint {hint}")
+            self.assertEqual(r.size, base.size)
+
     def test_real_false_positives(self):
         # v0.1.15 실제 게임에서 바닥 타일·보라 단색을 증강으로 읽은 조각 (점수 7.4 · 2.6 이 나왔다) → 아무것도 아니어야
         import numpy as np

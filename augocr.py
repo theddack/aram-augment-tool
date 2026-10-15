@@ -448,6 +448,8 @@ class Reader(threading.Thread):
         # 증강 칸은 그 판 선택 화면에 떴던 증강하고만 비교한다 (215개 전부와 비교하던 전체 모드보다 훨씬 가볍다.
         # 안 뜬 증강은 어차피 인정하지 않았다). 선택 화면을 하나도 못 봤으면(게임 중간에 켬) 전부와 · 60초마다.
         # numpy·Pillow 는 게임에서 처음 읽을 때 불러온다
+        self.size_hint = None  # 게임 창 높이 → 지난 게임에서 찾은 증강 칸 아이콘 크기 (함수)
+        self.size_save = None  # (게임 창 높이, 크기) 를 저장하는 함수
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
         self._fix = None  # 증강 칸으로 고친 결과 (증강 칸 스레드 → 읽기 스레드로 넘긴다)
 
@@ -680,7 +682,13 @@ class Reader(threading.Thread):
                     self.hud.tpl, self.hud._seen = tpl, {}
                 self._tpl_key = key
             v = self._verify
+            gh = rect[3]
+            if self.hud.size is None and self.size_hint:
+                self.hud.hint = self.size_hint(gh)
             self.scan_hud(self._hud_cap, rect, game_n)
+            if self.hud.size and self.size_save and self.hud.size != self.hud.hint:
+                self.size_save(gh, self.hud.size)
+                self.hud.hint = self.hud.size
             if v is not None and "tries" in v:
                 v["tries"] -= 1
         except ImportError as e:  # numpy·Pillow 가 없으면 이 기능만 끈다

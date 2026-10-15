@@ -1024,6 +1024,34 @@ def trim_memory():
         pass
 
 
+def quiet_resource_hooks():
+    """윈도우: pywebview 가 화면 엔진의 모든 파일 요청·응답마다 파이썬을 부르는 것을 끈다 (우리는 안 쓴다).
+    켤 때 아이콘 수백 개를 받는 동안 창 스레드가 요청마다 파이썬 차례를 기다려 창이 몇 초 굳었다 (가상 PC 최대 3초)"""
+    if sys.platform != "win32":
+        return False
+    try:
+        from webview.platforms import edgechromium as ec
+        noop = lambda self, sender, args: None  # noqa: E731
+        ec.EdgeChrome.on_web_resource_request = noop
+        ec.EdgeChrome.on_web_resource_response = noop
+        orig = ec.EdgeChrome.on_webview_ready
+
+        def ready(self, sender, args):
+            orig(self, sender, args)
+            try:
+                sender.CoreWebView2.RemoveWebResourceRequestedFilter("*", ec.CoreWebView2WebResourceContext.All)
+            except Exception:
+                pass
+            try:
+                sender.CoreWebView2.WebResourceResponseReceived -= self.on_web_resource_response
+            except Exception:
+                pass
+        ec.EdgeChrome.on_webview_ready = ready
+        return True
+    except Exception:
+        return False
+
+
 def _safe(fn):
     try:
         fn()
@@ -1109,6 +1137,9 @@ def main():
             reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
         except (OSError, ValueError, KeyError):
             reader._id_names = {}
+        # 증강 칸 아이콘 크기를 해상도(게임 창 높이)별로 기억: 다음 게임부터 13가지 크기로 다 찾지 않는다
+        reader.size_hint = lambda gh: (settings.get("hud_size") or {}).get(str(gh))
+        reader.size_save = lambda gh, sz: settings.set(hud_size={**(settings.get("hud_size") or {}), str(gh): sz})
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
@@ -1195,6 +1226,8 @@ def main():
 
     window.events.shown += on_shown
     # http_server: 로컬 파일을 http 로 서빙해야 화면의 fetch("data.json") 이 동작한다
+    if not quiet_resource_hooks() and sys.platform == "win32":
+        diag.write("파일 요청 알림 끄기 실패 (화면이 켜질 때 조금 느릴 수 있음)")
     webview.start(http_server=True, debug="--debug" in sys.argv)
 
 
