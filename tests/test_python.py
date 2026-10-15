@@ -761,7 +761,7 @@ class ShopBox(unittest.TestCase):
                     return
                 self.ev.append((kind, data))
         api = desktop.Api.__new__(desktop.Api)
-        api._ov, api._rec = None, Rec()
+        api._ov, api._rec, api._reader = None, Rec(), None
         payload = {"cards": [{"name": "퀸카", "label": "추천", "reason": "🔗 강한 연계 · 이유"}, None, None],
                    "hud": [], "timers": [{"name": "도주 계획", "kind": "hp", "base": 1000.4, "readyAt": 1080.6, "trigHp": 33}]}
         api.set_overlay(payload)

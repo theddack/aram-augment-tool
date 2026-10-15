@@ -658,6 +658,9 @@ class Settings:
             atomic_write(self.path, json.dumps(self.v, ensure_ascii=False))
 
 
+TIMER_AREA = (0.0, 0.25, 0.25, 0.47)  # 기록용: 쿨타임 아이콘 둘레 게임 화면 (게임 창 비율: 왼, 위, 오른, 아래)
+
+
 class Api:
     """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들
 
@@ -703,7 +706,27 @@ class Api:
                        "readyAt": round(t.get("readyAt") or 0), "hp": t.get("trigHp")} for t in (payload.get("timers") or [])]
             if timers:
                 self._rec.event("timers", {"timers": timers}, dedupe=True)
+                # 쿨타임 아이콘 자리 밑의 게임 화면을 판마다 한 번 남긴다 (아이콘이 무엇을 가리는지 보려고).
+                # 화면 조각에는 표시 창이 안 찍힌다 (게임 화면 그대로). 채팅(왼쪽 아래)과는 떨어진 자리
+                if self._reader and getattr(self, "_timer_snap", None) != self._rec.dir:
+                    self._timer_snap = self._rec.dir
+                    threading.Timer(2.0, self._snap_timer_area).start()
         return True
+
+    def _snap_timer_area(self):
+        try:
+            rect, front = self._reader.game_rect()
+            if not rect or not front or not self._rec:
+                return
+            gx, gy, gw, gh = rect
+            l, t, r, b = TIMER_AREA
+            x0, y0, w, h = int(gw * l), int(gh * t), int(gw * (r - l)), int(gh * (b - t))
+            img = self._rec.image("timerarea", augocr._Capture().grab(gx + x0, gy + y0, w, h), w, h)
+            self._rec.event("timerarea", {"image": img, "box": list(TIMER_AREA), "window": [gw, gh],
+                                          "icon": overlay.timer_size(gh), "at": [overlay.TIMER_X, overlay.TIMER_Y]})
+        except Exception as e:  # 기록용이라 실패해도 다른 기능엔 영향 없게
+            if self._rec:
+                self._rec.event("timerarea", {"error": str(e)[:100]})
 
     def set_overlay_enabled(self, on):
         if self._ov:
