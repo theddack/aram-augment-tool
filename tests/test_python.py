@@ -277,6 +277,76 @@ class Overlay(unittest.TestCase):
         overlay.draw(c, payload, 1600, 900)  # 예외 없이
         self.assertGreater(len(c.items), 3)
 
+    def test_card_reason_stays_above_reroll(self):
+        """이유가 길어도 새로고침 버튼(이름 줄 + CARD_BOTTOM) 위에서 끝난다. 글자 크기는 픽셀(음수)이라 화면 배율을 안 탄다 (2026-10-15 지적)"""
+        import overlay
+
+        class FontCanvas(FakeCanvas):
+            def __init__(self):
+                super().__init__()
+                self.fonts = {}
+
+            def create_text(self, x, y, text="", font=None, width=None, **kw):
+                i = super().create_text(x, y, text=text)
+                self.fonts[i], self.width = font, width or 10 ** 6
+                return i
+
+            def itemconfig(self, i, font=None, text=None):
+                if font:
+                    self.fonts[i] = font
+                if text is not None:
+                    self.items[i] = (*self.items[i][:2], text)
+
+            def bbox(self, i):
+                if i not in self.fonts:
+                    return super().bbox(i)
+                x, y, text = self.items[i]
+                px = -self.fonts[i][1]
+                lines = -(-len(text) * px // self.width)  # 글자 폭 ≈ 글자 크기
+                return None if not text else (x - 50, y, x + 50, y + int(lines * px * 1.4))
+
+        W, H, name_y = 2520, 1575, 0.4019
+        reason = "🛡️ 적 대응 · 취약과 잘 맞아요. 🔄 폭딜형으로 변신 · 스킬 한 바퀴 피해가 늘어요 (360 → 564)."
+        card = {"icon": "🔥", "label": "강력 추천 · 1순위", "tier": "S", "reason": reason}
+        pos = {"y": name_y + overlay.BELOW_NAME, "bottom": name_y + overlay.CARD_BOTTOM, "xs": [0.29, 0.5, 0.72]}
+        c = FontCanvas()
+        overlay.draw(c, {"cards": [card] * 3, "pos": pos}, W, H, scale=H / 1080)
+        self.assertTrue(all(f[1] < 0 for f in c.fonts.values()), "글자 크기는 픽셀")
+        reasons = [i for i, v in c.items.items() if len(v) == 3 and v[2] and reason.startswith(v[2].rstrip("…"))]
+        self.assertEqual(len(reasons), 3)
+        for i in reasons:
+            self.assertLessEqual(c.bbox(i)[3] + 4, int(H * pos["bottom"]))
+            self.assertTrue(c.items[i][2].startswith("🛡️ 적 대응"), "앞 문장은 남는다")
+        short = {**card, "reason": "잘 맞아요."}
+        c = FontCanvas()
+        overlay.draw(c, {"cards": [short], "pos": pos}, W, H, scale=H / 1080)
+        self.assertIn(("Malgun Gothic" if overlay.IS_WINDOWS else "Apple SD Gothic Neo", -round(overlay.FONT_PX[1] * H / 1080)),
+                      c.fonts.values(), "짧으면 줄이지 않는다")
+
+    def test_swap_marker_below_box(self):
+        """아이템 칸이 다 찼을 때 바꾸기: 상자가 뜰 때만, 상자 밑에 아이콘 (판다 ✕ → 산다)"""
+        import overlay
+        sw = {"sell": "3153", "buy": "3036", "sellName": "몰락한 왕의 검", "buyName": "도미닉 경의 인사"}
+        payload = {"cards": [None] * 3, "hud": ["다음 구매: 무한의 대검"], "swap": sw}
+        self.assertEqual(overlay.layout(payload, 1600, 900), [], "상자가 안 뜨면 바꾸기도 안 뜬다")
+        items = overlay.layout({**payload, "shop": "dead"}, 1600, 900)
+        self.assertEqual([k for k, *_ in items], ["hud", "swap"])
+
+        class C(FakeCanvas):
+            images = []
+
+            def tag_lower(self, *a):
+                pass
+        c = C()
+        overlay.draw(c, {**payload, "shop": "dead"}, 1600, 900, icon_dir=str(ROOT / "web" / "icons" / "augment"))
+        swap_rect = [v for v in c.items.values() if len(v) == 4 and v[1] > 900 * overlay.BOX_Y]
+        self.assertTrue(swap_rect, "상자 밑에 바꾸기 칸")
+        if HAS_IMG:
+            img = overlay.swap_image(str(ROOT / "web" / "icons" / "item" / "3153.webp"), str(ROOT / "web" / "icons" / "item" / "3036.webp"), 40)
+            self.assertEqual(img.size, (100, 40))
+            r, g, b = img.getpixel((20, 20))
+            self.assertGreater(r, g, "팔 아이템 가운데는 빨간 ✕")
+
     def test_queue_not_used_when_not_running(self):
         import overlay
         ov = overlay.Overlay()
@@ -752,6 +822,39 @@ class HudIcons(unittest.TestCase):
         finally:
             self.h.REGION = old
 
+    def test_recover_keeps_known_slots(self):
+        # 2026-10-15 베인 판: 증강 칸은 고른 순서대로 찬다. 넓혀 찾기(증강 전체와 비교)가 이미 정한 칸을
+        # 그림이 같은 다른 증강(시작부터 끝까지 → 포로 쇄도)으로 읽어, 맞게 짐작한 부메랑 투척을 틀리게 '고쳤다'
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._id_names = {"V": "취약", "FB": "시작부터 끝까지", "OK": "부메랑 투척", "ED": "끝없는 학살",
+                       "UH": "궁극의 히드라", "PC": "포로 쇄도", "SH": "작은 도움"}
+        r.offered = {"취약", "시작부터 끝까지", "부메랑 투척", "작은 도움"}
+        r._apply_hud([("V",), ("FB",)], {("V",): 0.90, ("FB",): 0.93}, [], [], {("V",): (32, 5), ("FB",): (32, 6)})
+        self.assertEqual(r.hud_ids, ["V", "FB"])
+        r._picked_names = {"취약", "시작부터 끝까지", "부메랑 투척"}
+        r._recover = {"from": ["작은 도움", "부메랑 투척"], "click": "부메랑 투척", "tries": 3, "known": {"V", "FB"}}
+        wide = [("UH",), ("PC",), ("OK", "ED")]
+        r._apply_hud(wide, {("UH",): 0.924, ("PC",): 0.957, ("OK", "ED"): 0.923}, [], [],
+                     {("UH",): (32, 5), ("PC",): (32, 6), ("OK", "ED"): (32, 7)})
+        self.assertIsNone(r._fix, "맞게 짐작한 것을 고치지 않는다")
+        self.assertIsNone(r._recover, "새 칸에 짐작한 증강 그림이 있으면 확인 끝")
+        self.assertEqual(r.hud_ids, ["V", "FB", "OK"], "정해진 칸은 그대로, 새 칸은 선택지에 떴던 이름으로")
+
+    def test_shop_probe_only_after_purchase(self):
+        # 2026-10-15 베인 판: 그림 3번 중 1번은 물약을 마셔 아이템이 사라진 때 (상점과 무관) → 골드가 줄었을 때만
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        live = {"items": ["3051", "2003"], "gold": 100}
+        r.live_fn = lambda: live
+        r._watch_inventory()
+        live = {"items": ["3051"], "gold": 100}
+        r._watch_inventory()
+        self.assertFalse(r._shop_probe, "물약을 마심")
+        live = {"items": ["3051", "1036"], "gold": 50}
+        r._watch_inventory()
+        self.assertTrue(r._shop_probe, "샀음")
+
     def test_late_hud_fixes_unverified_click(self):
         # 2026-10-15 케일 판: 클릭 짐작(극악무도)의 확인 시간이 끝난 뒤에야 증강 칸에 실제로 고른 것(광휘의 검 업그레이드)이 잡혔다.
         # 확인을 못 한 짐작은 기억해 두고, 그 선택지 중 다른 것이 증강 칸에 나타나면 그걸로 고친다
@@ -896,6 +999,11 @@ class ShopBox(unittest.TestCase):
         self.assertIsNone(augocr.find_shop([("모든", 700, 170, 40, 20), ("공격", 760, 170, 40, 20)], W, H))
         self.assertIsNotNone(augocr.find_shop([("Recommended", 560, 170, 90, 20), ("All", 700, 170, 30, 20), ("Items", 735, 170, 50, 20),
                                                ("Item", 880, 170, 40, 20), ("Sets", 925, 170, 40, 20)], W, H))
+        # 2026-10-15 베인 판 (2520x1575): 상점 아래쪽 버튼 줄 '판매 · 되돌리기 · 1400'
+        bottom = augocr.find_shop([("판매", 1000, 1278, 70, 30), ("되돌리기", 1230, 1278, 120, 30), ("1400", 1420, 1278, 60, 30)], 2520, 1575)
+        self.assertIsNotNone(bottom)
+        self.assertAlmostEqual(bottom["top"], 1278 / 1575, places=3)
+        self.assertIsNone(augocr.find_shop([("판매", 1000, 1278, 70, 30)], 2520, 1575), "판매 한 단어만으론 아님")
         payload = {"cards": [None] * 3, "hud": ["다음 구매: 크라켄 학살자"]}
         self.assertEqual(overlay.layout(payload, W, H), [], "상점이 안 열려 있으면 상자를 띄우지 않는다")
         items = overlay.layout({**payload, "shop": shop}, W, H)

@@ -25,6 +25,11 @@ DEFAULT_POS = {"y": 0.70, "spread": 0.246}
 # 증강 인식으로 카드 이름 줄 위치를 알면: 이름 줄 + 이만큼 (게임 창 높이 비율) 밑에 붙인다.
 # 실제 화면(2026-10-14): 이름 0.46 · 설명 0.53~0.57 · 빈 곳 0.59~0.69 · 블리츠 배지 0.70~ → 설명 밑 빈 곳 위쪽
 BELOW_NAME = 0.15
+# 카드 밑 표시는 이름 줄 + 이만큼 위에서 끝낸다 (그 밑은 새로고침 버튼. 실제 화면: 이름 0.46 · 새로고침 0.70).
+# 이유가 길면 글자를 줄여 이 안에 맞춘다 (2026-10-15 지적: 설명이 커서 새로고침 버튼이 안 보임)
+CARD_BOTTOM = 0.22
+FONT_PX = (20, 15, 11)  # 글자 크기(픽셀, 1080p 기준): 제목, 이유·상자, 가장 작게.
+# 포인트로 주면 화면 배율(150% 등)만큼 한 번 더 커졌다 (게임 창 크기 비례 + 배율 = 두 번 키움)
 BOX_X, BOX_Y = 16, 0.08  # 상점 옆 상자 자리: 게임 창 왼쪽 위 (픽셀, 높이 비율)
 TIMER_X, TIMER_Y = 16, 0.34  # 증강 쿨타임 자리: 게임 창 왼쪽, 상점 상자 밑 (실제 화면 확인 전 추정)
 
@@ -179,6 +184,10 @@ def layout(payload, w, h):
     # 오른쪽 위에 늘 띄우면 게임을 가렸고, 상점 위치를 따라가면 읽을 때마다 위치가 달라 너무 움직였다 (2026-10-14 지적)
     if hud and payload.get("shop"):
         items.append(("hud", BOX_X, int(h * BOX_Y), (hud, "nw")))
+        sw = payload.get("swap")
+        if sw and sw.get("sell") and sw.get("buy"):
+            # 아이템 칸이 다 찼을 때 바꾸기: 상자 바로 밑에 아이콘 두 개 (판다 ✕ → 산다). 자리는 상자를 그린 뒤 정한다
+            items.append(("swap", BOX_X, None, (sw["sell"], sw["buy"])))
     st = timer_state(payload.get("timers"))
     if st:
         items.append(("timers", TIMER_X, int(h * TIMER_Y), tuple(st)))
@@ -246,7 +255,11 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
     canvas.delete("all")
     canvas.images = []  # 그림을 붙잡아 둔다 (안 그러면 Tk 그림이 지워진다)
     font = "Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo"
-    big, small = max(11, int(15 * scale)), max(9, int(11 * scale))
+    # 글자 크기는 음수 = 픽셀 (Tk). 게임 창 높이에만 비례하고 윈도우 화면 배율은 타지 않는다
+    big, small, tiny = (-max(1, round(px * scale)) for px in FONT_PX)
+    pos = payload.get("pos") or {}
+    bottom = int(h * pos["bottom"]) if pos.get("bottom") else None
+    box_bottom = None
     for kind, x, y, c in layout(payload, w, h):
         if kind == "card":
             color = c.get("color") or TIER_COLORS.get(c.get("tier"), "#78909c")
@@ -260,6 +273,21 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             if tb:
                 canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline="")
             rb = canvas.bbox(reason)
+            # 새로고침 버튼을 가리지 않게: 넘치면 이유 글자를 한 픽셀씩 줄인다 (가장 작게까지)
+            size = small
+            while bottom and rb and rb[3] + 4 > bottom and size < tiny:
+                size += 1
+                canvas.itemconfig(reason, font=(font, size))
+                rb = canvas.bbox(reason)
+            # 가장 작게 해도 넘치면 뒤 문장부터 덜어 낸다 (첫 문장 = 평가 이유는 남긴다)
+            text = c.get("reason", "")
+            while bottom and rb and rb[3] + 4 > bottom:
+                cut = max(text.rfind(". ", 0, len(text) - 2), text.rfind(" · ", 0, len(text) - 2))
+                if cut <= 0:
+                    break
+                text = text[:cut].rstrip(" .·") + "…"
+                canvas.itemconfig(reason, text=text)
+                rb = canvas.bbox(reason)
             if rb:
                 canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=color)
             canvas.tag_raise(title)
@@ -274,7 +302,55 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             hb = canvas.bbox(t)
             if hb:
                 canvas.create_rectangle(hb[0] - 10, hb[1] - 8, hb[2] + 10, hb[3] + 8, fill="#111820", outline="#c8aa6e")
+                box_bottom = hb[3] + 8
             canvas.tag_raise(t)
+        elif kind == "swap":
+            draw_swap(canvas, c, x, (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6, h, icon_dir, (font, small))
+
+
+def swap_image(sell_path, buy_path, size):
+    """바꾸기 표시: [팔 아이템: 어둡게 + 빨간 ✕] → [살 아이템: 초록 테두리]. Pillow 그림(RGB)"""
+    from PIL import Image, ImageDraw
+    gap = size // 2
+    out = Image.new("RGB", (size * 2 + gap, size), (17, 24, 32))
+    for i, path in enumerate((sell_path, buy_path)):
+        try:
+            icon = Image.open(path).convert("RGB").resize((size, size))
+        except (OSError, ValueError):
+            icon = Image.new("RGB", (size, size), (40, 48, 56))
+        if i == 0:
+            icon = Image.blend(icon, Image.new("RGB", (size, size), (0, 0, 0)), 0.45)
+        out.paste(icon, (i * (size + gap), 0))
+    d = ImageDraw.Draw(out)
+    lw = max(2, size // 12)
+    d.line([(3, 3), (size - 4, size - 4)], fill=(229, 57, 53), width=lw)
+    d.line([(3, size - 4), (size - 4, 3)], fill=(229, 57, 53), width=lw)
+    bx = size + gap
+    d.rectangle([bx, 0, bx + size - 1, size - 1], outline=(76, 175, 80), width=lw)
+    ax, ay = size + gap // 2, size // 2  # 화살표
+    d.polygon([(ax - gap // 3, ay - size // 5), (ax + gap // 3, ay), (ax - gap // 3, ay + size // 5)], fill=(200, 170, 110))
+    return out
+
+
+def draw_swap(canvas, ids, x, y, h, icon_dir, font):
+    """아이템 칸이 다 찼을 때: 팔 것 ✕ → 살 것 (글 대신 아이콘. 2026-10-15 요청)"""
+    import os
+    sell, buy = ids
+    size = round(timer_size(h) * 1.25)
+    item_dir = os.path.join(os.path.dirname(icon_dir), "item") if icon_dir else ""
+    path = lambda i: os.path.join(item_dir, f"{i}.webp") if item_dir else ""
+    t = canvas.create_text(x + 10, y + size // 2, text="🔁", font=font, fill="#e6e9ec", anchor="w")
+    tb = canvas.bbox(t)
+    x0 = (tb[2] if tb else x + 30) + 6
+    try:
+        from PIL import ImageTk
+        img = ImageTk.PhotoImage(swap_image(path(sell), path(buy), size), master=canvas)
+        canvas.images.append(img)
+        canvas.create_image(x0, y, image=img, anchor="nw")
+    except Exception:
+        canvas.create_text(x0, y + size // 2, text="✕ → ✓", font=font, fill="#e6e9ec", anchor="w")
+    r = canvas.create_rectangle(x, y - 4, x0 + size * 2 + size // 2 + 8, y + size + 4, fill="#111820", outline="#c8aa6e")
+    canvas.tag_lower(r)
 
 
 def draw_timers(canvas, states, x, y, h, icon_dir):
@@ -282,7 +358,7 @@ def draw_timers(canvas, states, x, y, h, icon_dir):
     import os
     size = timer_size(h)
     gap = max(4, size // 6)
-    font = ("Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo", max(9, size * 2 // 5), "bold")
+    font = ("Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo", -max(12, size * 2 // 5), "bold")  # 픽셀
     try:
         from PIL import ImageTk
     except ImportError:
@@ -310,7 +386,7 @@ def draw_timers(canvas, states, x, y, h, icon_dir):
             canvas.create_text(cx, cy, text=str(secs), font=font, fill="#ffffff")
 
 
-KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임"}
+KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임", "swap": "바꾸기"}
 PARK = (-4000, -4000)  # 보여 줄 게 없을 때 표시 창을 치워 두는 자리 (화면 밖)
 
 

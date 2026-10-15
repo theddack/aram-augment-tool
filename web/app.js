@@ -901,14 +901,37 @@ function itemVerdicts() {
       .filter((r) => r.item.kind === it.kind);
     const idx = rows.findIndex((r) => r.item.id === it.id);
     const row = rows[idx];
-    const best = rows.find((r) => !others.some((o) => o.id === r.item.id));
-    if (row && row.offType) return { item: it, mark: "⚠️", text: `${state.champ.damageType === "magic" ? "마법" : "물리"} 챔피언에겐 반대 유형이에요` + (best ? ` (추천: ${best.item.name})` : "") };
-    if (idx >= 0 && idx < 5) return { item: it, mark: "✅", text: state.chosen.length ? "고른 증강과 잘 맞아요" : "잘 맞아요" };
-    if (idx >= 0 && idx < 15) return { item: it, mark: "👍", text: "괜찮아요" };
-    return { item: it, mark: "🤔", text: best ? `더 잘 맞는 것: ${best.item.name}` : "다른 선택이 나아요" };
+    // 같은 계열 고유 효과(limit)가 겹치는 것은 같이 못 가진다
+    const best = rows.find((r) => !others.some((o) => o.id === r.item.id || (r.item.limit && o.limit === r.item.limit)));
+    const swap = row && best && best.item.id !== it.id ? { best: best.item, gain: best.score - row.score, ratio: row.score > 0 ? best.score / row.score : Infinity } : null;
+    return { ...verdictOf(it, row, idx, best), swap };
   });
   verdictCache = { key, value };
   return value;
+}
+function verdictOf(it, row, idx, best) {
+  if (row && row.offType) return { item: it, mark: "⚠️", text: `${state.champ.damageType === "magic" ? "마법" : "물리"} 챔피언에겐 반대 유형이에요` + (best ? ` (추천: ${best.item.name})` : "") };
+  if (idx >= 0 && idx < 5) return { item: it, mark: "✅", text: state.chosen.length ? "고른 증강과 잘 맞아요" : "잘 맞아요" };
+  if (idx >= 0 && idx < 15) return { item: it, mark: "👍", text: "괜찮아요" };
+  return { item: it, mark: "🤔", text: best ? `더 잘 맞는 것: ${best.item.name}` : "다른 선택이 나아요" };
+}
+
+// ---- 아이템 칸이 다 찼을 때 바꾸기: 하나를 팔고 다른 것을 사면 크게 나아지는 경우만 (2026-10-15 요청 "뭘 빼고 뭘 사라고, 글 대신 표시로")
+// 게임 화면에는 아이콘 두 개(판다 ✕ → 산다)로만 보여 준다. 증강에 필요한 아이템(🎯)은 팔라고 하지 않는다
+const SWAP_MARKS = new Set(["🤔", "⚠️"]);
+const SWAP_UP = 1.15;  // 바꿀 아이템 점수가 지금 아이템의 이 배 이상일 때만 (적 대응 COUNTER_AUG 와 같은 기준)
+function swapAdvice() {
+  if (!state.champ || state.items.length < S.SLOTS) return null;
+  const ctx = S.augContext(state.chosen, state.data.rules);
+  const needed = (it) => ctx.must.some((g) => g.includes(it.name));
+  let pick = null;
+  for (const v of itemVerdicts()) {
+    // 산 아이템 평가가 🤔(순위 밖)·⚠️(반대 유형)인 것만 판다: 다 지은 아이템은 팔면 골드를 잃고,
+    // 👍 이상을 팔라고 하면 '산 아이템' 평가와 엇갈린다 (2026-10-15 베인 판 최종 빌드: 무한의 대검 👍 → 히드라 제안은 납득이 어려웠다)
+    if (!SWAP_MARKS.has(v.mark) || !v.swap || needed(v.item) || v.swap.gain <= 0 || v.swap.ratio < SWAP_UP) continue;
+    if (!pick || v.swap.gain > pick.gain) pick = { sell: v.item, buy: v.swap.best, gain: v.swap.gain };
+  }
+  return pick;
 }
 
 // ---- 증강 쿨타임 (게임 화면, 2026-10-15 요청 "35초마다 발동되는 거 쿨 돌아가는 게 보였으면")
@@ -972,7 +995,9 @@ function sendOverlay(src) {
     builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name) })),
     advice: enemyAdvice(),
   } : null;
-  api.set_overlay({ cards: overlayCards, hud, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null });
+  const sw = swapAdvice();
+  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name } : null;
+  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null });
 }
 
 function renderAugs() {
@@ -1248,7 +1273,7 @@ function renderNextBuy(rows) {
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : ""))}">
       <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
-      <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
+      <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   const adv = enemyAdvice();
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
@@ -1256,6 +1281,14 @@ function renderNextBuy(rows) {
   renderBuyNow();
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
   sendOverlay("next");
+}
+
+function swapHtml() {
+  const sw = swapAdvice();
+  if (!sw) return `<p class="muted small">아이템 칸이 다 찼어요.</p>`;
+  return `<p class="muted small">아이템 칸이 다 찼어요. 바꾸면 더 좋아요:</p>
+    <div class="swap-row" title="${esc(sw.sell.name)} 팔고 ${esc(sw.buy.name)}"><b>🔁</b><img src="${icon("item", sw.sell.id)}" alt="" class="sell"><span>→</span><img src="${icon("item", sw.buy.id)}" alt="">
+    <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div></div></div>`;
 }
 
 function renderItemList() {

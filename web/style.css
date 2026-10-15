@@ -251,3 +251,7 @@ body.ingame.searching #champ-grid { display: grid; }
 /* 가벼운 모드: 자세히 보기 버튼 숨김 (쉽게 보기만), 챔피언 목록은 검색할 때만 */
 body.light #champ-grid { display: none; }
 body.light.searching #champ-grid { display: grid; }
+/* 아이템 칸이 다 찼을 때 바꾸기 (판다 ✕ → 산다) */
+#next-buy .swap-row { display: grid; grid-template-columns: 16px 32px 12px 32px 1fr; gap: 6px; align-items: center; padding: 4px 0; font-size: 13px; }
+#next-buy .swap-row img { width: 32px; height: 32px; border-radius: 4px; }
+#next-buy .swap-row img.sell { opacity: .55; outline: 2px solid #e53935; }

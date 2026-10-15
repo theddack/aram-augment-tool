@@ -16,7 +16,12 @@ import time
 
 IS_WINDOWS = sys.platform == "win32"
 NAME_BAND = (0.38, 0.55)  # 이 안의 글자만 카드 이름으로 본다 (게임 창 높이 비율)
-SHOP_BAND = (0.06, 0.32)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위 (실제 기록: 탭 줄 0.10~0.29)
+SHOP_BAND = (0.06, 0.45)  # 상점 창 위쪽 탭('추천 · 모든 아이템 · 아이템 세트')을 찾는 범위 (실제 기록: 탭 줄 0.10~0.29.
+# 2026-10-15 16:10 창(2520x1575)에선 상점 창 윗테두리가 0.31 → 탭이 0.32 밖이라 한 번도 못 찾음)
+SHOP_PROBE_AREA = (0.25, 0.04, 0.85, 0.84)  # 못 알아봤을 때 남기는 그림 범위 (가로·세로 비율). 채팅(왼쪽 아래)은 빼고 가운데 상점 자리
+# 상점 창 아래쪽 버튼 줄 '판매 · 되돌리기' (영어 Sell · Undo). 2026-10-15 베인 판 증강 칸 그림에 상점이 열린 채 찍혔다:
+# 2520x1575 창에서 버튼 줄 y ≈ 0.81, x ≈ 0.35~0.63. 위쪽 탭보다 글자가 또렷하고 띠가 작아 가볍다 → 먼저 본다
+SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))  # (가로 범위, 세로 범위)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
@@ -101,6 +106,9 @@ def find_shop(words, width, height):
         text = norm("".join(w[0] for w in sorted(row, key=lambda r: r[1]))).lower()
         ko = "모든아이템" in text and ("아이템세트" in text or "추천" in text)
         en = "allitems" in text and ("itemsets" in text or "recommended" in text)  # 영어 클라이언트·검증용 가상 PC
+        # 아래쪽 버튼 줄 (판매 · 되돌리기)
+        ko = ko or ("판매" in text and "되돌리기" in text)
+        en = en or ("sell" in text and "undo" in text)
         if ko or en:
             x0 = min(w[1] for w in row)
             x1 = max(w[1] + w[3] for w in row)
@@ -468,6 +476,10 @@ class Reader(threading.Thread):
         # 나타나면 그걸로 고친다 (2026-10-15 케일 판: 확인은 2초 차이로 끝났고, 틀린 짐작 '극악무도'가 끝까지 남아
         # 고른 증강이 4개로 차서 마지막 선택 화면 카드가 안 떴다)
         self._unverified = []
+        # 증강 칸 자리 → 그 자리에서 정해진 증강 id. 고른 증강은 칸 순서대로 들어가고 바뀌지 않는다.
+        # 그림이 같은(색만 다른) 증강 쌍이 있어 넓혀 찾기가 이미 정한 칸을 다른 증강으로 읽었다
+        # (2026-10-15 베인 판: 시작부터 끝까지 칸 → 포로 쇄도, 취약 칸 → 궁극의 히드라. 실제로 고른 부메랑 투척을 포로 쇄도로 '고침')
+        self._slot_ids = {}
         self._shop_probe = 0.0  # 아이템을 산 직후(상점이 열려 있었을 것) 상점을 못 알아봤으면 이 시각까지 한 번 그림을 남긴다
         self._shop_probes = 0
         self._inv = None
@@ -516,14 +528,29 @@ class Reader(threading.Thread):
         with self._lock:  # 결과 반영 중에 새 게임이 시작되지 않게 (new_game 과 같은 잠금)
             if game_n is not None and game_n != getattr(self, "_game_n", 0):
                 return
-            self._apply_hud(groups, best, ids, unsure)
+            sz = (self.hud.size or 0.04) * rect[3]
+            pos = {g: (round(y / sz), round(x / sz)) for g, _, x, y in self.hud.last}
+            self._apply_hud(groups, best, ids, unsure, pos)
 
-    def _apply_hud(self, groups, best, ids, unsure):
+    def _apply_hud(self, groups, best, ids, unsure, pos=None):
+        pos = pos or {}
+        names = self.id_names()
+        # 이미 정해진 칸은 그 증강으로 (쌍둥이 그림으로 바뀌지 않게). 나머지는 새 칸
+        fixed = {g: self._slot_ids[pos[g]] for g in groups if pos.get(g) in self._slot_ids}
+        fresh = [g for g in groups if g not in fixed]
         rc = self._recover
+        if rc and fixed:
+            # 넓혀 찾기는 새 칸만 본다. 새 칸 그림 묶음에 클릭 짐작이 들어 있으면 짐작이 맞은 것
+            by_name = {n: i for i, n in names.items()}
+            hit = [g for g in fresh if by_name.get(rc["click"]) in g]
+            if hit:
+                self._recover = None
+                self._rec("recover", {"from": rc["from"], "result": rc["click"], "slot": True})
+                self._picked_names.add(rc["click"])
+                rc = None
         if rc:
             rc["tries"] -= 1
-            names = self.id_names()
-            sure, _ = resolve_groups(groups, names, set(), [best.get(g, 0.0) for g in groups])  # 아주 확실한 것만 (SURE_SCORE)
+            sure, _ = resolve_groups(fresh, names, set(), [best.get(g, 0.0) for g in fresh])  # 아주 확실한 것만 (SURE_SCORE)
             # 실패해도 왜인지 남기게: 아는 것 말고 가장 닮았던 점수·비교한 그림 수
             other = [sc for g, sc in best.items() if not any(a in rc["known"] for a in g)]
             rc["best"] = round(max([rc.get("best", 0.0)] + other), 3)
@@ -537,9 +564,23 @@ class Reader(threading.Thread):
                 if names.get(new[0]) != rc["click"]:
                     self._fix = (names.get(new[0]), rc["from"], rc["click"])
             ids, unsure = resolve_groups(groups, names, self.offered, [best.get(g, 0.0) for g in groups])
+        if pos:
+            # 칸 순서(위 줄 왼쪽부터)대로: 정해진 칸은 그 증강, 새 칸에서 하나로 정해지면 그 칸에 기록
+            order = sorted(groups, key=lambda g: pos.get(g, (99, 99)))
+            out, unsure2 = [], []
+            for g in order:
+                if g in fixed:
+                    out.append(fixed[g])
+                    continue
+                r, u = resolve_groups([g], names, self.offered, [best.get(g, 0.0)])
+                if r and r[0] not in out and r[0] not in self._slot_ids.values():
+                    out.append(r[0])
+                    if not self._recover and g in pos:
+                        self._slot_ids[pos[g]] = r[0]
+                unsure2 += u
+            ids, unsure = out, unsure2
         v = self._verify
         if v:
-            names = self.id_names()
             found = [names.get(i) for i in ids if names.get(i) in v["from"]]
             if len(found) == 1:
                 self._verify = None
@@ -652,6 +693,7 @@ class Reader(threading.Thread):
         self._unverified = []
         self._shop_probes = 0
         self._shop_probe = 0.0
+        self._slot_ids = {}
         self._inv = None
         if self.hud:
             self.hud.reset()
@@ -681,14 +723,15 @@ class Reader(threading.Thread):
                 self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
             time.sleep(CLICK_POLL)
 
-    def read_band(self, cap, ocr, rect, band):
-        """게임 창의 가로 띠를 (크면 줄여서) 읽는다 → (게임 창 좌표 단어들, 이미지 바이트, 이미지 너비, 높이)"""
+    def read_band(self, cap, ocr, rect, band, xr=(0.0, 1.0)):
+        """게임 창의 가로 띠를 (크면 줄여서) 읽는다 → (게임 창 좌표 단어들, 이미지 바이트, 이미지 너비, 높이). xr = 가로 범위"""
         gx, gy, gw, gh = rect
         y0, y1 = int(gh * band[0]), int(gh * band[1])
+        x0, x1 = int(gw * xr[0]), int(gw * xr[1])
         k = min(1.0, OCR_HEIGHT / gh)
-        tw, th = max(1, int(gw * k)), max(1, int((y1 - y0) * k))
-        img = cap.grab(gx, gy + y0, gw, y1 - y0, tw, th)
-        words = [(t, x / k, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
+        tw, th = max(1, int((x1 - x0) * k)), max(1, int((y1 - y0) * k))
+        img = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0, tw, th)
+        words = [(t, x / k + x0, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
         return words, img, tw, th
 
     def apply_fix(self):
@@ -853,13 +896,15 @@ class Reader(threading.Thread):
             live = (self.live_fn() or {}) if self.live_fn else {}
         except Exception:
             live = {}
-        inv = live.get("items")
+        inv, gold = live.get("items"), live.get("gold")
         if inv is None:
             return
         inv = tuple(inv)
-        if self._inv is not None and inv != self._inv:
+        # 산 것만 (골드가 줄었음). 물약을 마셔 아이템이 사라진 건 상점과 무관 (2026-10-15 기록: 3번 중 1번이 물약)
+        prev_inv, prev_gold = self._inv if self._inv else (None, None)
+        if prev_inv is not None and inv != prev_inv and gold is not None and prev_gold is not None and gold < prev_gold:
             self._shop_probe = time.time()
-        self._inv = inv
+        self._inv = (inv, gold)
 
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
@@ -868,24 +913,34 @@ class Reader(threading.Thread):
         self._shop_n = getattr(self, "_shop_n", 0) + 1
         if self._shop_n % SHOP_EVERY and not self._shop_probe:
             return
-        s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
         t0 = time.time()
-        sw, simg, siw, sih = self.read_band(cap, ocr, rect, SHOP_BAND)
-        self._time("상점", t0)
+        # 아래 버튼 줄(작은 띠) 먼저, 못 찾으면 위쪽 탭 줄은 두 번에 한 번 (또는 막 샀을 때)
+        (bx0, bx1), bb = SHOP_BOTTOM
+        sw, _, _, _ = self.read_band(cap, ocr, rect, bb, (bx0, bx1))
         shop = find_shop(sw, gw, gh)
+        self._top_n = getattr(self, "_top_n", 0) + 1
+        if not shop and (self._shop_probe or self._top_n % 2 == 0):
+            tw_, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
+            sw = sw + tw_
+            shop = find_shop(tw_, gw, gh)
+        self._time("상점", t0)
         if self._shop_probe and not shop and self.rec:
-            # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 그 띠의 그림과 읽은 글자를 남긴다 (탭 글자가 다른지 보려고)
+            # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 읽은 글자와 가운데 넓은 그림을 남긴다 (상점이 어디 어떻게 보이는지)
             self._shop_probes += 1
+            ax0, ay0, ax1, ay1 = SHOP_PROBE_AREA
+            aw, ah = int(gw * (ax1 - ax0)), int(gh * (ay1 - ay0))
+            k = min(1.0, 1280 / max(1, aw))
+            wide = cap.grab(gx + int(gw * ax0), gy + int(gh * ay0), aw, ah, max(1, int(aw * k)), max(1, int(ah * k)))
             self._rec("shopmiss", {"read": [t for t, _, _ in segments(sw, gap=gw * 0.02)][:40],
-                                   "image": self.rec.image("shopmiss", simg, siw, sih)})
+                                   "image": self.rec.image("shopmiss", wide, max(1, int(aw * k)), max(1, int(ah * k)))})
         self._shop_probe = 0.0
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
             if shop and self.rec and not getattr(self, "_shop_img", False):
-                # 상점 위쪽 탭 줄만 (처음 한 번)
-                ty = int(shop["top"] * gh) - s0
+                # 알아본 글자 줄만 (처음 한 번)
+                ty = max(0, int(shop["top"] * gh) - 10)
                 x0, x1 = max(0, int(shop["left"] * gw) - 20), min(gw, int(shop["right"] * gw) + 20)
-                rows = cap.grab(gx + x0, gy + s0 + max(0, ty - 10), x1 - x0, int(gh * 0.06))
+                rows = cap.grab(gx + x0, gy + ty, x1 - x0, int(gh * 0.06))
                 data["image"] = self.rec.image("shop", rows, x1 - x0, int(gh * 0.06))
                 self._shop_img = True
             self._rec("shop", data)

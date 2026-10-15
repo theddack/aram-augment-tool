@@ -555,3 +555,21 @@ test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에�
   assert.ok(p.qa("#champ-grid .champ").length > 100, "연결도 게임도 없으면 다시 직접");
   assert.deepEqual(p.errors, []);
 });
+
+test("아이템 칸이 다 찼으면 바꾸기(판다 → 산다)를 아이콘으로 보낸다 (베인 판 실제 아이템)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const full = (items) => p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 18, items, dead: true });
+  full(["6672", "3006", "3032", "3036", "3153"]);
+  assert.equal(sent.at(-1).swap, null, "칸이 남으면 바꾸기 없음");
+  // 마법 챔피언 아이템(라바돈의 죽음모자)을 하나 낀 6칸 → 그걸 팔라고
+  full(["6672", "3006", "3032", "3036", "3153", "3089"]);
+  const sw = sent.at(-1).swap;
+  assert.ok(sw, "바꾸기 보냄");
+  assert.equal(sw.sell, "3089");
+  assert.notEqual(sw.buy, "3089");
+  assert.match(p.text("#next-buy"), /바꾸면 더 좋아요/);
+  assert.ok(!sent.at(-1).hud.some((x) => /라바돈/.test(x) && /팔/.test(x)), "상자 글은 늘리지 않는다 (아이콘으로만)");
+  assert.deepEqual(p.errors, []);
+});

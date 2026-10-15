@@ -722,7 +722,8 @@ class Api:
                 payload["shop"] = payload["box"]
             cards = (self._reader.state.get("pos") if self._reader else None)
             if cards:
-                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME}
+                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
+                                  "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
             self._ov.update(payload)
         if self._rec:
             # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
