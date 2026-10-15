@@ -365,7 +365,8 @@ def main():
                     if e["kind"] != "offers" or not any(e.get("offers") or []):
                         continue
                     want_names = [n for n in e["offers"] if n]
-                    shown = next((x for x in ev[i + 1:] if x["kind"] == "shown" and x.get("cards")
+                    # 카드 표시가 선택지 기록보다 먼저 남을 수 있다 (같은 순간: 카드를 먼저 보내고 기록). 1초 전까지 본다
+                    shown = next((x for x in ev if x["kind"] == "shown" and x["t"] >= e["t"] - 1 and x.get("cards")
                                   and all(any(c and c.startswith(n) for c in x["cards"]) for n in want_names)), None)
                     wall = next((x.get("wall") for x in ev if x["kind"] == "start"), None)
                     if wall and GAME_T0:
@@ -374,7 +375,7 @@ def main():
                         if appear is not None:
                             READ_DELAY.append(round(seen - appear, 1))
                             log(f"선택 화면이 뜨고 읽기까지 {seen - appear:.1f}초 ({' / '.join(want_names)})")
-                    lat = round(shown['t'] - e['t'], 1) if shown else None
+                    lat = max(0.0, round(shown['t'] - e['t'], 1)) if shown else None
                     log(f"카드 표시까지 {lat if shown else '안 뜸'}초 ({' / '.join(want_names)})")
                     LATENCY.append(lat)
         for f in ("diag.log",):
