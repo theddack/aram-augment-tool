@@ -183,11 +183,13 @@ body.mini .refs { display: none; }
 .t-status, .t-keywordmajor, .t-attention { color: var(--accent); }
 
 /* 윈도우 프로그램: 챔피언 검색·목록 없음 (롤에서 고른 챔피언을 자동으로 띄운다) */
-body.winapp #champ-panel { display: none; }
-body.winapp:not(.mini) main { grid-template-columns: 1fr 340px; }
+/* 롤이 챔피언을 알려 주는 동안(autochamp)만 숨긴다. 연결이 안 되면 직접 고르게 보인다 */
+body.winapp.autochamp #champ-panel { display: none; }
+body.winapp.autochamp:not(.mini) main { grid-template-columns: 1fr 340px; }
+body.winapp:not(.autochamp) #champ-grid { display: grid; }
 
 @media (max-width: 1000px) {
-  body.winapp:not(.mini) main { grid-template-columns: 1fr; }
+  body.winapp.autochamp:not(.mini) main { grid-template-columns: 1fr; }
   main { grid-template-columns: 1fr; height: auto; }
   .panel { max-height: none; }
   #champ-grid { max-height: 240px; overflow-y: auto; }

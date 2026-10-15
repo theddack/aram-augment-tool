@@ -457,6 +457,8 @@ class Reader(threading.Thread):
         self._fast_until = 0.0
         self.size_hint = None  # 게임 창 높이 → 지난 게임에서 찾은 증강 칸 아이콘 크기 (함수)
         self.size_save = None  # (게임 창 높이, 크기) 를 저장하는 함수
+        self._perf = {}  # 종류별 처리 시간(ms) 목록: 이름 줄·상점·증강 칸·넓혀 찾기 (한 판 기록에 요약)
+        self._lock = threading.Lock()  # 증강 칸 스레드의 결과 반영 ↔ 새 게임 시작
         self._recover = None  # 넓혀 찾기 (선택지를 잘못 읽었을 때) {"from", "click", "tries", "known"}
         self._picked_names = set()  # 이번 게임에서 고른 증강 이름 (넓혀 찾기에서 빼려고)
         self._verify = None  # 확인 중인 고르기 {"from": [이름 3개], "click": 클릭으로 짐작한 이름, "until": 시각}
@@ -483,6 +485,8 @@ class Reader(threading.Thread):
                                        "box": [0.12, 0.80, 0.70, 1.0], "window": [gw, gh]})
             self._area_saved = True
         groups = self.hud.scan(rgb, gh, (x0, y0))
+        if game_n is not None and game_n != getattr(self, "_game_n", 0):
+            return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 기록에도 남기지 않고 버린다
         best = {g: sc for g, sc, _, _ in self.hud.last}
         ids, unsure = resolve_groups(groups, self.id_names(), self.offered, [best.get(g, 0.0) for g in groups])
         if (ids, unsure) != (self.hud_ids, self.hud_unsure) or not getattr(self, "_hud_logged", False):
@@ -501,13 +505,21 @@ class Reader(threading.Thread):
             if ids or unsure or self.hud.last:
                 self._rec("hud", data)
                 self._hud_logged = True
-        if game_n is not None and game_n != getattr(self, "_game_n", 0):
-            return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 버린다
+        with self._lock:  # 결과 반영 중에 새 게임이 시작되지 않게 (new_game 과 같은 잠금)
+            if game_n is not None and game_n != getattr(self, "_game_n", 0):
+                return
+            self._apply_hud(groups, best, ids, unsure)
+
+    def _apply_hud(self, groups, best, ids, unsure):
         rc = self._recover
         if rc:
             rc["tries"] -= 1
             names = self.id_names()
             sure, _ = resolve_groups(groups, names, set(), [best.get(g, 0.0) for g in groups])  # 아주 확실한 것만 (SURE_SCORE)
+            # 실패해도 왜인지 남기게: 아는 것 말고 가장 닮았던 점수·비교한 그림 수
+            other = [sc for g, sc in best.items() if not any(a in rc["known"] for a in g)]
+            rc["best"] = round(max([rc.get("best", 0.0)] + other), 3)
+            rc["groups"] = len(self.hud.tpl.groups)
             new = [i for i in sure if i not in rc["known"] and names.get(i) not in self._picked_names]
             if len(new) == 1:
                 self._recover = None
@@ -566,6 +578,20 @@ class Reader(threading.Thread):
                 self._rec("error", {"error": str(e)[:200]}, dedupe=True)
             self.wait_clicks(mouse, rect)
 
+    def _time(self, kind, t0):
+        self._perf.setdefault(kind, []).append((time.time() - t0) * 1000)
+
+    def perf_summary(self):
+        """한 판 동안의 처리 시간 요약 {종류: {n, avg, p95, max}} (ms). 부르면 비운다"""
+        out = {}
+        for k, v in self._perf.items():
+            if v:
+                v = sorted(v)
+                out[k] = {"n": len(v), "avg": round(sum(v) / len(v)), "p95": round(v[min(len(v) - 1, int(len(v) * 0.95))]),
+                          "max": round(v[-1])}
+        self._perf = {}
+        return out
+
     def _changed(self):
         if self.on_change:
             try:
@@ -579,6 +605,10 @@ class Reader(threading.Thread):
 
     def new_game(self):
         """새 게임: 증강 칸에서 읽은 것을 비운다 (게임 창을 내렸다 올린 것만으로는 비우지 않는다)"""
+        with self._lock:
+            self._new_game()
+
+    def _new_game(self):
         self._shop_img = False
         self._hud_logged = False
         self._area_saved = False
@@ -653,7 +683,9 @@ class Reader(threading.Thread):
             self.scan_shop_only(cap, ocr, rect)
             return
         n0, n1 = int(gh * NAME_BAND[0]), int(gh * NAME_BAND[1])
+        t0 = time.time()
         words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
+        self._time("이름 줄", t0)
         offers = find_offers(words, gw, gh, matcher)
         self.offered.update(n for n, _, _ in offers)
         partial = False
@@ -704,7 +736,8 @@ class Reader(threading.Thread):
                 self._hud_at = 0
             self._verify = None
         if self._recover and self._recover["tries"] <= 0:
-            self._rec("recover", {"from": self._recover["from"], "result": "못 찾음"})
+            self._rec("recover", {"from": self._recover["from"], "result": "못 찾음", "best": self._recover.get("best"),
+                                  "groups": self._recover.get("groups"), "need": SURE_SCORE})
             self._recover = None
         if self.icon_dir and not getattr(self, "hud_error", None) and now >= getattr(self, "_hud_at", 0) \
                 and not getattr(self, "_hud_busy", False):
@@ -731,6 +764,8 @@ class Reader(threading.Thread):
                 if self.on_heavy:
                     self.on_heavy()  # 아이콘을 읽느라 한 번 크게 쓴 메모리를 돌려준다 (게임 중 주기적 반납은 안 한다)
             v = self._verify
+            kind = "넓혀 찾기" if self._recover else "증강 칸"
+            t0 = time.time()
             gh = rect[3]
             if self.hud.size is None and self.size_hint:
                 self.hud.hint = self.size_hint(gh)
@@ -740,15 +775,22 @@ class Reader(threading.Thread):
                 self.hud.hint = self.hud.size
             if v is not None and "tries" in v:
                 v["tries"] -= 1
+            self._time(kind, t0)
         except ImportError as e:  # numpy·Pillow 가 없으면 이 기능만 끈다
             self.hud_error = str(e)[:120]
         except Exception as e:
             self._rec("error", {"error": "증강 칸: " + str(e)[:200]}, dedupe=True)
         finally:
-            soon, self._hud_soon = getattr(self, "_hud_soon", False), False
-            # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
-            self._hud_at = time.time() + (2 if soon or self._verify or self._recover else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
-            self._hud_busy = False
+            with self._lock:
+                if game_n != getattr(self, "_game_n", 0):
+                    # 읽는 동안 새 게임이 시작됐다: 지난 게임에서 본 아이콘을 지우고, 새 게임의 다음 읽기 시각은 건드리지 않는다
+                    if self.hud:
+                        self.hud.reset()
+                else:
+                    soon, self._hud_soon = getattr(self, "_hud_soon", False), False
+                    # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
+                    self._hud_at = time.time() + (2 if soon or self._verify or self._recover else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
+                self._hud_busy = False
 
     def urgent(self, now=None):
         """증강 선택 화면이 곧 뜨거나 떠 있을 때: 선택 화면이 보임·고른 뒤 확인 중·레벨이 막 오름·죽어 있음"""
@@ -775,7 +817,9 @@ class Reader(threading.Thread):
         if self._shop_n % SHOP_EVERY:
             return
         s0, s1 = int(gh * SHOP_BAND[0]), int(gh * SHOP_BAND[1])
+        t0 = time.time()
         sw, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
+        self._time("상점", t0)
         shop = find_shop(sw, gw, gh)
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}

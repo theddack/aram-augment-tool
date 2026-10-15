@@ -177,7 +177,9 @@ function setTargetChamp(id) {
 }
 
 function renderChamps() {
-  if (document.body.classList.contains("winapp")) { $("#champ-grid").innerHTML = ""; return; }  // 윈도우 프로그램: 목록 없음 (아이콘 173개를 안 들고 있게)
+  // 윈도우 프로그램: 롤이 챔피언을 알려 주는 동안(클라이언트 연결·게임 중)은 목록 없음 (아이콘 173개를 안 들고 있게).
+  // 연결이 안 되면 직접 고르게 목록을 보인다 (자동 감지 실패 대비)
+  if (document.body.classList.contains("winapp") && document.body.classList.contains("autochamp")) { $("#champ-grid").innerHTML = ""; return; }
   const q = $("#champ-search").value.trim();
   document.body.classList.toggle("searching", !!q);
   const list = state.data.champions.filter((c) => !q || c.name.includes(q) || c.id.toLowerCase().includes(q.toLowerCase()));
@@ -936,6 +938,8 @@ function itemSetBlocks(champ) {
 let lcuChamp = null;
 async function applyLcu(api, L) {
   const el = $("#itemset-status");
+  lcuOn = !!(L && L.connected);
+  setAutoChamp();
   const champ = L && L.connected ? state.data.champions.find((c) => Number(c.key) === Number(L.championKey)) : null;
   // 챔피언 선택 중: 화면도 내 챔피언으로 (대기석에서 바꾸면 따라간다). 게임 중엔 게임 연동이 맞춘다.
   // 롤에서 챔피언이 바뀔 때만 바꾼다 (그 사이 다른 챔피언을 눌러 보는 건 덮어쓰지 않게)
@@ -1006,6 +1010,15 @@ function applyAug(A) {
   }
 }
 
+// 윈도우 프로그램: 롤이 챔피언을 알려 주는지 (클라이언트 연결 또는 게임 중). 바뀌면 챔피언 목록을 숨기거나 보인다
+let lcuOn = false, liveOn = false;
+function setAutoChamp() {
+  const on = lcuOn || liveOn;
+  if (document.body.classList.contains("autochamp") === on) return;
+  document.body.classList.toggle("autochamp", on);
+  renderChamps();
+}
+
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
 let liveEnded = false;
@@ -1014,6 +1027,8 @@ function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
   document.body.classList.toggle("ingame", !!(L && L.enabled && L.inGame));
+  liveOn = !!(L && L.enabled && L.inGame && L.champion);
+  setAutoChamp();
   if (!L || !L.enabled) { el.textContent = ""; return; }
   if (!L.inGame) {
     el.textContent = "게임 대기 중";
@@ -1105,8 +1120,7 @@ window.addEventListener("pywebviewready", async () => {
   // 고른 챔피언은 가운데 챔피언 칸에 그대로 보인다 (웹사이트·맥은 검색으로 고른다)
   if (st.overlaySupported) {
     document.body.classList.add("winapp");
-    $("#champ-grid").innerHTML = "";
-    if (!state.champ) $("#champ-card").textContent = "롤에서 챔피언을 고르면 여기 떠요 (챔피언 선택 화면·게임 중 자동)";
+    if (!state.champ) $("#champ-card").textContent = "롤에서 챔피언을 고르면 여기 떠요 (챔피언 선택 화면·게임 중 자동). 롤 클라이언트와 연결이 안 되면 왼쪽에서 직접 고를 수 있어요";
     const g = $("#guide li:first-child .muted");
     if (g) g.textContent = "롤에서 고르면 자동으로 떠요";
   }

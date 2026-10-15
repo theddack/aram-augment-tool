@@ -1170,6 +1170,12 @@ def main():
     watcher.on_new_game = on_new_game
 
     def on_game_end():
+        if reader:
+            # 한 판 동안 글자 인식·증강 칸 처리 시간 (평균·p95·최대): 실제 게임에서 느린 구간을 찾으려고
+            perf = reader.perf_summary()
+            rec.event("perf", {"ms": perf})
+            if perf:
+                diag.write("한 판 처리 시간(ms): " + " · ".join(f"{k} {v['n']}번 평균 {v['avg']} p95 {v['p95']} 최대 {v['max']}" for k, v in perf.items()))
         rec.finish()
         webmem.set(in_game=False)
         if capped:

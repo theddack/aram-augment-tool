@@ -322,9 +322,16 @@ test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로
 test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에서 고른 챔피언은 가운데 칸에", async () => {
   const p = await loadPage({ simple: true });
   p.w.document.body.classList.add("winapp");
+  // 롤 클라이언트 연결이 안 되면(자동 감지 실패) 직접 고르게 목록을 보인다
   p.w.renderChamps();
-  assert.equal(p.qa("#champ-grid .champ").length, 0, "목록을 만들지 않는다");
+  assert.ok(p.qa("#champ-grid .champ").length > 100, "연결 전엔 직접 고를 수 있다");
+  await p.w.applyLcu({ write_item_set: async () => ({ ok: true }) }, { connected: true, phase: "Lobby" });
+  assert.equal(p.qa("#champ-grid .champ").length, 0, "연결되면 목록을 만들지 않는다");
   p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 6, items: [] });
   assert.match(p.text("#champ-card"), /징크스/);
+  await p.w.applyLcu({}, { connected: false });
+  assert.equal(p.qa("#champ-grid .champ").length, 0, "게임 중이면 연결이 끊겨도 게임이 알려 준다");
+  p.w.applyLive({ enabled: true, inGame: false });
+  assert.ok(p.qa("#champ-grid .champ").length > 100, "연결도 게임도 없으면 다시 직접");
   assert.deepEqual(p.errors, []);
 });
