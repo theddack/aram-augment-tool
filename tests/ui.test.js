@@ -398,6 +398,32 @@ test("아이템이 있어야 하는 증강(강철 같은 심장)을 고르면 �
   assert.deepEqual(p.errors, []);
 });
 
+test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이템·증강을 표시한다 (케일 판 실제 적 아이템)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const enemyBuilds = [{ champion: "Velkoz", level: 16, items: ["6655", "3135", "3020", "4645", "4646"] },
+    { champion: "Rammus", level: 15, items: ["3075", "3047", "3084", "3068"] },
+    { champion: "Rell", level: 16, items: ["3121", "3143", "3050", "3047"] },
+    { champion: "TahmKench", level: 16, items: ["3084", "3111", "3083", "3075", "3067"] },
+    { champion: "Kalista", level: 16, items: ["3006", "3153", "3302", "6672"] }];
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kayle", level: 11, items: ["3100", "3115", "3006"],
+    enemies: enemyBuilds.map((e) => e.champion), ...x });
+  live({ enemyBuilds: enemyBuilds.map((e) => ({ ...e, items: [] })) });
+  assert.doesNotMatch(p.text("#next-buy"), /적 대응/, "적이 아무것도 안 샀으면 표시 안 함");
+  live({ enemyBuilds });
+  assert.match(p.text("#next-buy"), /🛡️ 적 대응/);
+  const box = sent.at(-1).hud.join("\n");
+  assert.match(box, /적 (가시 갑옷|강철심장) 2·(가시 갑옷|강철심장) 2 \(체력·방어력 높음\) → 적 대응: 리안드리의 고통/, "상자에 무엇 때문에 무엇을 사라는지");
+  assert.match(box, /다음 구매: .*\(적 대응\)/);
+  // 증강 선택: 고정 피해 증강(마법 미사일)은 단단한 적에게 더 좋다
+  p.w.applyAug({ offers: ["마법 미사일", "강타자", "마법 명사수"], seq: 1, pickSeq: 0 });
+  const cards = sent.at(-1).cards;
+  assert.match(cards[0].reason, /적 대응/);
+  assert.doesNotMatch(cards[2].reason, /적 대응/);
+  assert.deepEqual(p.errors, []);
+});
+
 test("게임 화면 상자: 상점·죽음·시작 직후에만 띄우라고 보낸다", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];

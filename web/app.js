@@ -108,6 +108,45 @@ const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0
   && !((i.tags.AD || 0) >= 0.5 || (i.tags.AP || 0) >= 0.5);
 const enemyItems = (c) => ((state.enemyBuilds || []).find((e) => e.champ.id === c.id) || {}).items || [];
 
+// ---- 적 대응 표시 (2026-10-15 사용자 지적: "상대 아이템으로 변경 추천이 잘 안 되는 것 같다")
+// 계산에는 이미 들어가 있었지만 위 3개가 거의 안 바뀌고 이유도 안 보였다 (케일 판: 적 강철심장 3·방어 아이템 8개 →
+// 리안드리의 고통이 8위 밖 → 3위인데 화면엔 안 보임). 기본 상대 기준 순위와 비교해 크게 오른 것을 '적 대응'으로 보여 준다
+const T_MOVED = { HP: 0.1, ARMOR: 0.15, MR: 0.15 };  // 기본 상대보다 이만큼 달라졌을 때만 (조금 다른 건 표시하지 않는다)
+const COUNTER_UP = 3, COUNTER_TOP = 8;  // 기본 상대 기준보다 3계단 이상 올라 8위 안이면 적 대응 아이템
+const COUNTER_AUG = 1.15, COUNTER_AUG_MIN = 0.03;  // 증강: 강해지는 정도가 기본 상대 기준의 1.15배 이상 (원래 값이 아주 작은 건 빼고)
+function enemyMoved() {
+  if (state.target || !(state.enemyBuilds || []).length) return false;
+  const T = St.TARGET, D = St.DEFAULT_TARGET;
+  return Object.keys(T_MOVED).some((k) => Math.abs(T[k] - D[k]) >= D[k] * T_MOVED[k]);
+}
+function atDefault(fn) {
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
+  St.setTarget(null);
+  try { return fn(); } finally { St.setTarget(saved); }
+}
+// 적이 많이 산 방어·체력 아이템 (이름 ×개수, 2개 이상인 것 위 2개)
+function enemyItemSummary() {
+  const n = {};
+  for (const e of state.enemyBuilds || []) for (const it of e.items) if (it.kind !== "boots" && tankItem(it)) n[it.name] = (n[it.name] || 0) + 1;
+  const top = Object.entries(n).filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const T = St.TARGET, D = St.DEFAULT_TARGET;
+  const what = [T.HP >= D.HP * (1 + T_MOVED.HP) ? "체력" : "", T.ARMOR >= D.ARMOR * (1 + T_MOVED.ARMOR) ? "방어력" : "",
+    T.MR >= D.MR * (1 + T_MOVED.MR) ? "마법 저항력" : ""].filter(Boolean);
+  return (top.length ? "적 " + top.map(([k, v]) => `${k} ${v}`).join("·") : "적 아이템") + (what.length ? ` (${what.join("·")} 높음)` : "");
+}
+let counterCache = { key: null, value: [] };
+function counterItems(avail, keep) {
+  if (!enemyMoved()) return [];
+  const d = state.data;
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  if (counterCache.key === key) return counterCache.value;
+  const base = atDefault(() => S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced")).filter(keep);
+  const bi = new Map(base.map((r, i) => [r.item.id, i]));
+  const value = avail.map((r, i) => ({ r, i })).filter((x) => x.i < COUNTER_TOP && x.r.item.kind === "legendary" && (bi.get(x.r.item.id) ?? 99) - x.i >= COUNTER_UP).map((x) => x.r.item.id);
+  counterCache = { key, value };
+  return value;
+}
+
 // 적 구성 조언 (게임 화면 상자·애드온): 받는 피해 쪽 방어, 회복 많으면 치유 감소, 탱커 많으면 관통
 
 function enemyAdvice() {
@@ -146,6 +185,11 @@ function enemyAdvice() {
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
+  }
+  // 적이 산 아이템 때문에 순위가 크게 오른 아이템 (다음 구매를 그린 뒤에 정해진다)
+  if (state.counter && state.counter.items.length) {
+    const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
+    out.push(`${state.counter.why} → 적 대응: ${names.join(" 또는 ")}`);
   }
   return out;
 }
@@ -730,6 +774,16 @@ function renderOfferResult() {
   const nowBal = S.buildConcepts(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o, ["balanced"])[0];
   const ranked = S.rankAugments(d.augments, state.weights, state.chosen, state.items, state.champ, d.rules);
   const { gains } = S.numericAugmentGains(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o);
+  // 적 대응 증강: 이번 판 적(산 아이템) 기준으로 강해지는 정도가 기본 상대 기준보다 확 큰 것 (고정 피해·체력 비례 피해 등)
+  const counterAug = new Set();
+  if (enemyMoved()) {
+    const offered = offers.map((x) => x.a);
+    const g0 = atDefault(() => S.numericAugmentGains(offered, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o).gains);
+    for (const a of offered) {
+      const x = gains[a.id], y = g0[a.id];
+      if (x && y && y.gain >= COUNTER_AUG_MIN && x.gain / y.gain >= COUNTER_AUG) counterAug.add(a.id);
+    }
+  }
   // 같은 등급 안에서의 위치: 실제 숫자(빌드 가치 증가)로 평가할 수 있는 증강끼리 비교. 1등 = 상위 1/n
   const pctile = (aug) => {
     if (!gains[aug.id]) return null;
@@ -774,7 +828,7 @@ function renderOfferResult() {
         const f = r.aug && r.aug.final;
         return `<tr class="${r === best ? "best" : ""}">
           <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-            ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
             ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
             ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
             ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
@@ -804,7 +858,7 @@ function renderOfferResult() {
   draw();
   // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
   if (state.offersClosed) pushOverlay([], "clear:closed");
-  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
+  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, counter: counterAug.has(r.a.id), reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   // 다음 차례에 몰빵 빌드를 채운다. 그 사이 선택지가 바뀌었으면(새 화면) 버린다
   const seq = ++offerSeq;
   setTimeout(() => {
@@ -828,7 +882,7 @@ function pushOverlay(rows, src) {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
       // 게임 화면은 짧게: '고르면 ○○형으로 가볼 수 있어요'는 변신 표시와 겹쳐서 뺀다
       reason: (t && t.link && ["strong", "conflict"].includes(t.link.kind) ? `${LINK_LABEL[t.link.kind][0]} ${LINK_LABEL[t.link.kind][1]} · ` : "")
-        + (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
+        + (x.counter ? "🛡️ 적 대응 · " : "") + (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
     };
   }
   sendOverlay(src || (rows && rows.length ? "cards" : "clear"));
@@ -906,7 +960,7 @@ function sendOverlay(src) {
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   hud.push(...enemyAdvice());
-  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.title).slice(0, 3);
+  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.label || e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
   // 기록용: 적이 산 아이템으로 잡은 상대 능력치와 조언 (잘 돌아가는지 나중에 확인)
@@ -1174,8 +1228,9 @@ function renderNextBuy(rows) {
   if (!state.champ) { box.innerHTML = ""; return; }
   const hasBoots = state.items.some((i) => i.kind === "boots");
   const ctx = S.augContext(state.chosen, state.data.rules);
-  const avail = rows.filter((r) => !canAdd(r.item))
-    .filter((r) => r.item.kind === "legendary" || (r.item.kind === "boots" && !hasBoots) || (r.item.kind === "special" && ctx.wanted[r.item.name]));
+  const keep = (r) => !canAdd(r.item)
+    && (r.item.kind === "legendary" || (r.item.kind === "boots" && !hasBoots) || (r.item.kind === "special" && ctx.wanted[r.item.name]));
+  const avail = rows.filter(keep);
   // 아이템이 있어야 효과가 나는 증강(강철 같은 심장 → 강철심장, 업그레이드 증강)은 그 아이템을 맨 앞에.
   // 빌드에는 넣었지만 순위로만 고르면 징크스·강철심장처럼 6위라 '다음 구매'에서 빠졌다 (2026-10-15 사용자 지적)
   const must = [];
@@ -1185,9 +1240,14 @@ function renderNextBuy(rows) {
     if (r) { r.must = true; must.push(r); }
   }
   const pick = [...must, ...avail.filter((r) => !must.includes(r))].slice(0, 3);
+  // 적 대응: 순위가 크게 오른 아이템이 위 3개에 없으면 3번째 자리에 (증강에 필요한 아이템은 밀어내지 않는다)
+  const counter = counterItems(avail, keep);
+  state.counter = counter.length ? { items: counter, why: enemyItemSummary() } : null;
+  for (const r of avail) r.counter = counter.includes(r.item.id);
+  if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !pick[2].must) pick[2] = avail.find((r) => r.counter);
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
-    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : ""))}">
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : `<p class="muted small">아이템 칸이 다 찼어요.</p>`);
   const adv = enemyAdvice();
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);

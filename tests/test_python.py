@@ -803,6 +803,34 @@ class ShopBox(unittest.TestCase):
         self.assertEqual(api._rec.ev[0][1]["reasons"][0], "🔗 강한 연계 · 이유")
         self.assertEqual(api._rec.ev[1][1]["timers"][0], {"name": "도주 계획", "kind": "hp", "picked": 1000, "readyAt": 1081, "hp": 33})
 
+    def test_stall_and_resource_record(self):
+        # 게임 중 감시가 한참 늦게 돌아오면 '멈춤'으로, 30초마다 자원을 기록한다 (2026-10-15 '중간에 컴퓨터가 멈춤')
+        class Rec:
+            active = True
+
+            def __init__(self):
+                self.ev = []
+
+            def event(self, kind, data=None, dedupe=False):
+                self.ev.append((kind, data))
+        w = desktop.LiveWatcher.__new__(desktop.LiveWatcher)
+        w.rec, w.state = Rec(), {"inGame": True}
+        samples = iter([{"cpu": 10.0, "mem": 60}, {"cpu": 25.0, "mem": 61, "sysMem": 70}, {"cpu": 26.0}])
+        old = desktop.resource_sample
+        desktop.resource_sample = lambda: next(samples)
+        try:
+            w.watch_resources(1000.0, 3.2)
+            w.watch_resources(1030.0, 3.1)
+            w.watch_resources(1048.0, 18.0)
+        finally:
+            desktop.resource_sample = old
+        self.assertEqual(w.rec.ev[0], ("res", {"cores": 0.5, "mem": 61, "sysMem": 70}))
+        self.assertEqual(w.rec.ev[1], ("stall", {"gap": 18.0, "res": {"cpu": 26.0}}))
+        self.assertEqual(len(w.rec.ev), 2, "30초가 안 지났으면 자원 기록은 건너뛴다")
+        w.state = {"inGame": False}
+        w.watch_resources(1100.0, 60.0)
+        self.assertEqual(len(w.rec.ev), 2, "게임 밖에선 기록하지 않는다")
+
     def test_box_when_dead_or_start(self):
         # 상점 창을 못 알아봐도 죽어 있을 때·시작 직후엔 상자를 띄운다 (2026-10-15 케일 판: 상점 인식 0번 → 상자가 한 번도 안 뜸)
         import overlay

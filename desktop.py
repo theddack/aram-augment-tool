@@ -173,6 +173,8 @@ def live_url():
 LIVE_URL = live_url()
 LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
 LIVE_INTERVAL = 3  # 초 (게임 중·챔피언 선택 중)
+STALL_EXTRA = 7  # 초. 게임 연동 한 바퀴가 이만큼 더 늦으면 '멈춤'으로 기록 (읽기 제한 2초 + 여유)
+RES_EVERY = 30  # 초. 게임 중 자원 기록 간격
 IDLE_INTERVAL = 10  # 초 (게임 밖·롤 클라이언트 꺼짐: 자주 볼 필요가 없어서 줄인다)
 SNAPSHOT_EVERY = 300  # 같은 게임에서 원본을 다시 저장하는 간격(초). 증강 필드 확인용
 _insecure = ssl.create_default_context()
@@ -289,11 +291,32 @@ class LiveWatcher(threading.Thread):
 
     def run(self):
         while True:
-            self.beat = time.time()
+            now = time.time()
+            gap, self.beat = now - self.beat, now
             if self.enabled:
+                self.watch_resources(now, gap)
                 self.poll()
             # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
             time.sleep(LIVE_INTERVAL if self.state.get("inGame") else IDLE_INTERVAL)
+
+    def watch_resources(self, now, gap):
+        """게임 중 자원 기록 (2026-10-15 실게임 '중간에 컴퓨터가 멈춤': 그땐 기록이 없어 원인을 못 봤다).
+        - stall: 이 감시가 한 바퀴(3초+읽기 2초)보다 훨씬 늦게 돌아왔다 = 컴퓨터(또는 이 프로그램)가 그동안 멈췄다
+        - res: RES_EVERY 초마다 애드온 CPU(코어 몇 개분)·메모리, 컴퓨터 전체 메모리 사용률"""
+        rec = getattr(self, "rec", None)
+        if not (rec and rec.active and self.state.get("inGame")):
+            self._res = None
+            return
+        if gap > LIVE_INTERVAL + STALL_EXTRA:
+            rec.event("stall", {"gap": round(gap, 1), "res": resource_sample()})
+        last = getattr(self, "_res", None)
+        if last and now - last[0] < RES_EVERY:
+            return
+        smp = resource_sample()
+        if last and smp.get("cpu") is not None and last[1].get("cpu") is not None:
+            rec.event("res", {"cores": round((smp["cpu"] - last[1]["cpu"]) / max(1e-6, now - last[0]), 2),
+                              **{k: v for k, v in smp.items() if k != "cpu"}})
+        self._res = (now, smp)
 
     def poll(self):
         try:
@@ -928,6 +951,59 @@ WEBVIEW2_ARGS = ("--disable-gpu --disable-gpu-compositing --in-process-gpu --ren
                  "--js-flags=--optimize-for-size --enable-features=NetworkServiceInProcess2 "
                  "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter,"
                  "SpareRendererForSitePerProcess,BackForwardCache")
+
+
+def resource_sample():
+    """윈도우: {cpu: 애드온 전체(작업 개체: 화면 엔진 포함, 없으면 이 프로세스)가 지금까지 쓴 CPU 초,
+    mem: 이 프로세스 메모리(MB), sysMem: 컴퓨터 전체 메모리 사용률(%), availGB: 남은 메모리(GB)}. 못 읽은 값은 빠진다"""
+    out = {}
+    if sys.platform != "win32":
+        return out
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = wintypes.HANDLE
+        if _job:
+            class Acct(ctypes.Structure):
+                _fields_ = [("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+                            ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                            ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+                            ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
+            a = Acct()
+            k.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p]
+            if k.QueryInformationJobObject(_job, 1, ctypes.byref(a), ctypes.sizeof(a), None):  # JobObjectBasicAccountingInformation
+                out["cpu"] = (a.TotalUserTime + a.TotalKernelTime) / 1e7
+                out["procs"] = a.ActiveProcesses
+        if "cpu" not in out:
+            c, e, kt, ut = (wintypes.FILETIME() for _ in range(4))
+            if k.GetProcessTimes(k.GetCurrentProcess(), ctypes.byref(c), ctypes.byref(e), ctypes.byref(kt), ctypes.byref(ut)):
+                ft = lambda f: (f.dwHighDateTime << 32 | f.dwLowDateTime) / 1e7
+                out["cpu"] = ft(kt) + ft(ut)
+
+        class PMC(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+        pm = PMC()
+        pm.cb = ctypes.sizeof(PMC)
+        k.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+        if k.K32GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(pm), pm.cb):
+            out["mem"] = round(pm.WorkingSetSize / 1024 ** 2)
+
+        class MS(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32), ("ullTotalPhys", ctypes.c_uint64),
+                        ("ullAvailPhys", ctypes.c_uint64), ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+                        ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64), ("ullAvailExtendedVirtual", ctypes.c_uint64)]
+        m = MS()
+        m.dwLength = ctypes.sizeof(MS)
+        if k.GlobalMemoryStatusEx(ctypes.byref(m)):
+            out["sysMem"] = m.dwMemoryLoad
+            out["availGB"] = round(m.ullAvailPhys / 1024 ** 3, 1)
+    except Exception as e:
+        out["error"] = str(e)[:80]
+    return out
 
 
 def total_ram_gb():
