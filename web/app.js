@@ -1117,7 +1117,13 @@ window.addEventListener("pywebviewready", async () => {
   }
   $("#itemset-toggle").checked = st.itemSets;
   $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });
-  setInterval(async () => applyLcu(api, await api.get_lcu()), 3000);
+  // 롤 클라이언트: 게임 중엔 챔피언 선택·상점 추천 등록이 끝났으니 15초마다만 (게임 중 CPU)
+  let lcuAt = 0;
+  setInterval(async () => {
+    if (document.body.classList.contains("ingame") && Date.now() - lcuAt < 15000) return;
+    lcuAt = Date.now();
+    applyLcu(api, await api.get_lcu());
+  }, 3000);
   // 가벼운 모드 (저사양 PC): 계산 기억을 줄이고 쉽게 보기만. 증강 칸 아이콘 읽기는 프로그램을 다시 켜면 꺼진다
   const applyLight = (on) => {
     document.body.classList.toggle("light", on);
@@ -1133,13 +1139,21 @@ window.addEventListener("pywebviewready", async () => {
   });
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
-  // 게임 중엔 1초마다(증강 선택 화면을 읽으면 바로 카드 평가가 떠야 해서), 그 밖엔 3초마다.
+  // 증강 선택 화면이 떠 있거나 상점이 열려 있으면 1초마다, 그 밖엔 3초마다 (게임 중 CPU).
+  // 선택 화면이 새로 뜨거나 고르거나 상점을 열면 파이썬이 바로 깨운다 (livePoke) → 카드 평가가 늦지 않다.
   // 화면 → 파이썬 호출이 잦을수록 창 스레드와 파이썬이 서로 기다리다 굳을 위험이 커서 필요할 때만 자주 부른다
+  let liveTimer = null, liveBusy = false;
   const livePoll = async () => {
+    clearTimeout(liveTimer);
+    if (liveBusy) return;
+    liveBusy = true;
     let L = null;
     try { L = await api.get_live(); applyLive(L); applyAug(L && L.aug); } catch (e) { /* 다음에 다시 */ }
-    setTimeout(livePoll, L && L.inGame ? 1000 : 3000);
+    liveBusy = false;
+    const busy = L && L.inGame && L.aug && (L.aug.offers || L.aug.shop);
+    liveTimer = setTimeout(livePoll, busy ? 1000 : 3000);
   };
+  window.livePoke = livePoll;
   livePoll();
   // 데이터 갱신: 브라우저 확인창(제목이 '127.0.0.1:…의 메시지')은 헷갈려서 버튼 옆 안내 문구로 묻는다 (2026-10-14 지적)
   const btn = $("#update-data");

@@ -259,6 +259,18 @@ class Tracker:
 
 
 # ---------------------------------------------------------------- 윈도우: 화면 잡기 + 글자 인식
+def lower_thread():
+    """지금 스레드를 가장 낮은 우선순위로 (무거운 아이콘 비교가 게임·애드온 창보다 뒤에 돌게)"""
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.GetCurrentThread.restype = ctypes.c_void_p
+        k.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        k.SetThreadPriority(k.GetCurrentThread(), -2)  # THREAD_PRIORITY_LOWEST
+    except Exception:
+        pass
+
+
 class _Capture:
     def __init__(self):
         import ctypes
@@ -430,6 +442,7 @@ class Reader(threading.Thread):
         self.offered = set()  # 이번 게임 선택 화면에서 본 증강 이름 (같은 그림 묶음을 가릴 때)
         self.rec = None  # 한 판 기록 (gamelog.GameRecorder)
         self.on_ready = None
+        self.on_change = None  # 선택지·고른 증강·상점 열림이 바뀌면 부른다 (애드온 화면을 바로 깨워 카드 평가를 늦지 않게)
         self.hud_unsure = []  # 증강 칸에 있지만 묶음 중 어느 것인지 못 정한 것 [이름 목록]
 
     @property
@@ -437,7 +450,7 @@ class Reader(threading.Thread):
         return {**self.tracker.state, "status": self.status, "ms": self.last_ms, "near": self.near, "shop": self.shop,
                 "hudPicked": list(self.hud_ids), "hudUnsure": [list(g) for g in self.hud_unsure]}
 
-    def scan_hud(self, cap, rect):
+    def scan_hud(self, cap, rect, game_n=None):
         import numpy as np
         import hudicons
         gx, gy, gw, gh = rect
@@ -471,7 +484,12 @@ class Reader(threading.Thread):
             if ids or unsure or self.hud.last:
                 self._rec("hud", data)
                 self._hud_logged = True
+        if game_n is not None and game_n != getattr(self, "_game_n", 0):
+            return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 버린다
+        changed = ids != self.hud_ids
         self.hud_ids, self.hud_unsure = ids, unsure
+        if changed:
+            self._changed()
 
     def run(self):
         if not IS_WINDOWS:
@@ -515,6 +533,13 @@ class Reader(threading.Thread):
                 self._rec("error", {"error": str(e)[:200]}, dedupe=True)
             self.wait_clicks(mouse, rect)
 
+    def _changed(self):
+        if self.on_change:
+            try:
+                self.on_change()
+            except Exception:
+                pass
+
     def _rec(self, kind, data, dedupe=False):
         if self.rec:
             self.rec.event(kind, data, dedupe=dedupe)
@@ -525,6 +550,7 @@ class Reader(threading.Thread):
         self._hud_logged = False
         self._area_saved = False
         self._hud_at = 0
+        self._game_n = getattr(self, "_game_n", 0) + 1
         if self.hud:
             self.hud.reset()
         self.hud_ids = []
@@ -586,21 +612,38 @@ class Reader(threading.Thread):
         before = dict(self.tracker.state)
         self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
         after = self.tracker.state
+        if (after.get("seq"), after.get("pickSeq"), bool(after.get("offers"))) != (before.get("seq"), before.get("pickSeq"), bool(before.get("offers"))):
+            self._changed()
         if after.get("seq") != before.get("seq"):  # 새 선택지 (새로고침 포함): 읽은 글자 원문과 카드 이름 줄 그림
             self._rec("offers", {"read": segs, "offers": after.get("offers"), "pos": after.get("pos"),
                                  "image": self.rec.image("card", img, iw, ih) if self.rec else None})
         if after.get("pickSeq") != before.get("pickSeq"):
             self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
             self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
+            self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
         # 증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서)
         now = time.time()
-        if self.hud and now >= getattr(self, "_hud_at", 0):
-            self.scan_hud(cap, rect)
-            self._hud_at = now + (HUD_EVERY if self.hud.size else HUD_EVERY_MISSING)
+        # 따로 낮은 우선순위로 돈다: 같이 돌면 그동안 선택 화면 읽기·클릭 기록이 멈췄다 (전체 모드, 2026-10-15 가상 PC 10초)
+        if self.hud and now >= getattr(self, "_hud_at", 0) and not getattr(self, "_hud_busy", False):
+            self._hud_busy = True
+            threading.Thread(target=self._hud_job, args=(rect, getattr(self, "_game_n", 0)), daemon=True, name="증강 칸 읽기").start()
         self.scan_shop_only(cap, ocr, rect)
+
+    def _hud_job(self, rect, game_n):
+        try:
+            lower_thread()
+            if getattr(self, "_hud_cap", None) is None:
+                self._hud_cap = _Capture()  # 화면 캡처 도구는 스레드마다 따로
+            self.scan_hud(self._hud_cap, rect, game_n)
+        except Exception as e:
+            self._rec("error", {"error": "증강 칸: " + str(e)[:200]}, dedupe=True)
+        finally:
+            soon, self._hud_soon = getattr(self, "_hud_soon", False), False
+            self._hud_at = time.time() + (2 if soon else HUD_EVERY if self.hud.size else HUD_EVERY_MISSING)
+            self._hud_busy = False
 
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
@@ -621,4 +664,6 @@ class Reader(threading.Thread):
                 data["image"] = self.rec.image("shop", rows, x1 - x0, int(gh * 0.06))
                 self._shop_img = True
             self._rec("shop", data)
+            self.shop = shop
+            self._changed()
         self.shop = shop

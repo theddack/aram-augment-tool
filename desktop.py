@@ -1018,6 +1018,13 @@ def trim_memory():
         pass
 
 
+def _safe(fn):
+    try:
+        fn()
+    except Exception:
+        pass
+
+
 class WebMemory:
     """화면 엔진(WebView2) 메모리 절약: 게임 중이거나 창을 내려 두면 '적게 쓰기'로 (캐시를 비우고 덜 붙잡는다).
     게임 밖에서 창을 보고 있을 땐 보통으로 되돌린다 (적게 쓰기는 화면 반응이 조금 느려질 수 있다)"""
@@ -1133,6 +1140,12 @@ def main():
     )
     api._window = window
     webmem.window = window
+    if reader:
+        def poke():
+            # 기다리지 않고 따로: 증강 인식이 창 스레드를 기다리며 서지 않게
+            threading.Thread(target=lambda: _safe(lambda: window.run_js("window.livePoke && window.livePoke()")),
+                             daemon=True, name="화면 깨우기").start()
+        reader.on_change = poke
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
     # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
     diag = Diag(user_dir() / "logs" / "diag.log", {

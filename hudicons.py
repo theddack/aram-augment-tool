@@ -8,6 +8,7 @@
 numpy·Pillow 가 필요하다 (없으면 이 기능만 꺼진다).
 """
 import os
+import time
 
 try:
     import numpy as _np
@@ -18,6 +19,9 @@ except ImportError:  # numpy 가 없으면 이 기능만 꺼진다 (Templates �
 GRID = 12  # 위치 찾기 크기 (흑백 12x12: 빠르게 후보 자리만)
 FINE = 24  # 어떤 증강인지 가리기 크기 (흑백 24x24 가운데: 12x12 는 비슷한 아이콘끼리 헷갈렸다)
 INNER = 0.12  # 가리기는 가장자리를 이만큼씩 빼고 가운데 그림만 (공통 어두운 테두리 때문에 '미친 과학자'가 모든 아이콘과 닮아 보였다)
+# 묶음마다 잠깐 쉰다: 한꺼번에 몰아 계산하면 CPU 상한(작업 개체)을 다 써서 애드온 창까지 잠깐 굳었다
+# (2026-10-15 윈도우 가상 PC, 전체 모드 1.8초). 결과는 같고 조금 더 천천히 끝난다
+PAUSE = 0.004
 CHUNK = 4096  # 한 번에 비교하는 창 수 (메모리 상한: 4096 x 아이콘 174 x 4바이트 ≈ 3MB)
 FIND_SCORE = 0.55  # 위치 후보로 볼 닮은 정도 (느슨하게)
 REGION = (0.12, 0.70, 0.75, 1.0)  # 찾는 범위 (게임 창 비율: 왼쪽, 위, 오른쪽, 아래). HUD 가 왼쪽으로 치우친 해상도도 (2520x1575)
@@ -135,6 +139,7 @@ def find_icons(tpl, rgb, size_px):
     for y0 in range(0, ys, rows_per):
         block = v[y0:y0 + rows_per].reshape(-1, GRID * GRID)
         top[y0 * xs: y0 * xs + len(block)] = tpl.scores(block).max(1)
+        time.sleep(PAUSE)
     cands = []
     for i in np.argsort(-top)[:200]:
         if top[i] < FIND_SCORE:
@@ -165,6 +170,7 @@ def find_icons(tpl, rgb, size_px):
         if not crops:
             continue
         S = tpl.identify(np.array(crops))
+        time.sleep(PAUSE)
         j = np.unravel_index(int(S.argmax()), S.shape)
         sc = float(S[j])
         row = S[j[0]].copy()
