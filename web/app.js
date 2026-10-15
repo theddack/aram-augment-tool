@@ -1112,18 +1112,20 @@ function applyAug(A) {
   // 게임 증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭으로 짐작한 건 틀릴 수 있었다: 2026-10-14 나피리 판)
   // 클릭으로 잡은 것은 지우지 않고 합친다 (v0.1.15: 증강 칸 오판이 맞게 잡은 광신자·조준경 부착을 덮어썼다)
   const hud = (A.hudPicked || []).map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean);
+  // 한 번 받은 정보로 화면은 한 번만 다시 그린다 (증강 칸 결과와 고른 증강이 같이 오면 전체 다시 그리기가 두 번이었다)
+  let full = false, offersOnly = false, warn = false;
   const add = hud.filter((a) => !state.chosen.some((c) => c.id === a.id));
   if (add.length && state.chosen.length < 4) {
     state.chosen = [...state.chosen, ...add].slice(0, 4);
     clearOffers();
-    renderAll();
+    full = true;
   }
   if (A.offers && A.seq !== augSeq) {
     augSeq = A.seq;
     if (state.chosen.length < 4) {
       state.offers = A.offers.map(byName);
       state.offersClosed = false;
-      renderOffers();
+      offersOnly = true;
     }
   }
   if (A.pickSeq && A.pickSeq !== augPickSeq) {
@@ -1135,15 +1137,17 @@ function applyAug(A) {
       if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
       if (state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
       clearOffers();
-      renderAll();
+      full = true;
     } else if (A.pickedFrom) {
       // 어느 카드였는지 못 정함 → 애드온엔 선택지를 남겨 '이걸로 선택'을 누르게 하고, 게임 화면 카드 표시는 지운다
       state.offers = A.pickedFrom.map(byName);
       state.offersClosed = true;
-      renderOffers();
-      $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
+      offersOnly = warn = true;
     }
   }
+  if (full) renderAll();
+  else if (offersOnly) renderOffers();
+  if (warn) $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
 }
 
 // 윈도우 프로그램: 롤이 챔피언을 알려 주는지 (클라이언트 연결 또는 게임 중). 바뀌면 챔피언 목록을 숨기거나 보인다

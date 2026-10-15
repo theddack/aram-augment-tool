@@ -361,6 +361,24 @@ test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로
   assert.match(p.text("#chosen"), /골드 강탈/, "클릭으로 잡은 것은 지우지 않는다");
 });
 
+test("증강 칸 결과와 고른 증강이 한 번에 오면 화면은 한 번만 다시 그린다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Naafiri", level: 9, items: [] });
+  const giant = p.data.augments.find((a) => a.name === "거인");
+  const orig = p.w.renderAll;
+  let n = 0;
+  p.w.renderAll = () => { n++; orig(); };
+  p.w.applyAug({ offers: null, seq: 1, picked: "골드 강탈", pickSeq: 1, hudPicked: [giant.id] });
+  p.w.renderAll = orig;
+  assert.equal(n, 1);
+  assert.match(p.text("#chosen"), /거인/);
+  assert.match(p.text("#chosen"), /골드 강탈/);
+  // 고른 것을 못 정했을 때 안내 문구는 다시 그린 뒤에도 남는다
+  p.w.applyAug({ offers: null, seq: 1, picked: null, pickedFrom: ["신성한 눈덩이", "부식", "흡수"], pickSeq: 2 });
+  assert.match(p.text("#offer-result"), /확인하지 못했어요/);
+  assert.deepEqual(p.errors, []);
+});
+
 test("윈도우 프로그램: 챔피언 검색·목록을 숨기고, 게임에서 고른 챔피언은 가운데 칸에", async () => {
   const p = await loadPage({ simple: true });
   p.w.document.body.classList.add("winapp");
