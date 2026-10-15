@@ -204,3 +204,53 @@ test("기본 빌드는 라이엇 주 피해 유형을 따른다 (이렐리아 AP
   assert.ok(items("Jinx").some(isCrit), "원거리 딜러는 치명타 그대로");
   assert.ok(items("Yasuo").some(isCrit), "치명타 특성(야스오)은 그대로");
 });
+
+// ---- 추천 품질 (2026-10-15 검토: 변칙은 증강이 받쳐 줄 때만, 몰빵은 증강을 실제로 살리는지)
+const build = (cid, augIds, key) => {
+  const c = champ(cid);
+  return S.buildConcepts(d.items, S.profile(c, d.tags), augIds.map(aug), [], d.rules, c, {}, [key])[0];
+};
+const hasTag = (b, t) => b.pick.filter((p) => ((p.item.tags || {})[t] || 0) >= 0.5).length;
+
+test("변칙: 증강이 없으면 받쳐 주는 정도 0 (화면에 실험 빌드로 표시)", () => {
+  const b = build("Jinx", [], "twist");
+  assert.equal(b.twist.s, 0);
+  assert.ok(b.twist.opp.includes("AP"), "징크스의 반대쪽은 주문력");
+});
+
+test("변칙: 주문력 계수 보호막(전술적 대비)이면 징크스가 주문력 아이템을 산다", () => {
+  const b = build("Jinx", ["ARAM_BigBrain"], "twist");
+  assert.ok(b.twist.s > 0 && b.twist.by.includes("전술적 대비"), JSON.stringify(b.twist));
+  assert.ok(hasTag(b, "AP") >= 2, b.pick.map((p) => p.item.name).join(","));
+});
+
+test("변칙: 공격력·주문력을 둘 다 키우는 증강(적응형 계수)이나 주문력 고정 수치는 근거가 아니다", () => {
+  const sup = (cid, ids) => S.twistSupport(S.profile(champ(cid), d.tags), S.augContext(ids.map(aug), d.rules)).s;
+  const id = (name) => d.augments.find((a) => a.name === name).id;
+  assert.equal(sup("Zed", [id("불여우")]), 0, "불여우: 공격력·주문력 계수 둘 다");
+  assert.equal(sup("Jinx", [id("사악한 정신")]), 0, "사악한 정신: 주문력 +80 고정");
+  assert.equal(sup("Jinx", ["ARAM_ADAPt"]), 1, "공격력→주문력 환산은 확실한 근거");
+});
+
+test("몰빵: 아이템 업그레이드 증강은 그 아이템을 빌드에 넣는다 (징크스 + 징수의 총 업그레이드)", () => {
+  const id = d.augments.find((a) => a.name === "징수의 총 업그레이드").id;
+  for (const key of ["augment", "balanced"]) {
+    const b = build("Jinx", [id], key);
+    assert.ok(b.pick.some((p) => p.item.name === "징수의 총"), `${key}: ${b.pick.map((p) => p.item.name).join(",")}`);
+  }
+});
+
+test("몰빵: 적 방어력을 깎는 증강(부식)에 방어력 아이템을 사지 않는다", () => {
+  const id = d.augments.find((a) => a.name === "부식").id;
+  const b = build("Jinx", [id], "augment");
+  assert.equal(hasTag(b, "ARMOR") - b.pick.filter((p) => p.item.kind === "boots" && ((p.item.tags || {}).ARMOR || 0) >= 0.5).length, 0,
+    b.pick.map((p) => p.item.name).join(","));
+});
+
+test("추천 품질 점검: 몰빵 빌드가 증강을 살리는 비율 95% 이상, 변칙 정상 90% 이상 (표본)", () => {
+  const Q = require(path.join(__dirname, "..", "tools", "augment_quality.js"));
+  const ids = d.augments.filter((a, i) => i % 5 === 0).map((a) => a.id);
+  const sum = Q.summary(Q.check(d, ["Jinx", "Malphite"], ids));
+  assert.ok(sum.mollppang.n > 30 && sum.mollppang.rate >= 0.95, JSON.stringify(sum));
+  assert.ok(sum.twist.rate >= 0.9, JSON.stringify(sum));
+});

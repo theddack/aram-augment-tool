@@ -44,7 +44,7 @@
 
   // 빌드 컨셉: 챔피언 가중치와 증강 태그를 섞는 비율
   const CONCEPTS = [
-    { key: "augment", label: "증강 몰빵", desc: "고른 증강 효과를 극대화", champ: 0.35, aug: 1.2, mismatch: true },
+    { key: "augment", label: "증강 몰빵", desc: "고른 증강 효과를 극대화", champ: 0.35, aug: 1.2, mismatch: true, focus: 1 },
     { key: "balanced", label: "균형", desc: "증강과 챔피언 성향을 절반씩", champ: 1, aug: 0.7, mismatch: true },
     { key: "twist", label: "변칙", desc: "챔피언 성향을 뒤집고 증강에 맞춤 (AP 마스터 이, 탱커 징크스 같은)", champ: 0.5, aug: 1, flip: true, mismatch: false },
   ];
@@ -154,18 +154,40 @@
 
   // 고른 증강에서 빌드에 필요한 정보(태그·환산·무시 태그·요구 아이템)를 모은다
   function augContext(chosen, rules) {
-    const tags = {}, src = {}, convert = {}, zero = new Set(), wanted = {};
+    const tags = {}, src = {}, convert = {}, zero = new Set(), wanted = {}, must = [], lift = {}, liftSrc = {}, liftBy = {};
     for (const a of chosen) {
       const rule = ruleOf(rules, a);
-      for (const [t, v] of Object.entries(effTags(rules, a))) {
+      const et = effTags(rules, a);
+      for (const [t, v] of Object.entries(et)) {
         if (v > (tags[t] || 0)) tags[t] = v;
         (src[t] = src[t] || []).push(a.name);
       }
+      // 빌드가 따라갈 태그(lift): 증강이 그 능력치 아이템의 가치를 올릴 때만 (계수·배율이 붙거나, 숫자 없이 효과 종류만 있는 증강).
+      // 효과 종류 태그를 그대로 따르면 '부식'(적 방어력 감소)에 방어력 아이템, '사악한 정신'(주문력 +80)에 징크스 주문력 아이템이 들어갔다
+      // (2026-10-15 추천 품질 점검). 숫자가 있는 증강의 나머지 효과는 수치 계산이 맡는다
+      const scales = scaleTags(a, rule);
+      const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _convert: Object.values(rule.convert || {}) });
+      const up = (t, v) => { lift[t] = Math.max(lift[t] || 0, v); (liftSrc[t] = liftSrc[t] || []).push(a.name); mine[t] = Math.max(mine[t] || 0, v); };
+      for (const [t, v] of Object.entries(et)) if (scales === null || scales.has(t)) up(t, v);
+      for (const to of Object.values(rule.convert || {})) up(to, 1);
       Object.assign(convert, rule.convert || {});
       for (const t of rule.zero || []) zero.add(t);
       for (const n of rule.items || []) (wanted[n] = wanted[n] || []).push(a.name);
+      if ((rule.items || []).length) must.push(rule.items);
     }
-    return { tags, src, convert, zero, wanted };
+    return { tags, src, convert, zero, wanted, must, lift, liftSrc, liftBy };
+  }
+  // 증강이 '키우는' 능력치: 효과 계수(주문력 300% 보호막 → 주문력)·배율(체력 +35% → 체력). 고정 수치(주문력 +80)는 아이템 가치를 안 올린다
+  // 숫자가 하나도 없는 증강은 null (효과 종류만 믿는다)
+  const RATIO_TAG = { AP: ["AP"], AD: ["AD"], bonusAD: ["AD"], HP: ["HP"], bonusHP: ["HP"], bonusARMOR: ["ARMOR"], bonusMR: ["MR"] };
+  const MULT_TAG = { APmult: ["AP"], ADmult: ["AD"], HPmult: ["HP"], ASmult: ["AS"], adaptiveMult: ["AD", "AP"], ehpMult: ["HP", "ARMOR", "MR"], shieldMult: ["HEALSHIELD"], HSP: ["HEALSHIELD"] };
+  function scaleTags(a, rule) {
+    const st = rule.statsResolved;
+    if (!(a.effects && a.effects.length) && !st) return null;
+    const out = new Set();
+    for (const e of a.effects || []) for (const k of Object.keys(e.ratios || {})) for (const t of RATIO_TAG[k] || []) out.add(t);
+    for (const k of Object.keys(st || {})) for (const t of MULT_TAG[k] || []) out.add(t);
+    return out;
   }
 
   function flipWeights(w) {
@@ -180,12 +202,42 @@
     return f;
   }
 
+  // 변칙을 받쳐 주는 증강: 챔피언 성향을 뒤집었을 때 커지는 쪽(징크스면 체력·방어·주문력)을 고른 증강이 키우는가.
+  // 성향만 뒤집은 빌드는 재미를 보장하지 않는다 (원딜에 탱커 아이템). 증강 때문에 플레이가 바뀔 때가 진짜 변칙 (2026-10-15 검토)
+  // s: 0(받쳐 주는 증강 없음) ~ 1. 환산 증강(공격력→주문력 등)이 뒤집힌 쪽으로 바꾸면 1
+  const TWIST_TAGS = ["AD", "AP", "LETHAL", "MPEN", "HP", "ARMOR", "MR", "AS", "CRIT"];
+  const TWIST_FOCUS = 2; // 변칙: 받쳐 주는 증강이 보태는 가치를 키우는 비율
+  const TWIST_GAP = 0.3; // 뒤집었을 때 이만큼 커지는 태그가 '반대쪽'
+  function twistSupport(w, ctx) {
+    const f = flipWeights(w);
+    const opp = TWIST_TAGS.filter((t) => (f[t] || 0) - (w[t] || 0) >= TWIST_GAP);
+    let s = 0;
+    const by = new Set();
+    // 원래 쪽(제드면 공격력)도 같이 키우는 증강(적응형: 공격력·주문력 둘 다 계수)은 뒤집을 이유가 없다 → 반대쪽만 키우는 증강만
+    const own = TWIST_TAGS.filter((t) => !opp.includes(t) && (w[t] || 0) >= 0.5);
+    // 숫자 없이 효과 종류만 있는 증강은 변칙 근거로 쓰지 않는다 (메아리 시전 '주문력' 태그로 제드가 뒤집혔다: 숫자로 확인되는 것만)
+    for (const [name, lifted] of Object.entries(ctx.liftBy || {})) {
+      const sc = lifted._convert.length ? new Set(lifted._convert) : lifted._scales;
+      if (!sc || own.some((t) => sc.has(t))) continue;
+      for (const t of opp) if (lifted[t] && sc.has(t)) { s = Math.max(s, lifted[t]); by.add(name); }
+    }
+    return { s: Math.min(1, s), by: [...by], opp };
+  }
+  // 받쳐 주는 증강이 있으면 그만큼만 뒤집는다 (0.5~1). 없으면 성향만 뒤집은 '실험' 빌드 (화면에서 그렇게 알린다)
+  const twistK = (sup) => (sup.s > 0 ? 0.5 + 0.5 * sup.s : 1);
+  const lerp = (a, b, k) => {
+    const out = {};
+    for (const t of new Set([...Object.keys(a), ...Object.keys(b)])) out[t] = (a[t] || 0) * (1 - k) + (b[t] || 0) * k;
+    return out;
+  };
+
   function conceptWeights(w, ctx, concept) {
-    const base = concept.flip ? flipWeights(w) : w;
-    const hasAug = Object.keys(ctx.tags).length > 0;
+    const base = concept.flip ? lerp(w, flipWeights(w), twistK(twistSupport(w, ctx))) : w;
+    const lift = ctx.lift || ctx.tags;
+    const hasAug = Object.keys(lift).length > 0;  // 빌드가 따라갈 태그가 없는 증강이면 챔피언 성향 그대로
     const champK = hasAug ? concept.champ : 1;
     const out = {};
-    for (const t of Object.keys(w)) out[t] = (base[t] || 0) * champK + (ctx.tags[t] || 0) * concept.aug;
+    for (const t of Object.keys(w)) out[t] = (base[t] || 0) * champK + (lift[t] || 0) * concept.aug;
     for (const t of ctx.zero) out[t] = 0;
     return out;
   }
@@ -204,9 +256,10 @@
     const rule = champ && OFF_TYPE[champ.damageType];
     if (!rule || (concept && concept.flip)) return null;
     // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 챔피언)
-    const noCrit = champ.damageType === "physical" && !critUser(champ) && !((ctx.tags.CRIT || 0) >= 0.5);
+    const lift = ctx.lift || ctx.tags;
+    const noCrit = champ.damageType === "physical" && !critUser(champ) && !((lift.CRIT || 0) >= 0.5);
     if (Object.keys(ctx.convert || {}).some((t) => rule.off.includes(ctx.convert[t]) || rule.off.includes(t))) return null;
-    if (rule.off.some((t) => (ctx.tags[t] || 0) >= 0.5)) return null;
+    if (rule.off.some((t) => (lift[t] || 0) >= 0.5)) return null;
     return (item) => {
       const t = convertTags(item.tags || {}, ctx.convert || {});
       // 치명타가 능력치 줄에만 있고 태그엔 없는 아이템이 있다 (윤 탈 야생화살: 치명타 0 에서 기본 지속 효과로 쌓임)
@@ -287,6 +340,20 @@
     return v;
   }
 
+  // 이 빌드(아이템 목록)에서 증강 하나가 보태는 가치: 증강을 더한 뒤 − 더하기 전 (지표 가중치는 증강을 고른 균형 기준으로 고정)
+  // 추천 품질 점검(tools/augment_quality.js)에서 '몰빵 빌드가 증강을 더 살리나'를 잴 때 쓴다
+  function augContribution(items, w, chosen, aug, rules, champ, statOpts = {}) {
+    const ctx = augContext([...chosen, aug], rules);
+    const num = { mw: metricWeights(conceptWeights(w, ctx, CONCEPTS[1])), norm: {} };
+    const c = withChosenFeatures(champ, [...chosen, aug], rules);
+    const base = augStatsOf(chosen, rules, c);
+    const empty = Stats.evaluate(c, 18, [], base, statOpts).m;
+    for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
+    const v0 = valueOf(Stats.evaluate(c, 18, items, base, statOpts).m, num);
+    const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c)], statOpts).m, num);
+    return v1 - v0;
+  }
+
   // 화면 이유 문장용 실제 숫자 (퍼센트만 보면 원래 값이 작을 때 과장돼 보여서 '112 → 407'로 보여 준다)
   function absParts(m0, m1) {
     const out = {};
@@ -310,6 +377,9 @@
   function buildWith(items, iw, fixed, opts) {
     const num = opts.num ? { ...opts.num, mw: opts.mw || metricWeights(iw) } : null;
     const evalM = (list) => Stats.evaluate(num.champ, num.level, list, num.augStats, num.statOpts).m;
+    // 증강 몰빵: 빌드 전체 가치에 더해 '증강이 보태는 가치'(증강 있음 − 없음)도 키운다 = 증강 효과 극대화
+    const focus = num && opts.focus && num.augStats.length ? opts.focus : 0;
+    const evalBare = (list) => Stats.evaluate(num.champ, num.level, list, [], num.statOpts).m;
     if (num) {
       const m0 = evalM([]);
       num.norm = {};
@@ -319,16 +389,18 @@
       const tag = scoreItem(item, iw, state.covered, opts);
       const list = [...state.items, item];
       const m = num ? evalM(list) : null;
-      const numGain = num ? (valueOf(m, num) - valueOf(state.m, num)) * NUM_K : 0;
+      const bare = focus ? evalBare(list) : null;
+      const augPart = focus ? (valueOf(m, num) - valueOf(bare, num)) - (valueOf(state.m, num) - valueOf(state.bare, num)) : 0;
+      const numGain = num ? (valueOf(m, num) - valueOf(state.m, num) + focus * augPart) * NUM_K : 0;
       const score = num ? numGain + tag.score * TAG_K : tag.score;
       const covered = { ...state.covered };
       addCovered(covered, convertTags(item.tags, opts.ctx.convert));
       return {
-        items: list, covered, m, total: state.total + score,
+        items: list, covered, m, bare, total: state.total + score,
         picks: [...state.picks, { item, ...tag, tagScore: tag.score, score, gain: num ? gainParts(state.m, m) : null, fixed: fixedFlag }],
       };
     };
-    let beams = [{ items: [], covered: {}, m: num ? evalM([]) : null, total: 0, picks: [] }];
+    let beams = [{ items: [], covered: {}, m: num ? evalM([]) : null, bare: focus ? evalBare([]) : null, total: 0, picks: [] }];
     for (const item of fixed) beams = [step(beams[0], item, true)];
     const expand = (pool, perBeam) => {
       const next = [];
@@ -349,9 +421,17 @@
       if (next.length) beams = next.sort((a, b) => b.total - a.total).slice(0, BEAM);
       return next.length > 0;
     };
+    const all = items;
     if (opts.off) items = items.filter((i) => !opts.off(i));
     if (!fixed.some((i) => i.kind === "boots") && fixed.length < SLOTS) {
       expand(items.filter((i) => i.kind === "boots"), 2);
+    }
+    // 아이템 업그레이드 증강(징수의 총 업그레이드 등)은 그 아이템을 사야 효과가 있다: 후보 중 하나를 먼저 넣는다.
+    // 점수 가산만으로는 원래 안 사던 챔피언(징크스·징수의 총)에게 끝내 안 들어갔다 (2026-10-15 추천 품질 점검)
+    for (const group of (opts.ctx && opts.ctx.must) || []) {
+      if (beams[0].items.length >= SLOTS || fixed.some((i) => group.includes(i.name))) continue;
+      const pool = all.filter((i) => group.includes(i.name) && i.kind === "legendary");
+      if (pool.length) expand(pool, 1);
     }
     const legendary = items.filter((i) => i.kind === "legendary");
     while (beams[0].items.length < SLOTS) {
@@ -412,8 +492,12 @@
     for (const k of Object.keys(inv)) inv[k] /= invSum;
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
-      const mw = c.flip ? inv : null;
-      return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, off: offTypeFilter(champ, ctx, c) }) };
+      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off: offTypeFilter(champ, ctx, c) }) };
+      const twist = twistSupport(w, ctx);
+      const k = twistK(twist);
+      const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
+      // 받쳐 주는 증강이 있으면 그 증강이 보태는 가치도 키운다 (뒤집은 쪽 아이템이 증강 덕분에 쓸모가 생기는 방향으로)
+      return { ...c, weights: iw, twist: { ...twist, k }, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, focus: twist.s > 0 ? TWIST_FOCUS : 0, off: null }) };
     });
   }
 
@@ -549,7 +633,7 @@
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
-    numericAugmentGains, hasNumbers, augmentTiers, SYNERGY_MARK, itemSynergy,
+    numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, SYNERGY_MARK, itemSynergy,
     conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures,
   };
   if (typeof module !== "undefined") module.exports = api;

@@ -72,6 +72,32 @@ test("이번 선택지: 3개 비교·추천 1개·새로고침 권장", async ()
   const rows = p.qa(".offer-table tr").slice(1);
   assert.equal(rows.length, 3);
   assert.equal(rows.filter((r) => r.classList.contains("best")).length, 1, "추천은 하나");
+  assert.equal(p.qa(".offer-table .how").length, 3, "선택지마다 쓰는 법");
+  assert.ok(p.qa(".offer-table .chip.fun").length <= 1, "재미 픽은 많아야 하나");
+  assert.ok(!rows.find((r) => r.classList.contains("best")).querySelector(".chip.fun"), "재미 픽은 추천과 다른 것");
+  assert.deepEqual(p.errors, []);
+});
+
+test("쓰는 법·재미 픽·변칙 설명", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  // 변칙 탭: 증강이 없으면 실험 빌드라고 알린다
+  p.click(p.qa("#concept-tabs button").find((b) => b.dataset.k === "twist"));
+  assert.match(p.text("#concept-desc"), /실험 빌드/);
+  // 고른 증강 밑에 쓰는 법
+  p.click(p.augRow("ARAM_BigBrain"));
+  assert.match(p.text("#chosen"), /🎮 전술적 대비/);
+  p.click(p.qa("#concept-tabs button").find((b) => b.dataset.k === "twist"));
+  assert.match(p.text("#concept-desc"), /전술적 대비.*받쳐 주는 변칙/);
+  // 선택지: 변칙 열쇠·재미 픽 (빌드가 크게 바뀌는 증강)
+  p.click(p.qa("#chosen .slot[data-i]")[0]);
+  const names = ["전술적 대비", "도주 계획", "거인"];
+  p.qa("#offers input[list]").forEach((inp, i) => {
+    inp.value = names[i];
+    for (const t of ["input", "change"]) inp.dispatchEvent(new p.w.Event(t, { bubbles: true }));
+  });
+  assert.match(p.text("#offer-result"), /변칙 열쇠/);
+  assert.match(p.text("#offer-result"), /같이 살 것|🎮/);
   assert.deepEqual(p.errors, []);
 });
 

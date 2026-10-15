@@ -308,7 +308,9 @@ function renderChosen() {
     if (!a) return `<div class="slot muted">빈 칸</div>`;
     return `<div class="slot" data-i="${i}" title="해제"><img src="${icon("augment", a.id)}" alt=""><span class="r${a.rarity}">${esc(a.name)}</span></div>`;
   });
-  $("#chosen").innerHTML = slots.join("");
+  const tips = state.chosen.map((a) => [a, playTip(a)]).filter(([, t]) => t);
+  $("#chosen").innerHTML = slots.join("")
+    + (tips.length ? `<div class="how-list">${tips.map(([a, t]) => `<div class="how">🎮 <b>${esc(a.name)}</b> ${esc(t)}</div>`).join("")}</div>` : "");
   $("#chosen").querySelectorAll(".slot[data-i]").forEach((el) => el.addEventListener("click", () => {
     state.chosen.splice(Number(el.dataset.i), 1);
     renderAll();
@@ -360,10 +362,13 @@ function champStyle() {
   const mw = S.metricWeights(state.weights);
   return Object.entries(mw).sort((a, b) => b[1] - a[1])[0][0];
 }
+// 증강이 실제로 키우는 효과 종류: 숫자가 있는 증강은 계수·배율이 붙은 것만 (scoring.js augContext lift).
+// 효과 종류 태그를 그대로 쓰면 '부식'(적 방어력 감소)이 '탱커형으로 변신'으로 나왔다 (2026-10-15)
+const augLift = (a) => S.augContext([a], state.data.rules).lift;
 function transform(a) {
   const rule = state.data.rules.augments[a.id] || {};
   if (rule.setsFeatures && (rule.setsFeatures.add || []).includes("melee") && !state.champ.melee) return "melee";
-  const st = styleOf(rule.tags || a.tags || {});
+  const st = styleOf(augLift(a));
   return st && st !== champStyle() ? st : null;
 }
 
@@ -427,6 +432,71 @@ function patchChip(lines, checks) {
 function transformChip(a) {
   const tr = transform(a);
   return tr ? `<span class="chip on" title="이 증강을 고르면 ${esc(state.champ.name)}의 플레이 방향이 바뀌어요">🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신</span>` : "";
+}
+
+// 쓰는 법 한 줄: 추천 이유(왜 좋은가) 다음에 '어떻게 쓰나'. 뉴비가 고른 뒤 뭘 하면 되는지 (2026-10-15 검토)
+// 발동 방식(규칙·게임 데이터) → 주된 효과 종류 순서로 최대 두 마디
+const CATEGORY_TIP = {
+  quest: "설명의 조건부터 채우세요. 보상을 받으면 강해져요.",
+  random: "나온 결과에 맞춰 빌드를 바꾸면 돼요.",
+  spell: "바뀐 소환사 주문을 한타 시작에 아끼지 말고 쓰세요.",
+};
+const TRIGGER_TIP = {
+  onhit: "기본 공격을 자주 넣어야 터져요.",
+  attacks: "기본 공격을 여러 번 이어 쳐야 터져요.",
+  cast: "스킬을 쓸 때마다 터지니 쉬지 말고 돌리세요.",
+  time: "가만히 있어도 주기적으로 터지니 싸움에 오래 붙어 있으세요.",
+};
+// 능력치(규칙 statsResolved) → 쓰는 법. 효과 종류 태그보다 먼저 본다 (태그는 '적 방어력 감소'도 방어력으로 적혀 있다)
+const STAT_TIP = [
+  [["ARPEN", "MPENP", "LETHALITY", "MPEN", "trueBonus"], "단단한 적(탱커)을 상대로 특히 세요."],
+  [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
+  [["controlSec", "fearPerCast"], "적을 묶고 아군과 같이 들어가세요."],
+  [["HASTE", "basicHaste", "slotHaste", "AStoHASTE", "APtoHASTE", "refundPct", "refundAll"], "스킬을 쉬지 않고 돌리세요."],
+  [["ultHaste", "ultHasteAdd", "ultRefundEvery"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
+  [["AS", "ASmult", "CRIT", "onhitCdr"], "기본 공격을 꾸준히 넣는 게 핵심이에요."],
+  [["HP", "HPmult", "ARMOR", "MR", "ehpMult", "drSec", "invulnSec"], "앞에 서서 버티며 싸울 수 있어요."],
+  [["MS", "MSP", "MSmult", "dashHaste"], "많이 움직이며 치고 빠지세요."],
+  [["goldValue"], "골드가 빨리 모이니 핵심 아이템을 먼저 사세요."],
+];
+const TAG_TIP = [
+  [["AS", "ONHIT", "CRIT"], "기본 공격을 꾸준히 넣는 게 핵심이에요."],
+  [["HP", "ARMOR", "MR"], "앞에 서서 버티며 싸울 수 있어요."],
+  [["AP", "MPEN"], "스킬 위주로 싸우세요."],
+  [["AD", "LETHAL"], "물리 피해로 약한 적부터 노리세요."],
+  [["HEALSHIELD", "VAMP"], "오래 붙어 싸울수록 이득이에요."],
+  [["HASTE"], "스킬을 쉬지 않고 돌리세요."],
+  [["ULT"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
+  [["MS"], "많이 움직이며 치고 빠지세요."],
+  [["CC"], "적을 묶고 아군과 같이 들어가세요."],
+  [["TRUE"], "탱커 상대로 특히 세요."],
+  [["MANA"], "마나 걱정 없이 스킬을 쓰세요."],
+];
+function playTip(a) {
+  const rule = state.data.rules.augments[a.id] || {};
+  if (CATEGORY_TIP[a.category]) return CATEGORY_TIP[a.category];
+  const out = [];
+  // 아이템 업그레이드 증강: 그 아이템을 사야 효과가 있다
+  const up = (rule.items || []).filter((n) => state.data.items.some((i) => i.name === n && i.kind === "legendary"));
+  if (up.length) out.push(`${up.length > 1 ? `${up.slice(0, 2).join("·")}${up.length > 2 ? " 등" : ""} 중 하나를` : josa(up[0], "을", "를")} 사야 효과가 나요.`);
+  const conv = Object.entries(rule.convert || {})[0];
+  if (conv) out.push(`${S.TAG_LABEL[conv[0]] || conv[0]} 아이템을 사도 ${josa(S.TAG_LABEL[conv[1]] || conv[1], "으로", "로")} 바뀌니 섞어 사도 돼요.`);
+  if ((rule.zero || []).includes("ULT")) out.push("궁극기를 못 쓰니 기본 스킬을 쉬지 않고 쓰세요.");
+  const feat = rule.requires && state.data.rules.features[rule.requires];
+  if (feat && !["melee", "ranged"].includes(rule.requires)) out.push(`${feat}을 쓸 때 발동해요.`);
+  const trig = (a.effects || []).map((e) => e.trigger || {}).find((t) => TRIGGER_TIP[t.type]);
+  if (out.length < 2 && trig) out.push(TRIGGER_TIP[trig.type]);
+  const attackTip = trig && ["onhit", "attacks"].includes(trig.type);  // '기본 공격마다'와 '기본 공격이 핵심'을 겹쳐 쓰지 않는다
+  const add = (tip) => { if (out.length < 2 && !out.includes(tip) && !(attackTip && tip.includes("기본 공격"))) out.push(tip); };
+  const st = rule.statsResolved || {};
+  const stat = STAT_TIP.find(([keys]) => keys.some((k) => k in st));
+  if (stat) add(stat[1]);
+  if (out.length < 2) {
+    const tags = augLift(a);
+    const top = TAG_TIP.map(([ts, tip]) => [Math.max(...ts.map((t) => tags[t] || 0)), tip]).sort((x, y) => y[0] - x[0])[0];
+    if (top && top[0] >= 0.5) add(top[1]);
+  }
+  return out.slice(0, 2).join(" ");
 }
 
 // 이유 한 줄: 데이터에서 자동으로 만든 쉬운 문장
@@ -505,6 +575,21 @@ function renderOffers() {
   renderOfferResult();
 }
 
+// 재미 픽: 점수가 낮아도 해 볼 가치가 있는 선택 (모토 "어떤 증강도 재밌게"). 추천(가장 강한 것)과 따로 하나만.
+// 기준 = 플레이 방향이 바뀌거나(변신), 변칙을 받쳐 주거나, 아이템이 3개 이상 바뀌는 것. 효과가 아예 없는 것은 빼고
+function funPick(rows, best, tiers) {
+  const score = (r) => (transform(r.a) ? 2 : 0) + (r.twistKey ? 2 : 0) + (r.changed >= 3 ? r.changed / 2 : 0);
+  const pool = rows.filter((r) => r !== best && !noEffect(tiers[r.a.id]) && score(r) >= 2);
+  return pool.length ? pool.reduce((x, y) => (score(y) > score(x) ? y : x)) : null;
+}
+// 선택지 밑 '쓰는 법': 이 증강을 고르면 어떻게 싸우고 뭘 사면 되나 (몰빵 빌드에서 새로 들어오는 아이템 2개)
+function howLine(r) {
+  const tip = playTip(r.a);
+  const items = r.newItems.slice(0, 2);
+  if (!tip && !items.length) return "";
+  return `<div class="how">🎮 ${esc(tip)}${items.length ? ` <span class="muted">같이 살 것: ${items.map(esc).join(", ")}</span>` : ""}</div>`;
+}
+
 function renderOfferResult() {
   const out = $("#offer-result");
   const offers = state.offers.map((a, i) => (a ? { a, i } : null)).filter(Boolean);
@@ -525,11 +610,15 @@ function renderOfferResult() {
     const idx = pool.findIndex((x) => x.id === aug.id);
     return { top: (idx + 1) / pool.length, n: pool.length, rank: idx + 1 };
   };
+  const twistNow = S.twistSupport(state.weights, S.augContext(state.chosen, d.rules)).s;
   const rows = offers.map(({ a, i }) => {
     const sc = ranked.find((r) => r.aug.id === a.id) || { score: 0 };
     const aug = S.buildConcepts(d.items, state.weights, [...state.chosen, a], state.items, d.rules, state.champ, o, ["augment"])[0];
     const changed = aug.pick.filter((p) => !p.fixed && !nowBal.pick.some((q) => q.item.name === p.item.name)).length;
-    return { a, i, sc, p: pctile(a), aug, changed };
+    // 변칙 열쇠: 이 증강을 고르면 '변칙' 빌드를 받쳐 주는 증강이 생긴다 (성향만 뒤집은 실험 → 증강 덕분에 바뀌는 변칙)
+    const twistKey = S.twistSupport(state.weights, S.augContext([...state.chosen, a], d.rules)).s - twistNow >= 0.5;
+    const newItems = aug.pick.filter((p) => !p.fixed && !nowBal.pick.some((q) => q.item.name === p.item.name)).map((p) => p.item.name);
+    return { a, i, sc, p: pctile(a), aug, changed, twistKey, newItems };
   });
   // 추천: 숫자로 평가되는 선택지 중 빌드 가치 증가가 가장 큰 것. 셋 다 숫자가 없으면 효과 점수로
   const tiers = getTiers();
@@ -538,6 +627,7 @@ function renderOfferResult() {
   const best = rows.slice().sort((x, y) => { const a = rank(x), b = rank(y); return a[0] - b[0] || a[1] - b[1]; })[0];
   const rerollable = rows.filter((r) => !state.rerolled[r.i] && r.p && r.p.top >= 1 - REROLL_PCT);
   const worst = rerollable.length ? rerollable.reduce((x, y) => (y.p.top > x.p.top ? y : x)) : null;
+  const fun = funPick(rows, best, tiers);
   const delta = (v, b) => {
     const dd = b > 0 ? (v - b) / b : 0;
     return Math.abs(dd) < 0.005 ? `<span class="muted">±0%</span>` : `<span class="${dd > 0 ? "up" : "down"}">${dd > 0 ? "+" : ""}${fmt(dd * 100)}%</span>`;
@@ -550,8 +640,11 @@ function renderOfferResult() {
       return `<tr class="${r === best ? "best" : ""}">
         <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
           ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+          ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
+          ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
           ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
-          <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div></td>
+          <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
+          ${howLine(r)}</td>
         <td>${tierBadge(tiers[r.a.id])}</td>
         <td>${gains[r.a.id] ? `<span class="${gains[r.a.id].gain >= 0 ? "up" : "down"}">${gains[r.a.id].gain >= 0 ? "+" : ""}${fmt(gains[r.a.id].gain * 100)}</span>` : `<span class="muted" title="효과 점수 ${r.sc.score.toFixed(2)}">숫자 없음</span>`}</td>
         <td>${r.p ? `${r.p.rank}위 / ${r.p.n}개 (상위 ${fmt(r.p.top * 100)}%)` : `<span class="muted">평가 불가</span>`}</td>
@@ -568,7 +661,7 @@ function renderOfferResult() {
       추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
   // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
   if (state.offersClosed) pushOverlay([]);
-  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
+  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
     const a = state.offers[Number(el.dataset.pick)];
     if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
@@ -584,7 +677,7 @@ function pushOverlay(rows) {
   for (const x of rows || []) {
     const t = x.t;
     const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["", ""];
-    const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : "";
+    const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
@@ -790,6 +883,13 @@ function setMini(on) {
   renderBuild();
 }
 
+// 변칙 설명: 받쳐 주는 증강이 있으면 그 증강 이름, 없으면 성향만 뒤집은 실험 빌드라고 알린다
+function twistNote(tw) {
+  const want = [...new Set(tw.opp.map((t) => S.TAG_LABEL[t] || t))].slice(0, 3).join("·");
+  if (tw.s > 0) return `🎭 ${josa(tw.by.join(" + "), "이", "가")} 받쳐 주는 변칙이에요. 챔피언 성향을 ${fmt(tw.k * 100)}%만큼 뒤집고 증강에 맞췄어요.`;
+  return `🧪 실험 빌드: 아직 변칙을 받쳐 줄 증강이 없어서 성향만 뒤집었어요. ${want} 쪽 증강이 나오면 진짜 변칙이 돼요 (선택지에 🎭 표시).`;
+}
+
 function renderBuild() {
   if (!state.champ) { $("#build").innerHTML = ""; $("#concept-tabs").innerHTML = ""; $("#concept-desc").textContent = ""; return; }
   // 작게 보기(3종을 한 줄씩)일 때만 3종을 다 찾는다. 보통은 지금 고른 탭 하나만 (다른 탭은 누를 때)
@@ -803,9 +903,10 @@ function renderBuild() {
     state.concept = el.dataset.k;
     renderBuild();
   }));
-  $("#concept-desc").textContent = cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
+  $("#concept-desc").textContent = cur.twist ? twistNote(cur.twist)
+    : cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
   // 작게 보기용 한 줄 요약: 컨셉 3개의 빌드 아이콘
-  $("#mini-build").innerHTML = !mini ? "" : `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}</b>
+  $("#mini-build").innerHTML = !mini ? "" : `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}${b.twist && !b.twist.s ? "🧪" : ""}</b>
     ${b.pick.map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");
   const f = cur.final;
   $("#build").innerHTML = (f ? `<div class="build-sum">완성 시 (18레벨): 스킬 한 바퀴 피해 <b>${fmt(f.combo)}</b> · 초당 피해 <b>${fmt(f.dps)}</b> · 버티는 힘 <b>${fmt(f.ehp)}</b>${f.support ? ` · 회복·보호막 <b>${fmt(f.support)}</b>` : ""}</div>` : "")
