@@ -3,6 +3,8 @@
 (function (root) {
   const AS_CAP = 2.5;
   const BASE_CRIT_DMG = 1.75;
+  const CRIT_STACK_MAX = 10;  // 치명적 리듬 최대 중첩 (설명)
+  const CLEAVE_RANGED = 0.5;  // 원거리 쪼개기 = 근접의 절반 (공격력 20% / 40%)
   const DMG_KINDS = ["magic", "physical", "true"];
 
   // 표시용 능력치 목록: [키, 이름, 소수점 자리, 비율(%) 여부]
@@ -123,8 +125,10 @@
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
-    t.AS = Math.min(AS_CAP, (base.AS + bonusAS * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     t.CRIT = Math.min(1, add.CRIT);
+    // 치명타마다 쌓이는 공격 속도 (치명적 리듬): 한타 평균 중첩 = 치명타 확률 × 최대 중첩 (가정, rules.json basis)
+    if (conv.critStackAS) bonusAS += conv.critStackAS * CRIT_STACK_MAX * t.CRIT;
+    t.AS = Math.min(AS_CAP, (base.AS + bonusAS * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
     // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
     const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
@@ -389,6 +393,9 @@
     for (const e of stats.effects || []) {
       let v = effectValue(e, 1, L, t) * (e.ticks || 1);
       if (e.rangedScale != null && !champ.melee) v *= e.rangedScale;
+      // 쪼개기(불경한 히드라)는 원거리 챔피언이면 절반 (근접 공격력 40% · 원거리 20%, 리그 오브 레전드 위키)
+      // (2026-10-15 베인+치명적 리듬: 원거리인데 근접 값으로 세서 불경한 히드라가 무한의 대검보다 위였다)
+      if (/cleave/i.test(e.name || "") && !champ.melee && e.rangedScale == null) v *= CLEAVE_RANGED;
       if (e.chance === "CRIT") v *= t.CRIT;  // 확률 발동은 기대값
       const tr = e.trigger || { type: "once" };
       // 쿨다운이 있으면 콤보 한 번(COMBO_WINDOW초) 안 발동 횟수와 초당 발동 횟수를 제한

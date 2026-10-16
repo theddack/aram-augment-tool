@@ -302,3 +302,17 @@ test("연계: 두 번째·세 번째 증강까지 누적 (고른 증강 2개 기
   const id = byName("응급처치 키트").id;
   assert.notEqual(one[id].interaction, two[id].interaction);
 });
+
+test("치명적 리듬 베인: 무한의 대검이 불경한 히드라보다 위 (치명타 공속 중첩 · 쪼개기는 주변 적에게만)", () => {
+  const c = d.champions.find((x) => x.id === "Vayne");
+  const w = S.profile(c, d.tags);
+  const rh = d.augments.find((a) => a.id === "CriticalRhythm");
+  const owned = ["6672", "3006", "3036", "3153"].map((id) => d.items.find((i) => i.id === id));
+  const rows = S.rankItems(d.items, w, [rh], owned, d.rules, c, { aram: true }, "augment");
+  const at = (n) => rows.findIndex((r) => r.item.name === n);
+  assert.ok(at("무한의 대검") < at("불경한 히드라"), `무한의 대검 ${at("무한의 대검") + 1}위 · 불경한 히드라 ${at("불경한 히드라") + 1}위`);
+  // 치명타가 오를수록 공격 속도도 오른다
+  const aug = S.augStatsOf([rh], d.rules, c);
+  const as = (items) => Stats.computeStats(c, 18, items, aug, { aram: true }).total.AS;
+  assert.ok(as([...owned, d.items.find((i) => i.id === "3031")]) > as(owned));
+});

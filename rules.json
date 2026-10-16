@@ -938,7 +938,18 @@
     },
     "CriticalRhythm": {
       "stats": {
-        "CRIT": "CritChance"
+        "CRIT": "CritChance",
+        "critStackAS": 0.06
+      },
+      "basis": {
+        "calc": "치명타마다 공격 속도 6% 중첩 (최대 10) → 한타 평균 중첩 = 치명타 확률 × 10 (치명타 아이템을 살수록 커진다)",
+        "assume": [
+          {
+            "what": "한타 평균 중첩 = 치명타 확률 × 10",
+            "why": "치명타 확률이 높을수록 빨리 쌓이고 오래 유지돼서, 치명타 100%면 거의 늘 최대로 봤어요",
+            "noData": true
+          }
+        ]
       }
     },
     "ARAM_DoubleTap": {
