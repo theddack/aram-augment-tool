@@ -573,3 +573,27 @@ test("아이템 칸이 다 찼으면 바꾸기(판다 → 산다)를 아이콘�
   assert.ok(!sent.at(-1).hud.some((x) => /라바돈/.test(x) && /팔/.test(x)), "상자 글은 늘리지 않는다 (아이콘으로만)");
   assert.deepEqual(p.errors, []);
 });
+
+test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이템·소환사 주문 칸만 근거)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const foes = ["Mordekaiser", "Xayah", "Leona", "Vayne", "Lux"];
+  const builds = [[id("스테락의 도전"), id("가시 갑옷"), id("태양불꽃 방패")], [id("불멸의 철갑궁"), id("크라켄 학살자"), id("구인수의 격노검")],
+    [id("케이닉 루컨")], [id("몰락한 왕의 검")], []];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c, k) => ({ champion: c, level: 12, items: builds[k], augments: k === 0 ? ["GrowthSpurt"] : k === 1 ? ["ARAM_FlashySpell"] : [] })) });
+  p.w.sendOverlay();
+  const e = sent.at(-1).enemy;
+  const advice = e.advice.join("\n");
+  assert.match(advice, /적별 \(산 아이템\): .*모데카이저 탱커 3/);
+  assert.match(advice, /자야 보호막·공속 2/);
+  assert.match(advice, /적 보호막 많음 \(보호막 아이템 3개\) → 보호막 감소: 독사의 송곳니/, advice);
+  assert.match(advice, /적 공격 속도 높음 \(자야\) → 검토: /, "가렌은 앞에서 맞는다");
+  assert.match(advice, /적 증강 \(확인됨\): 모데카이저 급속 성장 · 자야 점멸 난사/);
+  const hud = sent.at(-1).hud.join("\n");
+  assert.doesNotMatch(hud, /적별|적 증강/, "게임 화면 상자는 할 일만 (짧게)");
+  assert.match(hud, /보호막 감소/);
+  assert.deepEqual(p.errors, []);
+});

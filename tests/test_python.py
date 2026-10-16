@@ -682,6 +682,18 @@ class LiveEnemies(unittest.TestCase):
         self.assertEqual(b["items"], ["3075", "3047"])
         self.assertIn("level", b)
 
+    def test_enemy_spell_augments(self):
+        # 소환사 주문을 주는 증강은 공식 데이터에 보인다 (2026-10-15 베인 판 실제 값)
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        foes = [p for p in raw["allPlayers"] if p.get("team") == "ORDER"]
+        foes[0]["summonerSpells"] = {"summonerSpellOne": {"displayName": "급속 성장", "rawDisplayName": "GeneratedTip_Spell_Augment_GrowthSpurt_DisplayName"},
+                                     "summonerSpellTwo": {"displayName": "점멸", "rawDisplayName": "GeneratedTip_SummonerSpell_Augment_ARAM_FlashySpell_DisplayName"}}
+        foes[1]["summonerSpells"] = {"summonerSpellOne": {"displayName": "점멸", "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"}}
+        st = desktop.parse_live(raw)
+        got = {b["champion"]: b["augments"] for b in st["enemyBuilds"]}
+        self.assertIn(["GrowthSpurt", "ARAM_FlashySpell"], got.values())
+        self.assertEqual(sum(1 for v in got.values() if v), 1, "보통 주문은 증강이 아님")
+
 
 
 try:

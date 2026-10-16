@@ -25,7 +25,9 @@ function enemyInfo() {
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
   // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
-  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem));
+  // 확인된 상대 증강도 본다 (소환사 주문 증강: 회복·보호막 증가 → 회복 많음)
+  const healAug = (c) => enemyAugs(c).some((a) => (augTags(a).HEALSHIELD || 0) >= 0.5);
+  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c));
   const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
   return { list, magic, healers, tanks };
 }
@@ -103,6 +105,20 @@ function showTarget() {
   $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : n ? `아이템·증강 비교: 이번 판 적 ${n}명 18레벨 예상 (산 아이템 + 안 산 칸은 평균 빌드)` : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`
     + (now ? ` / 지금 적 (평균 ${fmt(now.level, Number.isInteger(now.level) ? 0 : 1)}레벨, 산 아이템만): 체력 ${fmt(now.HP)} · 방어력 ${fmt(now.ARMOR)} · 마법 저항력 ${fmt(now.MR)}` : "");
 }
+// 소환사 주문 칸에 보이는 증강 이름표(GrowthSpurt, ARAM_FlashySpell) → 증강. 공식 데이터에서 상대 증강이 보이는 유일한 곳이라
+// 이것만 '확인됨'으로 쓴다 (다른 증강은 추측하지 않는다). 이름표와 증강 id 가 조금 다르다 (ARAM_FlashySpell ↔ ARAM_Flashy)
+const normId = (v) => String(v).toLowerCase().replace(/_active$/, "").replace(/[^a-z0-9]/g, "");
+function spellAugment(token) {
+  const t = normId(token);
+  if (!t) return null;
+  const list = state.data.augments;
+  return list.find((a) => normId(a.id) === t)
+    || list.filter((a) => a.category === "spell" && (t.startsWith(normId(a.id)) || normId(a.id).startsWith(t)))
+      .sort((a, b) => normId(b.id).length - normId(a.id).length)[0] || null;
+}
+// 증강이 키우는 것 (규칙의 특성 우선)
+const augTags = (a) => ((state.data.rules.augments || {})[a.id] || {}).tags || a.tags || {};
+const enemyAugs = (c) => ((state.enemyBuilds || []).find((e) => e.champ.id === c.id) || {}).augments || [];
 const healItem = (i) => (i.tags && (i.tags.VAMP || 0) >= 0.5) || (i.stats && !Array.isArray(i.stats) && ("LS" in i.stats || "OMNIVAMP" in i.stats));
 const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0) >= 0.5 || (i.tags.MR || 0) >= 0.5)
   && !((i.tags.AD || 0) >= 0.5 || (i.tags.AP || 0) >= 0.5);
@@ -186,12 +202,49 @@ function enemyAdvice() {
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
   }
+  // 팀 평균에 묻히는 위협을 적 하나하나로 (2026-10-16 기획: "탱커 2명이 체력 아이템 다수" 처럼)
+  const threats = enemyThreats();
+  if (threats.lines.length) out.push(`적별 (산 아이템): ${threats.lines.join(" · ")}`);
+  // 보호막: 보호막 아이템·증강이 3개 이상이면 보호막 감소 (물리 피해 챔피언만: 마법 쪽엔 해당 아이템이 없다)
+  if (threats.shield >= 3) {
+    const cut = items.filter((i) => i.name === "독사의 송곳니" && fits(i)).map((i) => i.name);
+    out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : ""));
+  }
+  // 공격 속도: 공격 속도 아이템을 2개 이상 산 적이 있고 내가 앞에서 맞는 챔피언이면 공격 속도 대응 방어 아이템
+  const front = state.champ.tags.includes("Tank") || (state.champ.melee && !state.champ.tags.includes("Assassin"));
+  if (threats.as.length && front) {
+    const def = items.filter((i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name)).map((i) => i.name).slice(0, 2);
+    out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
+  }
+  // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
+  const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
+  if (seen.length) out.push(`적 증강 (확인됨): ${seen.join(" · ")}`);
   // 적이 산 아이템 때문에 순위가 크게 오른 아이템 (다음 구매를 그린 뒤에 정해진다)
   if (state.counter && state.counter.items.length) {
     const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
     out.push(`${state.counter.why} → 적 대응: ${names.join(" 또는 ")}`);
   }
   return out;
+}
+// 적 하나하나가 산 아이템으로 본 위협 (팀 평균에 묻히지 않게). 이름은 위협이 큰 순서로 최대 3명
+const shieldItem = (i) => (i.effects || []).some((x) => x && x.kind === "shield") || i.name === "맬모셔스의 아귀";
+function enemyThreats() {
+  const lines = [], as = [];
+  let shield = 0;
+  const rows = [];
+  for (const e of state.enemyBuilds || []) {
+    const its = e.items.filter((i) => i.kind === "legendary");
+    const n = { tank: its.filter(tankItem).length, heal: its.filter(healItem).length, shield: its.filter(shieldItem).length,
+      as: its.filter((i) => ((i.tags || {}).AS || 0) >= 0.5).length,
+      pen: its.filter((i) => ((i.tags || {}).LETHAL || 0) >= 0.5 || ((i.tags || {}).MPEN || 0) >= 0.5).length };
+    shield += n.shield + e.augments.filter((a) => (augTags(a).HEALSHIELD || 0) >= 0.5).length;
+    if (n.as >= 2) as.push(e.champ.name);
+    const what = [n.tank >= 2 ? `탱커 ${n.tank}` : "", n.heal ? "흡혈" : "", n.shield ? "보호막" : "", n.as >= 2 ? `공속 ${n.as}` : "",
+      n.pen >= 2 ? `관통 ${n.pen}` : ""].filter(Boolean);
+    if (what.length) rows.push({ w: n.tank + n.heal + n.shield + n.as + n.pen, text: `${e.champ.name} ${what.join("·")}` });
+  }
+  for (const r of rows.sort((a, b) => b.w - a.w).slice(0, 3)) lines.push(r.text);
+  return { lines, shield, as };
 }
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
@@ -982,7 +1035,10 @@ function sendOverlay(src) {
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
-  hud.push(...enemyAdvice());
+  // 게임 화면 상자는 짧게: 할 일(→)이 없는 정보 줄(적별 위협·확인된 적 증강)은 애드온 창에만
+  const INFO_ONLY = /^(적별|적 증강)/;
+  const adv = enemyAdvice();
+  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)));
   const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.label || e.title).slice(0, 3);
   if (next.length) hud.push("다음 구매: " + next.join(" > "));
   if (state.buyNowText) hud.push("💰 " + state.buyNowText);
@@ -993,7 +1049,7 @@ function sendOverlay(src) {
     now: enemyNow(),  // 지금 상대 (실제 레벨 + 산 아이템)
     resistItems: enemyResistItems(),
     builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name) })),
-    advice: enemyAdvice(),
+    advice: adv,
   } : null;
   const sw = swapAdvice();
   const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name } : null;
@@ -1495,8 +1551,9 @@ function applyLive(L) {
     level: x.level || 1,
     items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
       .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
+    augments: (x.augments || []).map(spellAugment).filter(Boolean),
   })).filter((x) => x.champ);
-  const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort()]));
+  const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id)]));
   if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
   else if (eb.length) {
     // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로

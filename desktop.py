@@ -221,7 +221,8 @@ def parse_live(raw):
     enemies = [cid(p) for p in foes]
     # 적이 산 아이템·레벨 (게임 안 Tab 점수판에 보이는 정보): 상대 능력치·관통·치유 감소 판단에 쓴다
     enemy_builds = [{"champion": cid(p), "level": p.get("level"),
-                     "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")]} for p in foes]
+                     "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")],
+                     "augments": spell_augments(p)} for p in foes]
     gd = raw.get("gameData") or {}
     return {
         "inGame": True,
@@ -236,7 +237,20 @@ def parse_live(raw):
         "augmentFields": find_keys(raw, r"augment"),
         "enemies": enemies,
         "enemyBuilds": enemy_builds,
+        "spellAugments": spell_augments(mine) if mine else [],
     }
+
+
+def spell_augments(player):
+    """소환사 주문 칸에 보이는 증강 (공식 게임 데이터에서 증강이 보이는 유일한 곳).
+    소환사 주문을 주거나 바꾸는 증강만 보인다 (2026-10-15 베인 판: 적 모데카이저 'Augment_GrowthSpurt', 자야 'Augment_ARAM_FlashySpell').
+    → ['GrowthSpurt', 'ARAM_FlashySpell'] (증강 id 와 맞추는 건 화면 쪽)"""
+    out = []
+    for sp in ((player or {}).get("summonerSpells") or {}).values():
+        m = re.search(r"Augment_(\w+?)_DisplayName", (sp or {}).get("rawDisplayName") or "")
+        if m:
+            out.append(m.group(1))
+    return out
 
 
 NAME_KEYS = ("riotId", "riotIdGameName", "riotIdTagLine", "summonerName", "riotIdTagline")
