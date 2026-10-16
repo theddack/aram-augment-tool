@@ -1719,16 +1719,18 @@ window.addEventListener("pywebviewready", async () => {
   // 증강 선택 화면이 떠 있거나 상점이 열려 있으면 1초마다, 그 밖엔 3초마다 (게임 중 CPU).
   // 선택 화면이 새로 뜨거나 고르거나 상점을 열면 파이썬이 바로 깨운다 (livePoke) → 카드 평가가 늦지 않다.
   // 화면 → 파이썬 호출이 잦을수록 창 스레드와 파이썬이 서로 기다리다 굳을 위험이 커서 필요할 때만 자주 부른다
-  let liveTimer = null, liveBusy = false;
+  // 읽는 도중 깨우면(livePoke) 버리지 않고 끝나자마자 한 번 더 읽는다 (선택 화면이 막 떴을 때 1~3초 늦던 것)
+  let liveTimer = null, liveBusy = false, liveAgain = false;
   const livePoll = async () => {
     clearTimeout(liveTimer);
-    if (liveBusy) return;
+    if (liveBusy) { liveAgain = true; return; }
     liveBusy = true;
+    liveAgain = false;
     let L = null;
     try { L = await api.get_live(); applyLive(L); applyAug(L && L.aug); } catch (e) { /* 다음에 다시 */ }
     liveBusy = false;
     const busy = L && L.inGame && L.aug && (L.aug.offers || L.aug.shop);
-    liveTimer = setTimeout(livePoll, busy ? 1000 : 3000);
+    liveTimer = setTimeout(livePoll, liveAgain ? 0 : busy ? 1000 : 3000);
   };
   window.livePoke = livePoll;
   livePoll();

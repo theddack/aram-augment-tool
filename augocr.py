@@ -975,6 +975,7 @@ class Reader(threading.Thread):
             return
         k = iw / max(1, int(self.rect_w_for_area(iw)))  # 그림이 게임 창보다 줄어든 비율
         self._shop_find_busy = True
+        game_n = getattr(self, "_game_n", 0)
 
         def job():
             try:
@@ -986,6 +987,8 @@ class Reader(threading.Thread):
                 t0 = time.time()
                 found = hudicons.locate_items(paths, rgb, [s * gh * k for s in sizes])
                 self._time("상점 아이템 찾기", t0)
+                if game_n != getattr(self, "_game_n", 0):
+                    return  # 찾는 동안 새 게임이 시작됐다: 지난 게임 그림의 결과를 새 게임 기록에 남기지 않는다
                 sure = {i: f for i, f in found.items() if f["score"] >= hudicons.SHOP_SURE}
                 if sure and not self._shop_icon:
                     # 찾은 크기를 기억한다 (다음엔 그 크기로만: 9배 가볍다)

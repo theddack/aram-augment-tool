@@ -971,6 +971,32 @@ class HudIcons(unittest.TestCase):
         self.assertEqual(ev[0]["want"], ["3031", "6672"])
         self.assertEqual(ev[0]["sure"], [], "빈 화면에선 확신하지 않는다")
 
+    def test_shop_find_dropped_when_game_changes(self):
+        # 찾는 동안 새 게임이 시작되면 지난 게임 그림의 결과는 버린다 (새 게임 기록에 안 섞이게)
+        import augocr
+        import hudicons
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.icon_dir = str(ROOT / "web" / "icons" / "augment")
+        r.shop_targets = ["3031"]
+        got = []
+        r._rec = lambda k, d, **kw: got.append((k, d))
+        real = hudicons.locate_items
+
+        def slow(*a, **kw):
+            r._game_n = getattr(r, "_game_n", 0) + 1  # 찾는 중에 새 게임
+            return real(*a, **kw)
+        hudicons.locate_items = slow
+        try:
+            r._find_shop_items(b"\0" * (64 * 48 * 4), 64, 48, 48, "shop.png")
+            for _ in range(200):
+                if not getattr(r, "_shop_find_busy", False):
+                    break
+                time.sleep(0.05)
+        finally:
+            hudicons.locate_items = real
+        self.assertEqual([k for k, d in got if k == "shopfind"], [])
+        self.assertFalse(r._shop_find_busy)
+
     def test_hud_reads_less_when_settled(self):
         # 증강 칸 읽기는 가장 무겁다 → 고른 걸 다 찾았으면 드물게, 4개 다 찾았으면 안 읽는다 (새로 고르면 그때)
         import augocr
