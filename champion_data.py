@@ -360,3 +360,22 @@ def wiki_extras(wiki, ddragon_name, ddragon_id):
     aram = stats.get("aram") or {}
     return ({k: v for k, v in aram.items() if isinstance(v, (int, float))} or None,
             stats.get("as_ratio"))
+
+
+# Data Dragon 이 0 으로 비워 둔 성장치 → 위키 값 (2026-10-16 확인: 16.20 Data Dragon 은 173명 모두 레벨당 공격력 0.
+# 베인 판 실제 능력치(게임 연동)와 대조해 위키 2.35 쪽이 맞았다)
+WIKI_GROWTH = {"attackdamageperlevel": "dam_lvl"}
+
+
+def wiki_growth_fix(wiki, ddragon_name, ddragon_id, stats):
+    """stats 사본과 위키로 채운 칸 목록. Data Dragon 값이 0 이고 위키 값이 0 보다 클 때만 바꾼다"""
+    entry = next((e for name, e in wiki.items() if isinstance(e, dict)
+                  and (e.get("apiname") == ddragon_id or name == ddragon_name)), None)
+    out, fixed = dict(stats), []
+    ws = (entry or {}).get("stats") or {}
+    for dk, wk in WIKI_GROWTH.items():
+        v = ws.get(wk)
+        if not out.get(dk) and isinstance(v, (int, float)) and v > 0:
+            out[dk] = v
+            fixed.append(dk)
+    return out, fixed

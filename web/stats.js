@@ -1,7 +1,7 @@
 // 능력치 계산 엔진: 챔피언 레벨별 기본 능력치 + 아이템 + 증강 → 최종 능력치 → 스킬 피해·평타 DPS·유효 체력.
 // 화면(app.js)과 점수(scoring.js)가 같이 쓴다. node 로도 검증할 수 있게 UMD 형태.
 (function (root) {
-  const AS_CAP = 2.5;
+  const AS_CAP = 2.5;  // 소환사의 협곡 공속 상한 (증강 모드는 champ.modeStats.asCap = 5.0)
   const BASE_CRIT_DMG = 1.75;
   const CLEAVE_RANGED = 0.5;  // 원거리 쪼개기 = 근접의 절반 (공격력 20% / 40%)
   const DMG_KINDS = ["magic", "physical", "true"];
@@ -58,6 +58,9 @@
   // 아이템·증강 능력치 합산 후 최종 능력치. augStats = 고른 증강들의 statsResolved 목록
   function computeStats(champ, L, items, augStats, opts = {}) {
     const base = baseStats(champ, L);
+    // 칼바람 증강 모드 공통 능력치 (위키 'Global stat changes', build_data.mayhem_global_stats): 레벨 비례 기본 체력
+    const ms = (opts.aram !== false && champ.modeStats) || {};
+    if (ms.hp) base.HP += ms.hp[0] + (ms.hp[1] - ms.hp[0]) * (L - 1) / 17;
     const add = { HP: 0, AD: 0, AP: 0, ARMOR: 0, MR: 0, HASTE: 0, MANA: 0, LETHALITY: 0, MPEN: 0,
       MS: 0, AS: 0, CRIT: 0, CRITDMG: 0, MSP: 0, LS: 0, OMNIVAMP: 0, ARPEN: 0, MPENP: 0, HSP: 0 };
     for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) add[k] += v;
@@ -103,8 +106,10 @@
       else bonusAD *= 1 + mult.adaptiveMult;
     }
     // 적응형 능력치(고정값): 마법 위주면 주문력, 아니면 추가 공격력 (적응형 1 = 공격력 0.6)
-    if (conv.adaptive) {
-      if ((champ.magicShare ?? 0.5) >= 0.5) AP += conv.adaptive; else bonusAD += conv.adaptive * 0.6;
+    // 모드: 치명타 확률 100% 초과분 1%당 적응형 (ms.critAdaptive)
+    const adaptive = (conv.adaptive || 0) + (ms.critAdaptive ? Math.max(0, add.CRIT - 1) * 100 * ms.critAdaptive : 0);
+    if (adaptive) {
+      if ((champ.magicShare ?? 0.5) >= 0.5) AP += adaptive; else bonusAD += adaptive * 0.6;
     }
     if (conv.bonusADtoAP) { AP += bonusAD * conv.bonusADtoAP; bonusAD = 0; }
     if (conv.APtoBonusAD) { bonusAD += AP * conv.APtoBonusAD; AP = 0; }
@@ -125,7 +130,7 @@
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     t.CRIT = Math.min(1, add.CRIT);
-    const asOf = (b) => Math.min(AS_CAP, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
+    const asOf = (b) => Math.min(ms.asCap || AS_CAP, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     // 치명타마다 쌓이는 공격 속도 (치명적 리듬): 계속 기본 공격할 때 유지 시간(초) 안에 터지는 치명타 수 = 중첩
     // 중첩 = min(최대, 치명타 확률 × 초당 공격 × 유지 시간). 공격 속도가 다시 중첩을 늘리므로 몇 번 반복해 맞춘다
     t.critStacks = 0;
@@ -300,7 +305,7 @@
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
-  const TARGET = { ARMOR: 113, MR: 63, HP: 2470, CUR: 0.7, DPS_TAKEN: 600 };
+  const TARGET = { ARMOR: 112, MR: 63, HP: 3042, CUR: 0.7, DPS_TAKEN: 600 };
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
@@ -315,8 +320,11 @@
   // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
   // src: data = 게임 데이터·위키에서 계산한 값, assume = 정한 값(실측 아님)
   const ASSUMPTIONS = [
-    { what: "기준 상대: 체력 2470 · 방어력 113 · 마법 저항력 63", src: "data",
+    { what: "기준 상대: 체력 3042 · 방어력 112 · 마법 저항력 63", src: "data",
       why: "전 챔피언 173명이 18레벨에 우리 추천 빌드(균형)를 갖췄을 때의 중앙값이에요 (패치 16.20). 평균은 탱커에 끌려 올라가서 중앙값을 써요. 능력치 패널 '상대'에서 실제 챔피언으로 바꿀 수 있어요." },
+    { what: "증강 모드 공통 능력치: 기본 체력 20→400(원거리)·600(근접), 공격 속도 상한 5.0, 치명타 100% 넘는 1%마다 적응형 0.75", src: "data",
+      why: "위키 'ARAM: Mayhem' 모드 변경 사항이에요. 실제 경기 기록(베인·미스 포츈) 체력·공격력과 맞춰 봤어요." },
+    { what: "레벨당 공격력은 위키 값", src: "data", why: "라이엇 Data Dragon(16.20)이 173명 모두 0으로 주고 있어요. 실제 경기 기록과 위키 값이 맞았어요." },
     { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해에만 쓰여요." },
     { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
     { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },

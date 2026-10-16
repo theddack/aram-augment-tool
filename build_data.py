@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from champion_data import (augment_effects, item_spell, parse_lua_table, passive_spell, process_champion,
-                           spell_cc_seconds, text_effects, wiki_extras)
+                           spell_cc_seconds, text_effects, wiki_extras, wiki_growth_fix)
 from lol_calc import Calc, expr_json, fmt_expr_ranks
 from patch_check import check_augment, check_champion
 
@@ -378,6 +378,26 @@ def norm_name(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+def mayhem_global_stats(page_text):
+    """위키 ARAM: Mayhem 'Global stat changes' → 모든 챔피언이 받는 모드 능력치.
+    {"hp": {"melee": [1레벨, 18레벨], "ranged": [...]}, "asCap": 공속 상한, "critAdaptive": 치명타 100% 초과 1%당 적응형}
+    (2026-10-16: 베인·미스 포츈·케일 실제 체력이 원거리 20 + 380/17 × (레벨-1) 만큼 많은 것과 일치)"""
+    m = re.search(r"=== Global stat changes ===(.*?)\n===", page_text, re.S)
+    if not m:
+        return {}
+    sec, out = m.group(1), {}
+    hp = re.search(r"formula1=(\d+) \+ \(\((\d+) - \d+\) / 17\).*?formula2=(\d+) \+ \(\((\d+) - \d+\) / 17\)", sec)
+    if hp and "health" in sec.lower():
+        out["hp"] = {"melee": [float(hp.group(1)), float(hp.group(2))], "ranged": [float(hp.group(3)), float(hp.group(4))]}
+    cap = re.search(r"Attack speed cap changed to \{\{fd\|([\d.]+)\}\}", sec)
+    if cap:
+        out["asCap"] = float(cap.group(1))
+    crit = re.search(r"in excess of .*?grants \{\{adaptive\|([\d.]+)\}\}", sec)
+    if crit:
+        out["critAdaptive"] = float(crit.group(1))
+    return out
+
+
 def mayhem_champion_overrides(page_text, wiki_champs):
     """위키 ARAM: Mayhem 페이지의 챔피언 표 → {DDragon id: {키: 값}}. '… changed to X% from Y%' 의 X 를 쓴다."""
     m = re.search(r"Champions=(.*?)(?:\|-\||</tabber>)", page_text, re.S)
@@ -478,7 +498,7 @@ SOURCE_INFO = [  # (캐시 이름 앞부분, 이름, 라이선스·이용 조건
     ("lol.stringtable.json", "CommunityDragon 한국어 문자열", "게임 파일 추출 (공개)", "증강·패시브 한글 설명"),
     ("lol.stringtable.en", "CommunityDragon 영어 문자열", "게임 파일 추출 (공개)", "위키 증강 이름 짝짓기"),
     ("bins/", "CommunityDragon 챔피언 데이터", "게임 파일 추출 (공개)", "스킬 수치·계산식·모드 전용 수치 (173명)"),
-    ("wiki_championdata", "LoL 위키 Module:ChampionData", "CC BY-SA 4.0", "칼바람 보정·공격 속도 계수"),
+    ("wiki_championdata", "LoL 위키 Module:ChampionData", "CC BY-SA 4.0", "칼바람 보정·공격 속도 계수·레벨당 공격력(Data Dragon 값이 0일 때)"),
     ("wiki_mayhemaugments", "LoL 위키 Module:MayhemAugmentData", "CC BY-SA 4.0", "비활성 증강·적용 스킬 목록"),
     ("wiki_itemdata", "LoL 위키 Module:ItemData", "CC BY-SA 4.0", "아이템 같은 계열"),
     ("wiki_mayhem_page", "LoL 위키 ARAM: Mayhem", "CC BY-SA 4.0", "증강 모드 전용 챔피언 보정·재사용 대기시간"),
@@ -1101,6 +1121,9 @@ def main():
         bins = dict(zip(champs, ex.map(champ_bin, champs)))
         tacticals = dict(zip(champs, ex.map(tactical, champs)))
     out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
+    mode_global = mayhem_global_stats(wiki_mayhem_page)  # 모든 챔피언 공통 모드 능력치 (체력·공속 상한·치명타 초과분)
+    print(f"  모드 공통 능력치 (위키): {mode_global or '못 읽음'}")
+    growth_fixed = []  # Data Dragon 성장치가 0 이라 위키 값으로 채운 칸
     mayhem_mods = mayhem_champion_overrides(wiki_mayhem_page, wiki)
     mayhem_cd = mayhem_cooldowns(wiki_mayhem_page, wiki)
     cd_applied = []
@@ -1128,6 +1151,8 @@ def main():
                 sp["cooldownBase"], sp["cooldown"] = sp["cooldown"], vals
                 cd_applied.append(f"{c['name']} {sp['slot']} {sp['cooldownBase'][0]:g}→{vals[0]:g}")
         aram, as_ratio = wiki_extras(wiki, c["name"], cid)
+        c["stats"], fixed = wiki_growth_fix(wiki, c["name"], cid, c["stats"])
+        growth_fixed.extend(fixed)
         # 칼바람 증강 모드: 일반 칼바람 보정 위에 모드 전용 보정을 덮어쓴다 (위키)
         aram_source = "칼바람" if aram else None
         if cid in mayhem_mods:
@@ -1146,6 +1171,10 @@ def main():
             "features": features + (["melee"] if c["stats"]["attackrange"] <= 250 else ["ranged"]),
             "stats": c["stats"], "asRatio": as_ratio or c["stats"]["attackspeed"], "aram": aram,
             "aramSource": aram_source,
+            # 모드 공통 능력치: 근접·원거리별 기본 체력 [1레벨, 18레벨], 공속 상한, 치명타 초과분 → 적응형
+            "modeStats": {k: v for k, v in {
+                "hp": (mode_global.get("hp") or {}).get("melee" if c["stats"]["attackrange"] <= 250 else "ranged"),
+                "asCap": mode_global.get("asCap"), "critAdaptive": mode_global.get("critAdaptive")}.items() if v} or None,
             "patch": patch_lines.get(c["name"]),
             "refs": [r for r in [
                 {"label": "스킬 수치 (게임 데이터)", "url": f"{CDRAGON}/game/data/characters/{cid.lower()}/{cid.lower()}.bin.json"},
@@ -1288,6 +1317,7 @@ def main():
     print(f"  비활성(Enabled=False)이라 제외한 증강 {len(disabled)}개: {', '.join(disabled)}")
     print(f"  스킬 수치 못 채운 자리 {spell_unresolved}개 (스킬 {sum(len(c['spells']) for c in out_champs)}개 중)")
     print(f"  위키 데이터 없는 챔피언 {len(no_wiki)}명: {', '.join(no_wiki)}")
+    print(f"  Data Dragon 성장치 0 → 위키 값: {len(growth_fixed)}칸 ({', '.join(sorted(set(growth_fixed)))})")
     print(f"  위키 증강 짝짓기 {wiki_matched}/{len(kiwi_names)}, 적용 스킬 목록 있는 증강 "
           f"{sum(1 for a in out_augs if a.get('eligible'))}개, 증강 모드 전용 보정 챔피언 {len(mayhem_mods)}명, "
           f"같은 계열 표시 아이템 {sum(1 for i in out_items if i.get('limit'))}개")
