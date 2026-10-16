@@ -239,6 +239,18 @@ class Desktop(unittest.TestCase):
         self.assertEqual(sm["max"], 60)
         self.assertIsNone(api.calc_summary(), "부르면 비운다")
 
+    def test_parse_live_real_game_snapshots(self):
+        # 실제 경기 기록(베인 판, 이름 가린 것)이 그대로 읽힌다: 챔피언·레벨·아이템·실제 능력치·적 5명
+        folder = ROOT / "tests" / "data" / "games" / "vayne_20261015"
+        for f in sorted(folder.glob("live_*s.json")):
+            st = desktop.parse_live(json.loads(f.read_text(encoding="utf-8")))
+            self.assertEqual(st["champion"], "Vayne", f.name)
+            self.assertEqual(len(st["enemies"]), 5, f.name)
+            self.assertIn("attackDamage", st["stats"], f.name)
+        st = desktop.parse_live(json.loads((folder / "live_1202s.json").read_text(encoding="utf-8")))
+        self.assertEqual(st["level"], 18)
+        self.assertIn("3031", st["items"])  # 무한의 대검
+
     def test_statcheck_logged_when_build_changes(self):
         api = desktop.Api(Settings_stub())
         got = []

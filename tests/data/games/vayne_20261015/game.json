@@ -1,0 +1,75 @@
+{
+  "champion": "Vayne",
+  "note": "2026-10-15 베인 판 (v0.1.29). 고른 증강은 증강 칸 그림으로 맞춘 실제 값 (기록의 '포로 쇄도'는 오인식이라 부메랑 투척으로)",
+  "augments": [
+    [
+      "ARAM_Vulnerability",
+      19
+    ],
+    [
+      "ARAM_FromBeginningToEnd",
+      354
+    ],
+    [
+      "ARAM_OkBoomerang",
+      618
+    ],
+    [
+      "CriticalRhythm",
+      875
+    ]
+  ],
+  "known": {
+    "HP": "실제가 레벨당 약 22 더 많다 (원인 모름: 룬 없음 fullRunes {}). 다른 판 statcheck 로 확인할 것",
+    "AD": "부품(흡혈의 낫 등) 능력치를 안 센다 · 18레벨 약 11 차이 (원인 모름)",
+    "HASTE": "실제 46~62 (같은 아이템인데 시간에 따라 늘어남, 원인 모름)",
+    "ARMOR": "1505초에 실제 +22 (싸움 중 버프로 보임)"
+  },
+  "gaps": {
+    "live_300s.json": {
+      "HP": 0,
+      "AD": 35,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_600s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_900s.json": {
+      "HP": 0,
+      "AD": 15,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_1202s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 46
+    },
+    "live_1505s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 22,
+      "MR": 10,
+      "CRIT": 0,
+      "HASTE": 62
+    }
+  }
+}
