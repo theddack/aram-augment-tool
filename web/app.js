@@ -984,8 +984,15 @@ function swapAdvice() {
     if (!SWAP_MARKS.has(v.mark) || !v.swap || needed(v.item) || v.swap.gain <= 0 || v.swap.ratio < SWAP_UP) continue;
     if (!pick || v.swap.gain > pick.gain) pick = { sell: v.item, buy: v.swap.best, gain: v.swap.gain };
   }
+  if (pick) {
+    // 실제로 드는 골드 = 살 아이템 값 − 팔 때 돌려받는 골드 (판매가는 가정 SELL_BACK)
+    pick.refund = Math.floor((Number(pick.sell.gold) || 0) * SELL_BACK);
+    pick.cost = Math.max(0, (Number(pick.buy.gold) || 0) - pick.refund);
+    pick.short = state.gold == null ? null : Math.max(0, pick.cost - Math.floor(state.gold));
+  }
   return pick;
 }
+const SELL_BACK = 0.7;  // ⚠️ 가정: 완성 아이템을 팔면 산 값의 70% (소환사의 협곡 기준. 칼바람에서 실측 전)
 
 // ---- 증강 쿨타임 (게임 화면, 2026-10-15 요청 "35초마다 발동되는 거 쿨 돌아가는 게 보였으면")
 // 게임 연동 데이터는 증강 발동을 알려 주지 않는다. 그래서 확인할 수 있는 것만, 모두 '예상'으로:
@@ -1052,7 +1059,7 @@ function sendOverlay(src) {
     advice: adv,
   } : null;
   const sw = swapAdvice();
-  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name } : null;
+  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0 } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null });
 }
 
@@ -1344,7 +1351,9 @@ function swapHtml() {
   if (!sw) return `<p class="muted small">아이템 칸이 다 찼어요.</p>`;
   return `<p class="muted small">아이템 칸이 다 찼어요. 바꾸면 더 좋아요:</p>
     <div class="swap-row" title="${esc(sw.sell.name)} 팔고 ${esc(sw.buy.name)}"><b>🔁</b><img src="${icon("item", sw.sell.id)}" alt="" class="sell"><span>→</span><img src="${icon("item", sw.buy.id)}" alt="">
-    <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div></div></div>`;
+    <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div>
+    <div class="small muted" title="⚠️ 가정: 팔면 산 값의 ${Math.round(SELL_BACK * 100)}%를 돌려받는다고 계산했어요">팔면 ${fmt(sw.refund)}G 돌려받아 실제로 <b>${fmt(sw.cost)}G</b>`
+    + (sw.short == null ? "" : sw.short ? ` · ${fmt(sw.short)}G 더 모으면 돼요` : " · 지금 바꿀 수 있어요") + `</div></div></div>`;
 }
 
 function renderItemList() {

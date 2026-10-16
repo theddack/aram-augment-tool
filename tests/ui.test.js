@@ -570,6 +570,14 @@ test("아이템 칸이 다 찼으면 바꾸기(판다 → 산다)를 아이콘�
   assert.equal(sw.sell, "3089");
   assert.notEqual(sw.buy, "3089");
   assert.match(p.text("#next-buy"), /바꾸면 더 좋아요/);
+  // 판매 환급(가정 70%)을 뺀 실제 골드와, 지금 골드로 되는지
+  const rab = p.data.items.find((i) => i.id === "3089");
+  const buy = p.data.items.find((i) => i.id === sw.buy);
+  assert.equal(sw.cost, Math.max(0, Number(buy.gold) - Math.floor(Number(rab.gold) * 0.7)));
+  assert.match(p.text("#next-buy"), /팔면 [\d,]+G 돌려받아 실제로 [\d,]+G/);
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 18, items: ["6672", "3006", "3032", "3036", "3153", "3089"], dead: true, gold: 99999 });
+  p.w.renderNextBuy && p.w.sendOverlay();
+  assert.equal(sent.at(-1).swap.ready, true, "골드가 충분하면 지금 바꿀 수 있음");
   assert.ok(!sent.at(-1).hud.some((x) => /라바돈/.test(x) && /팔/.test(x)), "상자 글은 늘리지 않는다 (아이콘으로만)");
   assert.deepEqual(p.errors, []);
 });
