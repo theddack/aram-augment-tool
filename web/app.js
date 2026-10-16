@@ -15,6 +15,29 @@ const statOpts = () => {
 };
 const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ);
 
+// ---- 계산 vs 게임 실제 능력치 (게임 연동 championStats). 계산이 틀린 곳(데이터·룬·중첩)을 찾는 근거.
+// 계산값엔 한타 평균 중첩(치명적 리듬 등)이 들어가 있어 싸움 밖에선 실제보다 클 수 있다
+const LIVE_STAT = { HP: "maxHealth", AD: "attackDamage", AP: "abilityPower", AS: "attackSpeed", CRIT: "critChance",
+  ARMOR: "armor", MR: "magicResist", HASTE: "abilityHaste", MS: "moveSpeed", LETHALITY: "physicalLethality", LS: "lifeSteal" };
+const STAT_OFF = 0.05;  // 이만큼(5%) 넘게 다르면 표시
+function statCheck() {
+  const s = state.liveStats;
+  if (!liveOn || !s || !state.champ || !state.data) return null;
+  const c = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
+  const t = St.computeStats(c, state.level, state.items, augStats(), statOpts()).total;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const rows = {};
+  for (const [k, lk] of Object.entries(LIVE_STAT)) {
+    let real = Number(s[lk]);
+    if (s[lk] == null || !Number.isFinite(real)) continue;
+    if ((k === "CRIT" || k === "LS") && real > 1) real /= 100;  // 게임은 0~1 또는 0~100 (형식 미확인 → 둘 다)
+    rows[k] = [r2(t[k] || 0), r2(real)];
+  }
+  return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows };
+}
+// 5% 넘게 다르면 (아주 작은 값은 반올림 차이를 빼려고 최소 폭: 비율·공속 0.02, 나머지 1)
+const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, ["AS", "CRIT", "LS"].includes(k) ? 0.02 : 1);
+
 // 적 구성 (게임 중 데이터): 주 피해 유형 비율, 회복 많은 적, 탱커
 function enemyInfo() {
   const list = state.enemies || [];
@@ -480,8 +503,17 @@ function renderStatsNow() {
     const val = pct ? fmt(v * 100) + "%" : fmt(v, d);
     return `<td class="${sign ? (v > 0 ? "up" : "down") : ""}">${sign && v > 0 ? "+" : ""}${val}</td>`;
   };
-  $("#stat-table").innerHTML = `<tr><th>능력치</th><th>기본 (${L}레벨)</th><th>아이템</th><th>증강</th><th>합계</th></tr>`
-    + rows.map(([k, name, d, pct]) => `<tr><td>${name}</td>${cell(e0[k] || 0, k, d, pct)}${cell((e1[k] || 0) - (e0[k] || 0), k, d, pct, true)}${cell((e2[k] || 0) - (e1[k] || 0), k, d, pct, true)}<td><b>${pct ? fmt((e2[k] || 0) * 100) + "%" : fmt(e2[k] || 0, d)}</b></td></tr>`).join("");
+  // 게임 중이면 게임이 알려 준 실제 값을 옆에 (5% 넘게 다르면 ⚠️: 룬·중첩·데이터 차이)
+  const real = (statCheck() || {}).rows;
+  const realCell = (k, d, pct) => {
+    const r = real && real[k];
+    if (!r) return real ? `<td class="muted">-</td>` : "";
+    const off = statOff(r, k);
+    return `<td class="${off ? "stat-off" : ""}" ${off ? `title="계산 ${pct ? fmt(r[0] * 100) + "%" : fmt(r[0], d)} · 실제 ${pct ? fmt(r[1] * 100) + "%" : fmt(r[1], d)} — 룬·중첩·데이터 차이일 수 있어요"` : ""}>${off ? "⚠️ " : ""}${pct ? fmt(r[1] * 100) + "%" : fmt(r[1], d)}</td>`;
+  };
+  $("#stat-table").innerHTML = `<tr><th>능력치</th><th>기본 (${L}레벨)</th><th>아이템</th><th>증강</th><th>합계</th>${real ? "<th>게임 실제</th>" : ""}</tr>`
+    + rows.map(([k, name, d, pct]) => `<tr><td>${name}</td>${cell(e0[k] || 0, k, d, pct)}${cell((e1[k] || 0) - (e0[k] || 0), k, d, pct, true)}${cell((e2[k] || 0) - (e1[k] || 0), k, d, pct, true)}<td><b>${pct ? fmt((e2[k] || 0) * 100) + "%" : fmt(e2[k] || 0, d)}</b></td>${realCell(k, d, pct)}</tr>`).join("")
+    + (real ? `<tr><td colspan="6" class="muted small">게임 실제: 게임이 알려 준 지금 값이에요. 합계엔 한타 평균 중첩이 들어 있어 싸움 밖에선 더 클 수 있어요. ⚠️는 5% 넘게 다른 칸이에요.</td></tr>` : "");
   const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
       <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
   $("#skills").innerHTML = (effRows ? `<table class="eff-table"><tr><th>패시브·아이템·증강 효과</th><th>종류</th><th>1회</th><th>방어 적용</th><th>발동</th></tr>${effRows}</table>
@@ -1075,7 +1107,7 @@ function sendOverlay(src) {
   const sw = swapAdvice();
   const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0 } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
-    calcMs: state.calcMs, calcSeq: state.calcSeq,
+    calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(),
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
     shopMarks: [...new Set([...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3)
       .concat(swap ? [swap.buy] : []))] });  // 기록용: 마지막 추천 다시 계산에 걸린 시간
@@ -1573,6 +1605,7 @@ function applyLive(L) {
   liveShop = shopOpen;
   if (goldChanged) goldDrawnAt = Date.now();
   state.gold = L.gold ?? null;
+  state.liveStats = L.stats && Object.keys(L.stats).length ? L.stats : null;
   state.inventory = (L.items || []).map(String);
   const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);
   const enemyKey = enemies.map((c) => c.id).sort().join(",");

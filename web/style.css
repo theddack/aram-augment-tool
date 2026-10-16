@@ -164,6 +164,7 @@ body.mini .how-list { display: none; }
 .tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .tile .big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .up { color: var(--syn); } .down { color: #ff8a80; }
+.stat-off { color: #ffb74d; font-weight: 600; }
 #stat-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 #stat-table th, #stat-table td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: right; }
 #stat-table th:first-child, #stat-table td:first-child { text-align: left; }

@@ -640,3 +640,24 @@ test("고른 증강 출처: 증강 칸에서 본 것은 확인됨, 클릭으로�
   assert.match(p.text("#chosen"), /치명적 리듬✔ 확인됨/);
   assert.deepEqual(p.errors, []);
 });
+
+test("게임 중 능력치 표에 게임 실제 값을 옆에 보여 주고, 5% 넘게 다르면 ⚠️ · 기록용으로 보낸다", async () => {
+  const p = await loadPage({ simple: false });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const raw = require("./data/live_missfortune_4s.json").activePlayer.championStats;
+  const stats = { ...raw, attackDamage: 80 };  // 공격력만 일부러 크게 다르게
+  p.w.applyLive({ enabled: true, inGame: true, champion: "MissFortune", level: 3, items: [], dead: true, stats });
+  const table = p.text("#stat-table");
+  assert.match(table, /게임 실제/);
+  assert.match(table, /공격력.*⚠️ 80/);
+  assert.doesNotMatch(table, /이동 속도[^가-힣]*⚠️/, "이동 속도는 같다 (325)");
+  p.w.sendOverlay();
+  const sc = sent.at(-1).statCheck;
+  assert.equal(sc.level, 3);
+  assert.equal(JSON.stringify(sc.rows.MS), "[325,325]");
+  assert.equal(sc.rows.AD[1], 80);
+  // 게임 밖(연동 꺼짐)에선 실제 칸이 없다
+  p.w.applyLive({ enabled: true, inGame: false });
+  assert.deepEqual(p.errors, []);
+});

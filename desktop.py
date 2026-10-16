@@ -727,6 +727,7 @@ class Api:
         self._watcher = watcher
         self._ov = ov
         self._calc_ms, self._calc_seq = [], None  # 화면 쪽 추천 다시 계산 시간(ms) (한 판 기록 요약)
+        self._statcheck_key = None  # 계산 vs 게임 실제 능력치: 레벨·아이템·증강이 바뀔 때만 기록
         self._lcu = lcu_watcher
         self._lock = threading.Lock()
         self._ui_beat = None  # 화면(JS)이 마지막으로 게임 상태를 물어본 시각 (3초마다). 멈추면 화면 쪽이 멈춘 것
@@ -753,6 +754,14 @@ class Api:
         if isinstance(ms, (int, float)) and len(self._calc_ms) < 5000 and payload.get("calcSeq") != self._calc_seq:
             self._calc_seq = payload.get("calcSeq")  # 같은 계산 결과를 여러 번 보내도 한 번만 센다
             self._calc_ms.append(float(ms))
+        sc = payload.get("statCheck")
+        if self._rec and isinstance(sc, dict):
+            # 계산한 능력치 vs 게임이 알려 준 실제 능력치 (계산이 틀린 곳 찾기: 데이터·룬·중첩).
+            # 실제 값은 싸움 중 버프로 매번 흔들리니 레벨·아이템·증강이 바뀔 때만 남긴다
+            key = (str(getattr(self._rec, "dir", "")), json.dumps([sc.get("level"), sc.get("items"), sc.get("augs")]))
+            if key != self._statcheck_key:
+                self._statcheck_key = key
+                self._rec.event("statcheck", sc)
         if self._rec:
             # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
             cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]

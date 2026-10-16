@@ -239,6 +239,22 @@ class Desktop(unittest.TestCase):
         self.assertEqual(sm["max"], 60)
         self.assertIsNone(api.calc_summary(), "부르면 비운다")
 
+    def test_statcheck_logged_when_build_changes(self):
+        api = desktop.Api(Settings_stub())
+        got = []
+
+        class Rec:
+            dir = "g1"
+
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        api._rec = Rec()
+        sc = lambda lv, ad: {"level": lv, "items": ["3031"], "augs": [], "rows": {"AD": [100, ad]}}
+        for x in (sc(3, 58), sc(3, 61), sc(4, 61)):  # 같은 레벨·아이템에서 실제 값만 흔들리면(버프) 다시 안 남긴다
+            api.set_overlay({"statCheck": x})
+        checks = [d for k, d in got if k == "statcheck"]
+        self.assertEqual([c["level"] for c in checks], [3, 4])
+
     def test_live_url_local_only(self):
         old = os.environ.get("ARAM_LIVE_URL")
         try:
