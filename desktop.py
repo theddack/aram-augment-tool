@@ -747,6 +747,8 @@ class Api:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
                                   "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
             self._ov.update(payload)
+        if self._reader is not None and payload.get("shopMarks") is not None:
+            self._reader.shop_targets = list(payload.get("shopMarks") or [])  # 상점 안 아이템 자리 찾기(시험) 대상
         ms = payload.get("calcMs")
         if isinstance(ms, (int, float)) and len(self._calc_ms) < 5000 and payload.get("calcSeq") != self._calc_seq:
             self._calc_seq = payload.get("calcSeq")  # 같은 계산 결과를 여러 번 보내도 한 번만 센다

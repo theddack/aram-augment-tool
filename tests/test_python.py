@@ -901,6 +901,60 @@ class HudIcons(unittest.TestCase):
         self.assertEqual(shops[0]["window"], [2520, 1575])
         self.assertNotIn("image", shops[1], "곧바로 다시 열면 또 찍지 않는다")
 
+    @unittest.skipUnless(HAS_IMG, "numpy·Pillow 필요")
+    def test_locate_items_synthetic(self):
+        # 상점처럼 아이템 아이콘을 격자로 깐 그림: 있는 것은 그 자리를 높은 점수로, 없는 것은 낮은 점수로
+        import os
+        import numpy as np
+        import hudicons
+        from PIL import Image
+        d = ROOT / "web" / "icons" / "item"
+        others = sorted(f[:-5] for f in os.listdir(d) if f.endswith(".webp"))[:24]
+        bg = Image.new("RGB", (700, 400), (20, 30, 40))
+        for k, iid in enumerate(others):
+            if iid in ("3031", "3089"):
+                iid = others[0]
+            if k == 9:
+                iid = "3031"
+            bg.paste(Image.open(d / f"{iid}.webp").convert("RGB").resize((48, 48)), (40 + (k % 8) * 70, 40 + (k // 8) * 70))
+        res = hudicons.locate_items({i: str(d / f"{i}.webp") for i in ("3031", "3089")}, np.asarray(bg), [44, 48, 53])
+        self.assertGreaterEqual(res["3031"]["score"], hudicons.SHOP_SURE)
+        self.assertLessEqual(abs(res["3031"]["x"] - 110) + abs(res["3031"]["y"] - 110), 6)
+        self.assertLess(res["3089"]["score"], hudicons.SHOP_SURE, "상점에 없는 아이템")
+
+    @unittest.skipUnless(HAS_IMG, "numpy·Pillow 필요")
+    def test_shop_items_located_and_logged(self):
+        # 시험: 상점 그림에서 추천 아이템 자리를 찾아 기록만 한다 (화면 표시는 아직)
+        import augocr
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                return b"\0" * ((tw or w) * (th or h) * 4)
+
+        class Ocr:
+            def words(self, img, tw, th):
+                return [("판매", 300, 20, 40, 15), ("되돌리기", 420, 20, 70, 15)]
+
+        class Rec:
+            def image(self, kind, img, w, h):
+                return f"{kind}.png"
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.rec, r._changed = Rec(), lambda: None
+        r.icon_dir = str(ROOT / "web" / "icons" / "augment")
+        r.shop_targets = ["3031", "6672"]
+        got = []
+        r._rec = lambda k, d, **kw: got.append((k, d))
+        for _ in range(augocr.SHOP_EVERY):
+            r.scan_shop_only(Cap(), Ocr(), (0, 0, 1280, 800))
+        for _ in range(200):
+            if not getattr(r, "_shop_find_busy", False):
+                break
+            time.sleep(0.05)
+        ev = [d for k, d in got if k == "shopfind"]
+        self.assertEqual(len(ev), 1)
+        self.assertEqual(ev[0]["want"], ["3031", "6672"])
+        self.assertEqual(ev[0]["sure"], [], "빈 화면에선 확신하지 않는다")
+
     def test_hud_reads_less_when_settled(self):
         # 증강 칸 읽기는 가장 무겁다 → 고른 걸 다 찾았으면 드물게, 4개 다 찾았으면 안 읽는다 (새로 고르면 그때)
         import augocr

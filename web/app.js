@@ -1069,7 +1069,10 @@ function sendOverlay(src) {
   const sw = swapAdvice();
   const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0 } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
-    calcMs: state.calcMs, calcSeq: state.calcSeq });  // 기록용: 마지막 추천 다시 계산에 걸린 시간
+    calcMs: state.calcMs, calcSeq: state.calcSeq,
+    // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
+    shopMarks: [...new Set([...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3)
+      .concat(swap ? [swap.buy] : []))] });  // 기록용: 마지막 추천 다시 계산에 걸린 시간
 }
 
 function renderAugs() {

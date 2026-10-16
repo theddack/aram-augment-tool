@@ -244,3 +244,61 @@ class HudReader:
         self.size = None
         self.picked = []
         self._seen = {}
+
+
+# ---------------------------------------------------------------- 상점 창 안 아이템 위치 (시험: 기록만, 화면 표시는 실제 그림으로 확인한 뒤)
+SHOP_GRID = 16  # 아이템 아이콘을 이 크기(흑백)로 줄여 비교
+SHOP_SIZES = tuple(round(0.030 * 1.1 ** i, 4) for i in range(9))  # 상점 아이콘 한 변 / 게임 창 높이 후보 (0.030~0.064)
+SHOP_SURE = 0.85  # 이만큼 닮아야 그 자리로 본다 (실제 그림으로 다시 맞출 것)
+
+
+def item_templates(paths):
+    """{아이템 id: 아이콘 경로} → (ids, 준비된 비교값). 상점에 표시할 몇 개(추천·바꿀 것)만이라 가볍다"""
+    import numpy as np
+    from PIL import Image
+    ids, vecs = [], []
+    for iid, path in paths.items():
+        try:
+            im = Image.open(path).convert("RGB").resize((SHOP_GRID, SHOP_GRID), Image.BILINEAR)
+        except (OSError, ValueError):
+            continue
+        a = np.asarray(im, dtype=np.float32) @ LUM / 255.0
+        if a.std() < 0.03:
+            continue
+        ids.append(iid)
+        vecs.append(a.ravel())
+    if not ids:
+        return [], None
+    return ids, _prep(np, vecs, [np.ones(SHOP_GRID * SHOP_GRID, np.float32)] * len(vecs))
+
+
+def locate_items(paths, rgb, icon_px_list):
+    """상점 그림(rgb: H×W×3)에서 아이템 아이콘 자리 찾기 → {id: {"score", "x", "y", "size"}} (그림 기준 픽셀, 가장 닮은 곳).
+    icon_px_list: 그림 안 아이콘 한 변 후보(픽셀). 줄 단위로 나눠 계산한다 (메모리를 크게 잡지 않게)"""
+    import numpy as np
+    from PIL import Image
+    ids, prep = item_templates(paths)
+    if not ids:
+        return {}
+    H, W = rgb.shape[:2]
+    img = Image.fromarray(rgb.astype(np.uint8))
+    best = {}
+    for px in icon_px_list:
+        f = SHOP_GRID / max(px, 1.0)
+        sw, sh = int(W * f), int(H * f)
+        if sw < SHOP_GRID or sh < SHOP_GRID:
+            continue
+        lum = np.asarray(img.resize((sw, sh), Image.BILINEAR), dtype=np.float32) @ LUM / 255.0
+        v = np.lib.stride_tricks.sliding_window_view(lum, (SHOP_GRID, SHOP_GRID))
+        ys, xs = v.shape[:2]
+        rows_per = max(1, CHUNK // max(1, xs))
+        for y0 in range(0, ys, rows_per):
+            S = _score(np, v[y0:y0 + rows_per].reshape(-1, SHOP_GRID * SHOP_GRID), prep)
+            j = S.argmax(0)
+            for k, iid in enumerate(ids):
+                sc = float(S[j[k], k])
+                if sc > best.get(iid, {"score": -1})["score"]:
+                    yy, xx = divmod(int(j[k]), xs)
+                    best[iid] = {"score": round(sc, 3), "x": round(xx / f), "y": round((yy + y0) / f), "size": round(px)}
+            time.sleep(PAUSE)
+    return best

@@ -22,6 +22,7 @@ SHOP_PROBE_AREA = (0.25, 0.04, 0.85, 0.84)  # 못 알아봤을 때 남기는 그
 # 상점 창 아래쪽 버튼 줄 '판매 · 되돌리기' (영어 Sell · Undo). 2026-10-15 베인 판 증강 칸 그림에 상점이 열린 채 찍혔다:
 # 2520x1575 창에서 버튼 줄 y ≈ 0.81, x ≈ 0.35~0.63. 위쪽 탭보다 글자가 또렷하고 띠가 작아 가볍다 → 먼저 본다
 SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))
+SHOP_FIND_MAX = 4  # 상점에서 자리를 찾아볼 아이템 수 (다음 구매 3 + 바꿀 것 1)
 SHOP_IMGS, SHOP_IMG_GAP = 2, 300.0  # 상점을 알아봤을 때 상점 창 그림: 한 판 최대 장수, 다음 장까지 최소 간격(초)  # (가로 범위, 세로 범위)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
@@ -494,6 +495,9 @@ class Reader(threading.Thread):
         self._shop_probes = 0
         self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
+        self.shop_targets = []  # 상점에서 자리를 찾아볼 아이템 id (화면이 보낸 추천·바꿀 아이템)
+        self._shop_icon = None  # 찾은 상점 아이콘 크기 (게임 창 높이 비율)
+        self._last_rect = None
         self.protect = False  # 자동 보호 중 (느릴 때 덜 중요한 일부터 줄임)
         self._load = []  # 최근 글자 읽기 한 바퀴 시간(ms)
         self._counts = {}  # 한 판 동안 센 것: 상점 읽기·알아봄, 보호 켬 등 (기록 요약)
@@ -958,6 +962,51 @@ class Reader(threading.Thread):
             self._shop_probe = time.time()
         self._inv = (inv, gold)
 
+    def _find_shop_items(self, img, iw, ih, gh, image_name):
+        """시험: 찍은 상점 그림에서 추천·바꿀 아이템 아이콘 자리를 찾아 기록만 한다 (화면 표시는 실제 그림으로 맞춘 뒤).
+        가장 낮은 우선순위로 따로 돈다. 찾을 아이템이 몇 개뿐이라 가볍다 (합성 시험 9가지 크기 2.5초 → 크기를 알면 1가지)"""
+        ids = [str(i) for i in (self.shop_targets or [])][:SHOP_FIND_MAX]
+        if not ids or not self.icon_dir or getattr(self, "_shop_find_busy", False):
+            return
+        import os
+        item_dir = os.path.join(os.path.dirname(self.icon_dir), "item")
+        paths = {i: os.path.join(item_dir, f"{i}.webp") for i in ids if os.path.exists(os.path.join(item_dir, f"{i}.webp"))}
+        if not paths:
+            return
+        k = iw / max(1, int(self.rect_w_for_area(iw)))  # 그림이 게임 창보다 줄어든 비율
+        self._shop_find_busy = True
+
+        def job():
+            try:
+                lower_thread()
+                import numpy as np
+                import hudicons
+                rgb = np.frombuffer(img, dtype=np.uint8).reshape(ih, iw, 4)[..., [2, 1, 0]]
+                sizes = [self._shop_icon] if self._shop_icon else list(hudicons.SHOP_SIZES)
+                t0 = time.time()
+                found = hudicons.locate_items(paths, rgb, [s * gh * k for s in sizes])
+                self._time("상점 아이템 찾기", t0)
+                sure = {i: f for i, f in found.items() if f["score"] >= hudicons.SHOP_SURE}
+                if sure and not self._shop_icon:
+                    # 찾은 크기를 기억한다 (다음엔 그 크기로만: 9배 가볍다)
+                    self._shop_icon = round(sorted(f["size"] for f in sure.values())[len(sure) // 2] / (gh * k), 4)
+                self._count("상점 아이템 찾기")
+                self._count("상점 아이템 찾음", len(sure))
+                self._rec("shopfind", {"image": image_name, "want": list(paths), "found": found, "sure": list(sure),
+                                       "iconRatio": self._shop_icon, "scale": round(k, 4)})
+            except ImportError:
+                pass
+            except Exception as e:
+                self._rec("error", {"error": "상점 아이템 찾기: " + str(e)[:200]}, dedupe=True)
+            finally:
+                self._shop_find_busy = False
+        threading.Thread(target=job, daemon=True, name="상점 아이템 찾기").start()
+
+    def rect_w_for_area(self, iw):
+        """상점 그림 영역의 원래 너비 (게임 창 기준 픽셀)"""
+        rect = self._last_rect
+        return rect[2] * (SHOP_PROBE_AREA[2] - SHOP_PROBE_AREA[0]) if rect else iw
+
     def _grab_area(self, cap, rect, area, max_w):
         """게임 창의 (x0, y0, x1, y1) 비율 영역을 너비 max_w 이하로 줄여 찍는다 → (이미지, 너비, 높이)"""
         gx, gy, gw, gh = rect
@@ -970,6 +1019,7 @@ class Reader(threading.Thread):
     def scan_shop_only(self, cap, ocr, rect):
         """상점 창: 열려 있을 때만 게임 화면 상자를 띄운다 (평소엔 게임을 가리지 않게. 2026-10-14 지적). SHOP_EVERY 번에 한 번만"""
         gx, gy, gw, gh = rect
+        self._last_rect = rect
         self._watch_inventory()
         self._shop_n = getattr(self, "_shop_n", 0) + 1
         if self._shop_n % SHOP_EVERY and not self._shop_probe:
@@ -1014,6 +1064,7 @@ class Reader(threading.Thread):
                 data["area"], data["window"] = list(SHOP_PROBE_AREA), [gw, gh]
                 self._shop_imgs += 1
                 self._shop_img_at = now + SHOP_IMG_GAP
+                self._find_shop_items(img, iw, ih, gh, data["image"])
             self._rec("shop", data)
             self.shop = shop
             self._changed()
