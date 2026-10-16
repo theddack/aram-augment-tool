@@ -7,9 +7,16 @@ web/ 화면을 pywebview 창으로 띄운다. 데이터(data.json, 아이콘)는
   데이터 폴더: 윈도우 프로그램 폴더\\data (쓸 수 없으면 %APPDATA%\\AramAugment)
               맥 ~/Library/Application Support/AramAugment
 """
+import os
+
+# 계산 라이브러리(numpy 의 OpenBLAS)는 기본으로 CPU 코어 수만큼 스레드를 띄우고, 그 스레드들은 보통 우선순위로 돈다.
+# 증강 칸 아이콘 비교 때 모든 코어를 잠깐씩 다 써서 게임 프레임이 끊길 수 있다 (2026-10-16 '간혹 프리징').
+# 비교 한 번은 작은 행렬 곱이라 스레드 1개로도 걸리는 시간이 같다 → numpy 를 불러오기 전에 1개로 묶는다
+for _k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_k, "1")
+
 import contextlib
 import json
-import os
 import re
 import shutil
 import ssl

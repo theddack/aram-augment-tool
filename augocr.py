@@ -274,14 +274,15 @@ class Tracker:
 
 
 # ---------------------------------------------------------------- 윈도우: 화면 잡기 + 글자 인식
-def lower_thread():
-    """지금 스레드를 가장 낮은 우선순위로 (무거운 아이콘 비교가 게임·애드온 창보다 뒤에 돌게)"""
+def lower_thread(level=-2):
+    """지금 스레드의 우선순위를 낮춘다. -2 = 가장 낮게 (무거운 아이콘 비교가 게임·애드온 창보다 뒤에 돌게),
+    -1 = 조금 낮게 (글자 읽기: 게임보다는 뒤에, 너무 낮으면 클릭을 놓친다)"""
     try:
         import ctypes
         k = ctypes.windll.kernel32
         k.GetCurrentThread.restype = ctypes.c_void_p
         k.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        k.SetThreadPriority(k.GetCurrentThread(), -2)  # THREAD_PRIORITY_LOWEST
+        k.SetThreadPriority(k.GetCurrentThread(), level)  # -2 LOWEST, -1 BELOW_NORMAL
     except Exception:
         pass
 
@@ -620,6 +621,7 @@ class Reader(threading.Thread):
         if not IS_WINDOWS:
             self.status = "윈도우에서만 동작"
             return
+        lower_thread(-1)  # 화면 잡기·글자 읽기가 게임 스레드를 밀어내지 않게
         try:
             cap, ocr, mouse = _Capture(), _Ocr(), _Mouse()
         except Exception as e:
@@ -732,7 +734,9 @@ class Reader(threading.Thread):
         x0, x1 = int(gw * xr[0]), int(gw * xr[1])
         k = min(1.0, OCR_HEIGHT / gh)
         tw, th = max(1, int((x1 - x0) * k)), max(1, int((y1 - y0) * k))
+        t0 = time.time()
         img = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0, tw, th)
+        self._time("화면 잡기", t0)  # 게임이 끊기면 화면 잡기(화면 합성에서 읽어 오기)가 느려졌는지 기록으로 본다
         words = [(t, x / k + x0, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
         return words, img, tw, th
 

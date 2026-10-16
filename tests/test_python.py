@@ -219,6 +219,12 @@ class Lcu(unittest.TestCase):
 
 
 class Desktop(unittest.TestCase):
+    def test_numpy_single_thread(self):
+        # 아이콘 비교가 모든 코어를 잡아 게임이 끊기지 않게: desktop 을 불러오면 계산 라이브러리 스레드는 1개
+        src = (ROOT / "desktop.py").read_text(encoding="utf-8")
+        self.assertLess(src.index("OPENBLAS_NUM_THREADS"), src.index("import augocr"))
+        self.assertEqual(os.environ.get("OPENBLAS_NUM_THREADS"), "1")
+
     def test_live_url_local_only(self):
         old = os.environ.get("ARAM_LIVE_URL")
         try:
