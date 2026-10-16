@@ -353,6 +353,17 @@ def draw_swap(canvas, ids, x, y, h, icon_dir, font):
     canvas.tag_lower(r)
 
 
+TIMER_SOON = 3  # 이 초 이하로 남으면 숫자를 노랗게 (곧 발동: 미리 자리 잡게)
+
+
+def timer_text(secs, font):
+    """남은 초 글자·글꼴·색: 60초 넘으면 1:05 (칸이 좁아 세 자리부터 글자를 줄인다), 곧 발동이면 노랑"""
+    text = str(secs) if secs < 60 else f"{secs // 60}:{secs % 60:02d}"
+    if len(text) > 2:
+        font = (font[0], -max(10, abs(font[1]) * 3 // 4), font[2])
+    return text, font, "#ffd54f" if secs <= TIMER_SOON else "#ffffff"
+
+
 def draw_timers(canvas, states, x, y, h, icon_dir, tag="timers"):
     """쿨타임 아이콘 한 줄: 아이콘 + 덮개 + 가운데 남은 초. 준비되면 초록 테두리, 돌고 있으면 점선 테두리(예상값)"""
     import os
@@ -383,8 +394,9 @@ def draw_timers(canvas, states, x, y, h, icon_dir, tag="timers"):
         else:
             canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#c8aa6e", width=1, dash=(3, 2), tags=tag)
             cx, cy = x0 + size / 2, y + size / 2
-            canvas.create_text(cx + 1, cy + 1, text=str(secs), font=font, fill="#000000", tags=tag)  # 그림자 (밝은 아이콘 위에서도 보이게)
-            canvas.create_text(cx, cy, text=str(secs), font=font, fill="#ffffff", tags=tag)
+            text, f, color = timer_text(secs, font)
+            canvas.create_text(cx + 1, cy + 1, text=text, font=f, fill="#000000", tags=tag)  # 그림자 (밝은 아이콘 위에서도 보이게)
+            canvas.create_text(cx, cy, text=text, font=f, fill=color, tags=tag)
 
 
 KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임", "swap": "바꾸기"}

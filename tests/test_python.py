@@ -971,6 +971,15 @@ class HudIcons(unittest.TestCase):
         self.assertEqual(ev[0]["want"], ["3031", "6672"])
         self.assertEqual(ev[0]["sure"], [], "빈 화면에선 확신하지 않는다")
 
+    def test_timer_text(self):
+        import overlay
+        f = ("X", -20, "bold")
+        self.assertEqual(overlay.timer_text(12, f), ("12", f, "#ffffff"))
+        self.assertEqual(overlay.timer_text(3, f)[2], "#ffd54f", "곧 발동이면 노랑")
+        text, f2, _ = overlay.timer_text(65, f)
+        self.assertEqual(text, "1:05")
+        self.assertLess(abs(f2[1]), 20, "세 자리부터 글자를 줄인다")
+
     def test_shop_find_dropped_when_game_changes(self):
         # 찾는 동안 새 게임이 시작되면 지난 게임 그림의 결과는 버린다 (새 게임 기록에 안 섞이게)
         import augocr
