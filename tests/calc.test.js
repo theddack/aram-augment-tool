@@ -316,3 +316,22 @@ test("치명적 리듬 베인: 무한의 대검이 불경한 히드라보다 위
   const as = (items) => Stats.computeStats(c, 18, items, aug, { aram: true }).total.AS;
   assert.ok(as([...owned, d.items.find((i) => i.id === "3031")]) > as(owned));
 });
+
+test("효과 종류만 있는 증강은 몰빵 빌드에 그 효과 아이템을 하나는 넣는다 · 아이템으로 안 커지는 증강(lift {})은 안 넣는다", () => {
+  const build = (cid, aid) => {
+    const c = d.champions.find((x) => x.id === cid);
+    const a = d.augments.find((x) => x.id === aid);
+    return S.buildConcepts(d.items, S.profile(c, d.tags), [a], [], d.rules, c, {}, ["augment"])[0].pick.map((p) => p.item);
+  };
+  for (const cid of ["Ezreal", "Vayne"]) {
+    const picks = build(cid, "Ability_SelfAOE_DoubleCast");
+    assert.ok(picks.some((i) => (i.tags.HASTE || 0) >= 0.5), `${cid} 메아리 시전: ${picks.map((i) => i.name).join(", ")}`);
+  }
+  // 아이템 가속 = 사용 효과 아이템 (빌드할 때 게임 데이터 설명에서 채움)
+  const act = d.rules.augments.ARAM_ApexInventor.items;
+  assert.ok(act.length >= 5 && act.includes("요우무의 유령검"));
+  assert.ok(build("Ezreal", "ARAM_ApexInventor").some((i) => act.includes(i.name)));
+  // 눈덩이 가속·티아라 매혹은 아이템으로 안 커진다 → 빌드가 따라가지 않는다
+  const ctx = S.augContext([d.augments.find((x) => x.id === "ARAM_Snowday"), d.augments.find((x) => x.id === "PromQueen")], d.rules);
+  assert.deepEqual(ctx.lift, {});
+});

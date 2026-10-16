@@ -1217,6 +1217,11 @@ def main():
     rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8"))
     aug_ids = {a["id"] for a in out_augs}
     item_names = {i["name"] for i in out_items}
+    # 사용 효과가 있는 완성 아이템 (아이템 가속 증강 → items). 패치로 아이템이 바뀌어도 빌드할 때마다 다시 채운다
+    active_items = [i["name"] for i in out_items if i["kind"] == "legendary" and "t-active" in (i["desc"] or "")]
+    for r in rules["augments"].values():
+        if r.get("itemsActive"):
+            r["items"] = active_items
     for aid, r in rules["augments"].items():
         if aid not in aug_ids and aid not in disabled_ids:  # 비활성 증강 규칙은 다시 켜질 때를 위해 남겨 둔다
             print("  [규칙] 없는 증강:", aid)

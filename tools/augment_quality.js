@@ -68,7 +68,7 @@ function check(d, champIds = REPS, augIds = null) {
         if (!ok) why = `몰빵 ${(mine * 100).toFixed(1)} < 평소 ${(usual * 100).toFixed(1)}`;
         if (!ok) gap = (usual - mine) / Math.max(Math.abs(usual), 1e-9);
       } else {
-        const tags = rule.tags || a.tags || {};
+        const tags = rule.lift || rule.tags || a.tags || {};  // lift: 빌드가 따라갈 태그 (scoring augContext 와 같은 기준)
         const zero = new Set(rule.zero || []);
         const key = Object.entries(tags).filter(([t, v]) => v >= KEY_MIN && !zero.has(t)).map(([t]) => conv[t] || t).filter((t) => buyable.has(t));
         if (!key.length) continue;  // 아이템으로 살릴 효과가 없는 증강 (궁극기·이동 등)

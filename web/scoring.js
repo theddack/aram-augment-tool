@@ -168,7 +168,9 @@
       const scales = scaleTags(a, rule);
       const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _convert: Object.values(rule.convert || {}) });
       const up = (t, v) => { lift[t] = Math.max(lift[t] || 0, v); (liftSrc[t] = liftSrc[t] || []).push(a.name); mine[t] = Math.max(mine[t] || 0, v); };
-      for (const [t, v] of Object.entries(et)) if (scales === null || scales.has(t)) up(t, v);
+      // rule.lift: 빌드가 따라갈 태그를 직접 정한 증강 ({}면 아이템으로 안 커짐: 티아라 매혹, 눈덩이 가속 …)
+      if (rule.lift) for (const [t, v] of Object.entries(rule.lift)) up(t, v);
+      else for (const [t, v] of Object.entries(et)) if (scales === null || scales.has(t)) up(t, v);
       for (const to of Object.values(rule.convert || {})) up(to, 1);
       Object.assign(convert, rule.convert || {});
       for (const t of rule.zero || []) zero.add(t);
@@ -480,6 +482,23 @@
 
   // champ 를 주면 수치 평가(18레벨)를 같이 한다
   // keys 를 주면 그 컨셉만 계산한다 (선택지 비교처럼 하나만 필요할 때)
+  // 증강 몰빵: 숫자 없이 효과 종류만 있는 증강(메아리 시전 → 스킬 가속 등)은 그 효과 아이템을 하나는 넣는다.
+  // 숫자가 없으면 수치 계산이 증강을 못 보고, 태그 가산만으로는 평타 빌드(이즈리얼·베인)를 못 뒤집었다 (2026-10-16 추천 품질 점검).
+  // 회복·보호막은 뺀다: 회복 스킬 없는 챔피언(징크스)에게 회복 아이템을 억지로 넣게 된다
+  const TAG_MUST_MIN = 0.6;
+  function tagMust(items, chosen, rules, ctx, off) {
+    const out = [];
+    for (const a of chosen) {
+      if (hasNumbers(a, rules)) continue;
+      for (const [t, v] of Object.entries((ctx.liftBy || {})[a.name] || {})) {
+        if (t.startsWith("_") || v < TAG_MUST_MIN || t === "HEALSHIELD" || ctx.zero.has(t)) continue;
+        const g = items.filter((i) => i.kind === "legendary" && !(off && off(i)) && (convertTags(i.tags || {}, ctx.convert || {})[t] || 0) >= 0.5).map((i) => i.name);
+        if (g.length) out.push(g);
+      }
+    }
+    return out;
+  }
+
   function buildConceptsRaw(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
     champ = champ && withChosenFeatures(champ, chosen, rules);  // 고른 증강이 챔피언 특징을 바꾸면(검을 뽑아라 → 근접) 그 기준으로
     const ctx = augContext(chosen, rules);
@@ -492,7 +511,9 @@
     for (const k of Object.keys(inv)) inv[k] /= invSum;
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
-      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off: offTypeFilter(champ, ctx, c) }) };
+      const off = offTypeFilter(champ, ctx, c);
+      const cctx = c.focus ? { ...ctx, must: [...ctx.must, ...tagMust(items, chosen, rules, ctx, off)] } : ctx;
+      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off }) };
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
