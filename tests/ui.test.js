@@ -617,3 +617,14 @@ test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (�
   assert.ok(last.calcSeq >= 1);
   assert.deepEqual(p.errors, []);
 });
+
+test("고른 증강 출처: 증강 칸에서 본 것은 확인됨, 클릭으로만 짐작한 것은 화면 추정", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 5, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  p.w.applyAug({ pickSeq: 1, picked: "치명적 리듬", pickedFrom: ["치명적 리듬", "취약", "부메랑 투척"], hudPicked: [] });
+  assert.match(p.text("#chosen"), /치명적 리듬화면 추정/);
+  p.w.applyAug({ pickSeq: 1, hudPicked: [id("치명적 리듬")] });
+  assert.match(p.text("#chosen"), /치명적 리듬✔ 확인됨/);
+  assert.deepEqual(p.errors, []);
+});

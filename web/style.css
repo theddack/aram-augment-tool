@@ -255,3 +255,8 @@ body.light.searching #champ-grid { display: grid; }
 #next-buy .swap-row { display: grid; grid-template-columns: 16px 32px 12px 32px 1fr; gap: 6px; align-items: center; padding: 4px 0; font-size: 13px; }
 #next-buy .swap-row img { width: 32px; height: 32px; border-radius: 4px; }
 #next-buy .swap-row img.sell { opacity: .55; outline: 2px solid #e53935; }
+
+/* 고른 증강 출처: 확인됨(증강 칸 그림) / 화면 추정(클릭 짐작) */
+.slot .src { font-size: 10px; margin-left: 4px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.slot .src.ok { color: #4caf50; border: 1px solid #4caf5066; }
+.slot .src.guess { color: #c8aa6e; border: 1px dashed #c8aa6e88; }

@@ -503,7 +503,11 @@ function renderChosen() {
   const slots = [0, 1, 2, 3].map((i) => {
     const a = state.chosen[i];
     if (!a) return `<div class="slot muted">빈 칸</div>`;
-    return `<div class="slot" data-i="${i}" title="해제"><img src="${icon("augment", a.id)}" alt=""><span class="r${a.rarity}">${esc(a.name)}</span></div>`;
+    // 게임 중이면 어디서 알았는지: 증강 칸 그림으로 봄(확인됨) / 클릭으로 짐작(화면 추정, 틀릴 수 있음)
+    const src = !liveOn ? "" : state.hudSure && state.hudSure.has(a.id)
+      ? `<span class="src ok" title="게임 화면 증강 칸 그림으로 확인했어요">✔ 확인됨</span>`
+      : `<span class="src guess" title="선택 화면에서 누른 카드로 짐작했어요. 증강 칸에서 확인되면 '확인됨'으로 바뀌어요">화면 추정</span>`;
+    return `<div class="slot" data-i="${i}" title="해제"><img src="${icon("augment", a.id)}" alt=""><span class="r${a.rarity}">${esc(a.name)}</span>${src}</div>`;
   });
   const tips = state.chosen.map((a) => [a, playTip(a)]).filter(([, t]) => t);
   $("#chosen").innerHTML = slots.join("")
@@ -1451,6 +1455,10 @@ function applyAug(A) {
   // 게임 증강 칸 아이콘으로 읽은 고른 증강이 정답 (클릭으로 짐작한 건 틀릴 수 있었다: 2026-10-14 나피리 판)
   // 클릭으로 잡은 것은 지우지 않고 합친다 (v0.1.15: 증강 칸 오판이 맞게 잡은 광신자·조준경 부착을 덮어썼다)
   const hud = (A.hudPicked || []).map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean);
+  // 출처 표시: 증강 칸 그림으로 본 것 = 확인됨, 클릭으로만 짐작한 것 = 화면 추정
+  const sureKey = (A.hudPicked || []).join(",");
+  const sureChanged = sureKey !== [...(state.hudSure || [])].join(",");
+  state.hudSure = new Set(A.hudPicked || []);
   // 한 번 받은 정보로 화면은 한 번만 다시 그린다 (증강 칸 결과와 고른 증강이 같이 오면 전체 다시 그리기가 두 번이었다)
   let full = false, offersOnly = false, warn = false;
   const add = hud.filter((a) => !state.chosen.some((c) => c.id === a.id));
@@ -1495,6 +1503,7 @@ function applyAug(A) {
   }
   if (full) { renderAll(); trackTimers(null); }  // 고른 증강에 쿨타임이 있으면 고른 시각부터 센다
   else if (offersOnly) renderOffers();
+  if (!full && sureChanged) renderChosen();
   if (warn) $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
 }
 
