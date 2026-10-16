@@ -600,6 +600,7 @@ test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이�
   assert.match(advice, /적 보호막 많음 \(보호막 아이템 3개\) → 보호막 감소: 독사의 송곳니/, advice);
   assert.match(advice, /적 공격 속도 높음 \(자야\) → 검토: /, "가렌은 앞에서 맞는다");
   assert.match(advice, /적 증강 \(확인됨\): 모데카이저 급속 성장 · 자야 점멸 난사/);
+  assert.deepEqual(e.builds.find((b) => b.champ === "Mordekaiser").augments, ["급속 성장"], "기록에도 남긴다");
   const hud = sent.at(-1).hud.join("\n");
   assert.doesNotMatch(hud, /적별|적 증강/, "게임 화면 상자는 할 일만 (짧게)");
   assert.match(hud, /보호막 감소/);

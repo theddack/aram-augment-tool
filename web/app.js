@@ -1067,7 +1067,8 @@ function sendOverlay(src) {
     target: { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP },  // 아이템·증강 비교용 (18레벨 예상)
     now: enemyNow(),  // 지금 상대 (실제 레벨 + 산 아이템)
     resistItems: enemyResistItems(),
-    builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name) })),
+    builds: state.enemyBuilds.map((e) => ({ champ: e.champ.id, level: e.level, items: e.items.map((i) => i.name),
+      ...(e.augments.length ? { augments: e.augments.map((a) => a.name) } : {}) })),
     advice: adv,
   } : null;
   const sw = swapAdvice();
