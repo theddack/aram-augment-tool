@@ -726,6 +726,7 @@ class Api:
         self._window = None
         self._watcher = watcher
         self._ov = ov
+        self._calc_ms, self._calc_seq = [], None  # 화면 쪽 추천 다시 계산 시간(ms) (한 판 기록 요약)
         self._lcu = lcu_watcher
         self._lock = threading.Lock()
         self._ui_beat = None  # 화면(JS)이 마지막으로 게임 상태를 물어본 시각 (3초마다). 멈추면 화면 쪽이 멈춘 것
@@ -746,6 +747,10 @@ class Api:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
                                   "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
             self._ov.update(payload)
+        ms = payload.get("calcMs")
+        if isinstance(ms, (int, float)) and len(self._calc_ms) < 5000 and payload.get("calcSeq") != self._calc_seq:
+            self._calc_seq = payload.get("calcSeq")  # 같은 계산 결과를 여러 번 보내도 한 번만 센다
+            self._calc_ms.append(float(ms))
         if self._rec:
             # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
             cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]
@@ -785,6 +790,13 @@ class Api:
         except Exception as e:  # 기록용이라 실패해도 다른 기능엔 영향 없게
             if self._rec:
                 self._rec.event("timerarea", {"error": str(e)[:100]})
+
+    def calc_summary(self):
+        """한 판 동안 화면 쪽 추천 다시 계산 시간 {n, avg, p95, max} (ms). 부르면 비운다"""
+        v, self._calc_ms = sorted(self._calc_ms), []
+        if not v:
+            return None
+        return {"n": len(v), "avg": round(sum(v) / len(v)), "p95": round(v[min(len(v) - 1, int(len(v) * 0.95))]), "max": round(v[-1])}
 
     def set_overlay_enabled(self, on):
         if self._ov:
@@ -1347,6 +1359,12 @@ def main():
         if reader:
             # 한 판 동안 글자 인식·증강 칸 처리 시간 (평균·p95·최대): 실제 게임에서 느린 구간을 찾으려고
             perf = reader.perf_summary()
+            # 표시 창 그리기·화면 쪽 추천 계산 시간도 같이 (게임 끊김 원인을 숫자로 보려고)
+            draw = ov.perf_summary() if ov else {}
+            calc = api.calc_summary()
+            perf.update({f"표시 {k}": v for k, v in draw.items()})
+            if calc:
+                perf["추천 계산"] = calc
             rec.event("perf", {"ms": perf})
             if perf:
                 diag.write("한 판 처리 시간(ms): " + " · ".join(f"{k} {v['n']}번 평균 {v['avg']} p95 {v['p95']} 최대 {v['max']}" for k, v in perf.items()))

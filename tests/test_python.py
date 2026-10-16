@@ -218,12 +218,26 @@ class Lcu(unittest.TestCase):
             self.assertEqual(c.puts, [], "읽기 실패면 저장(PUT) 안 함")
 
 
+class Settings_stub:
+    def get(self, k, default=None):
+        return default
+
+
 class Desktop(unittest.TestCase):
     def test_numpy_single_thread(self):
         # 아이콘 비교가 모든 코어를 잡아 게임이 끊기지 않게: desktop 을 불러오면 계산 라이브러리 스레드는 1개
         src = (ROOT / "desktop.py").read_text(encoding="utf-8")
         self.assertLess(src.index("OPENBLAS_NUM_THREADS"), src.index("import augocr"))
         self.assertEqual(os.environ.get("OPENBLAS_NUM_THREADS"), "1")
+
+    def test_calc_time_counted_once_per_calc(self):
+        api = desktop.Api(Settings_stub())
+        for seq in (1, 1, 2):
+            api.set_overlay({"calcMs": 30 * seq, "calcSeq": seq})
+        sm = api.calc_summary()
+        self.assertEqual(sm["n"], 2, "같은 계산을 여러 번 보내도 한 번")
+        self.assertEqual(sm["max"], 60)
+        self.assertIsNone(api.calc_summary(), "부르면 비운다")
 
     def test_live_url_local_only(self):
         old = os.environ.get("ARAM_LIVE_URL")
@@ -930,6 +944,24 @@ class HudIcons(unittest.TestCase):
         self.assertNotIn(top_y, reads, "위쪽 띠는 안 읽음")
         self.assertTrue(reads, "아래 줄은 계속 읽음")
 
+    def test_auto_protect_when_slow(self):
+        # 느려지면 진단용 그림부터 줄이고(자동 보호), 다시 빨라지면 끈다. 증강 선택 읽기는 건드리지 않는다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        got = []
+        r._rec = lambda k, d, **kw: got.append((k, d))
+        for _ in range(augocr.SLOW_N):
+            r._watch_load(augocr.SLOW_MS * 2)
+        self.assertTrue(r.protect)
+        self.assertEqual(got[-1][0], "protect")
+        for _ in range(augocr.SLOW_N):
+            r._watch_load(augocr.SLOW_MS * 0.6)
+        self.assertTrue(r.protect, "조금 나아진 정도로는 바로 끄지 않는다 (깜박이지 않게)")
+        for _ in range(augocr.SLOW_N):
+            r._watch_load(10)
+        self.assertFalse(r.protect)
+        self.assertEqual(r.perf_summary()["횟수"], {"보호 켬": 1, "보호 끔": 1})
+
     def test_shop_probe_only_after_purchase(self):
         # 2026-10-15 베인 판: 그림 3번 중 1번은 물약을 마셔 아이템이 사라진 때 (상점과 무관) → 골드가 줄었을 때만
         import augocr
@@ -1040,6 +1072,33 @@ class ShopBox(unittest.TestCase):
         self.assertEqual([k for k, *_ in overlay.layout(api._ov.p, 1920, 1080)], ["hud"])
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": None})
         self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [], "평소엔 안 띄운다")
+
+    def test_timers_redraw_alone(self):
+        # 쿨타임은 1초마다 숫자가 바뀐다 → 그 부분만 지우고 다시 그릴 수 있게 전부 "timers" 태그로 그린다
+        import overlay
+
+        class C:
+            def __init__(self):
+                self.tags = []
+
+            def _add(self, *a, **kw):
+                self.tags.append(kw.get("tags"))
+
+            create_text = create_rectangle = create_image = _add
+        c = C()
+        overlay.draw_timers(c, [("PromQueen", "퀸카", 25, 20, False), ("X", "도주 계획", 0, 0, True)], 10, 10, 1080, None)
+        self.assertTrue(c.tags)
+        self.assertEqual(set(c.tags), {"timers"})
+        self.assertEqual(c.timer_images, [], "쿨타임 그림은 따로 붙잡는다 (다시 그릴 때 쌓이지 않게)")
+
+    def test_overlay_perf_summary(self):
+        import overlay
+        o = overlay.Overlay()
+        o._perf_add("그리기", time.time() - 0.01)
+        sm = o.perf_summary()
+        self.assertEqual(sm["그리기"]["n"], 1)
+        self.assertGreaterEqual(sm["그리기"]["max"], 5)
+        self.assertEqual(o.perf_summary(), {}, "부르면 비운다")
 
     def test_timer_icons(self):
         # 증강 쿨타임 아이콘: 표시 창이 스스로 센다. 자동 주기는 고른 시각 기준, 체력 발동은 다시 쓸 수 있는 시각 기준 (모두 예상)

@@ -27,6 +27,8 @@ OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄�
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
+SLOW_MS = 250  # 글자 읽기 한 바퀴가 최근 평균 이만큼 넘으면 '느림' → 진단용 그림·덜 중요한 읽기부터 줄인다 (자동 보호)
+SLOW_N = 20  # 최근 몇 바퀴로 보는지
 HUD_SETTLED = 60.0  # 초. 고른 증강을 증강 칸에서 다 찾았으면 다음 고르기 전까지는 이만큼에 한 번만 (확인용)
 MAX_AUGMENTS = 4  # 한 판에 고르는 증강 수. 다 찾으면 증강 칸은 다시 안 읽는다 (새로 고르면 그때만)
 HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
@@ -492,6 +494,9 @@ class Reader(threading.Thread):
         self._shop_probes = 0
         self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
+        self.protect = False  # 자동 보호 중 (느릴 때 덜 중요한 일부터 줄임)
+        self._load = []  # 최근 글자 읽기 한 바퀴 시간(ms)
+        self._counts = {}  # 한 판 동안 센 것: 상점 읽기·알아봄, 보호 켬 등 (기록 요약)
         self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
 
     @property
@@ -507,7 +512,7 @@ class Reader(threading.Thread):
         x0, y0, x1, y1 = int(gw * l), int(gh * t), int(gw * r), int(gh * b)
         raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
         rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]]
-        if self.rec and self.offered and not getattr(self, "_area_saved", False):
+        if self.rec and self.offered and not getattr(self, "_area_saved", False) and not self.protect:
             # 증강 칸이 화면 어디 있는지 보려고 한 판에 한 장: 아래 가운데만 (채팅·이름이 들어가지 않게 좌우 30% 는 뺀다)
             # 해상도에 따라 HUD 가 왼쪽으로 치우친다 (2520x1575: 초상화가 너비 33%) → 12~70%, 아래 20% 띠
             ax0, ax1, ay0 = int(gw * 0.12), int(gw * 0.70), int(gh * 0.80)
@@ -654,6 +659,7 @@ class Reader(threading.Thread):
                 t0 = time.time()
                 self.scan(cap, ocr, matcher, rect)
                 self.last_ms = int((time.time() - t0) * 1000)
+                self._watch_load(self.last_ms)
             except Exception as e:
                 self.status = f"읽기 오류: {str(e)[:120]}"
                 self._rec("error", {"error": str(e)[:200]}, dedupe=True)
@@ -671,6 +677,9 @@ class Reader(threading.Thread):
                 out[k] = {"n": len(v), "avg": round(sum(v) / len(v)), "p95": round(v[min(len(v) - 1, int(len(v) * 0.95))]),
                           "max": round(v[-1])}
         self._perf = {}
+        if self._counts:
+            out["횟수"] = dict(self._counts)
+            self._counts = {}
         return out
 
     def _changed(self):
@@ -883,6 +892,25 @@ class Reader(threading.Thread):
                     self._hud_at = time.time() + self._hud_wait(soon)
                 self._hud_busy = False
 
+    def _watch_load(self, ms):
+        """자동 보호: 최근 SLOW_N 바퀴 평균이 SLOW_MS 를 넘으면 protect 를 켠다 (진단용 그림·상점 위쪽 띠를 건너뛴다).
+        증강 선택 화면 읽기·고른 증강 확인·게임 정보는 그대로 둔다 (정확도는 줄이지 않는다). 평균이 절반 아래로 내려가면 끈다"""
+        w = self._load
+        w.append(ms)
+        if len(w) > SLOW_N:
+            del w[0]
+        if len(w) < SLOW_N:
+            return
+        avg = sum(w) / len(w)
+        on = avg > SLOW_MS if not self.protect else avg > SLOW_MS / 2
+        if on != self.protect:
+            self.protect = on
+            self._count("보호 켬" if on else "보호 끔")
+            self._rec("protect", {"on": on, "avgMs": round(avg)})
+
+    def _count(self, kind, n=1):
+        self._counts[kind] = self._counts.get(kind, 0) + n
+
     def _hud_wait(self, soon=False):
         """다음 증강 칸 읽기까지 몇 초. 증강 칸 읽기가 이 프로그램에서 가장 무거운 일이라(평균 0.6초, 길면 4초)
         이미 찾을 걸 다 찾았으면 드물게만 (2026-10-16 베인 판: 한 판 67번 중 대부분이 이미 아는 증강 다시 확인)"""
@@ -955,13 +983,20 @@ class Reader(threading.Thread):
         if shop and shop_bottom_key(gw, gh) not in self._bottom_ok:
             self._bottom_ok.add(shop_bottom_key(gw, gh))
         # 이 창 크기에서 아래 버튼 줄로 알아본 적이 있으면 위쪽 탭 줄(큰 띠)은 막 샀을 때만 읽는다 (화면 잡기·글자 읽기를 줄인다)
-        top_due = self._top_n % 2 == 0 and shop_bottom_key(gw, gh) not in self._bottom_ok
+        top_due = self._top_n % 2 == 0 and shop_bottom_key(gw, gh) not in self._bottom_ok and not self.protect
         if not shop and (self._shop_probe or top_due):
             tw_, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
             sw = sw + tw_
             shop = find_shop(tw_, gw, gh)
         self._time("상점", t0)
-        if self._shop_probe and not shop and self.rec:
+        self._count("상점 읽기")
+        if shop:
+            self._count("상점 알아봄")
+        if self._shop_probe:
+            self._count("산 직후 읽기")
+            if shop:
+                self._count("산 직후 알아봄")  # 상점 인식 성공률 = 산 직후 알아봄 / 산 직후 읽기
+        if self._shop_probe and not shop and self.rec and not self.protect:
             # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 읽은 글자와 가운데 넓은 그림을 남긴다 (상점이 어디 어떻게 보이는지)
             self._shop_probes += 1
             wide, ww, wh = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1280)
@@ -971,7 +1006,7 @@ class Reader(threading.Thread):
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
             now = time.time()
-            if shop and self.rec and self._shop_imgs < SHOP_IMGS and now >= self._shop_img_at:
+            if shop and self.rec and self._shop_imgs < SHOP_IMGS and now >= self._shop_img_at and not self.protect:
                 # 상점 창 안 아이템 아이콘에 표시하려면 상점이 실제로 어떻게 생겼는지 봐야 한다 → 가운데 넓게 (채팅 제외)
                 # 처음 열었을 때 + SHOP_IMG_GAP 초 뒤 한 번 더 (아이템이 바뀐 모습)
                 img, iw, ih = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1600)

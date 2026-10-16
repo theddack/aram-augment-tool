@@ -353,7 +353,7 @@ def draw_swap(canvas, ids, x, y, h, icon_dir, font):
     canvas.tag_lower(r)
 
 
-def draw_timers(canvas, states, x, y, h, icon_dir):
+def draw_timers(canvas, states, x, y, h, icon_dir, tag="timers"):
     """쿨타임 아이콘 한 줄: 아이콘 + 덮개 + 가운데 남은 초. 준비되면 초록 테두리, 돌고 있으면 점선 테두리(예상값)"""
     import os
     size = timer_size(h)
@@ -363,6 +363,7 @@ def draw_timers(canvas, states, x, y, h, icon_dir):
         from PIL import ImageTk
     except ImportError:
         ImageTk = None
+    canvas.timer_images = []  # 쿨타임 그림은 따로 붙잡는다 (쿨타임만 다시 그릴 때 예전 그림이 쌓이지 않게)
     for i, (aid, name, secs, step, ready) in enumerate(states):
         x0 = x + i * (size + gap)
         path = os.path.join(icon_dir, f"{aid}.webp") if icon_dir and aid else ""
@@ -371,19 +372,19 @@ def draw_timers(canvas, states, x, y, h, icon_dir):
         if ImageTk:
             try:
                 img = ImageTk.PhotoImage(timer_image(path, size, step), master=canvas)
-                canvas.images.append(img)
-                canvas.create_image(x0, y, image=img, anchor="nw")
+                canvas.timer_images.append(img)
+                canvas.create_image(x0, y, image=img, anchor="nw", tags=tag)
             except Exception:
-                canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="")
+                canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="", tags=tag)
         else:
-            canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="")
+            canvas.create_rectangle(x0, y, x0 + size, y + size, fill="#111820", outline="", tags=tag)
         if ready:
-            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#4caf50", width=2)
+            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#4caf50", width=2, tags=tag)
         else:
-            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#c8aa6e", width=1, dash=(3, 2))
+            canvas.create_rectangle(x0, y, x0 + size, y + size, outline="#c8aa6e", width=1, dash=(3, 2), tags=tag)
             cx, cy = x0 + size / 2, y + size / 2
-            canvas.create_text(cx + 1, cy + 1, text=str(secs), font=font, fill="#000000")  # 그림자 (밝은 아이콘 위에서도 보이게)
-            canvas.create_text(cx, cy, text=str(secs), font=font, fill="#ffffff")
+            canvas.create_text(cx + 1, cy + 1, text=str(secs), font=font, fill="#000000", tags=tag)  # 그림자 (밝은 아이콘 위에서도 보이게)
+            canvas.create_text(cx, cy, text=str(secs), font=font, fill="#ffffff", tags=tag)
 
 
 KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임", "swap": "바꾸기"}
@@ -405,6 +406,23 @@ class Overlay(threading.Thread):
         self.beat = None  # 표시 창이 마지막으로 확인한 시각 (멈춤 진단용, 돌기 시작하면 채운다)
         self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
         self.icon_dir = None  # 증강 아이콘 폴더 (쿨타임 표시)
+        self._perf = {}  # 그리기 처리 시간(ms): 전체 다시 그리기 · 쿨타임만 (한 판 기록에 요약)
+
+    def _perf_add(self, kind, t0):
+        v = self._perf.setdefault(kind, [])
+        if len(v) < 5000:
+            v.append((time.time() - t0) * 1000)
+
+    def perf_summary(self):
+        """한 판 동안 표시 창 그리기 시간 {종류: {n, avg, p95, max}} (ms). 부르면 비운다"""
+        out = {}
+        for k, v in list(self._perf.items()):
+            if v:
+                v = sorted(v)
+                out[k] = {"n": len(v), "avg": round(sum(v) / len(v), 1), "p95": round(v[min(len(v) - 1, int(len(v) * 0.95))], 1),
+                          "max": round(v[-1], 1)}
+        self._perf = {}
+        return out
 
     # 표시 창이 돌고 있지 않으면(맥, Tk 실패) 큐에 쌓지 않고 값만 바꾼다 (끝없이 쌓이지 않게)
     def _send(self, k, v):
@@ -449,10 +467,11 @@ class Overlay(threading.Thread):
         win.click_through(root)
         root.update()
         shown, last, placed = False, None, None
+        last_main, last_tim = None, None
         self._running = True
 
         def tick():
-            nonlocal shown, last, placed
+            nonlocal shown, last, placed, last_main, last_tim
             self.beat = time.time()
             rect = None
             try:
@@ -464,7 +483,7 @@ class Overlay(threading.Thread):
                 root.after(200 if rect else 1000, tick)
 
         def step():
-            nonlocal shown, last, placed
+            nonlocal shown, last, placed, last_main, last_tim
             while not self.q.empty():
                 k, v = self.q.get_nowait()
                 if k == "payload":
@@ -493,6 +512,7 @@ class Overlay(threading.Thread):
                     root.geometry(f"1x1+{PARK[0]}+{PARK[1]}")
                     win.place(PARK[0], PARK[1], 1, 1)
                     shown, last, placed = False, None, None
+                    last_main, last_tim = None, None
                 if rect and self.mode == "전체 화면":
                     self.status = "전체 화면이라 표시할 수 없어요 → 롤 설정 > 비디오 > 창 모드를 '테두리 없음'으로"
                 else:
@@ -500,7 +520,18 @@ class Overlay(threading.Thread):
             else:
                 x, y, w, h = rect
                 key = (w, h, repr(entries))
-                if key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
+                main = [e for e in entries if e[0] != "timers"]
+                tim = [e for e in entries if e[0] == "timers"]
+                if key != last and last is not None and last_main == (w, h, repr(main)) and tim and last_tim == len(tim[0][3]):
+                    # 쿨타임 숫자만 바뀜 (1초마다): 카드·상자는 그대로 두고 쿨타임만 다시 그린다. 창 크기·위치도 그대로
+                    t0 = time.time()
+                    _, tx, ty, states = tim[0]
+                    canvas.delete("timers")
+                    draw_timers(canvas, states, tx - self._box[0], ty - self._box[1], h, self.icon_dir)
+                    self._perf_add("쿨타임만", t0)
+                    last = key
+                elif key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
+                    t0 = time.time()
                     canvas.config(width=w, height=h)
                     draw(canvas, self.payload, w, h, scale=h / 1080, icon_dir=self.icon_dir)
                     # 창은 그린 것 둘레만큼만 (게임 크기 투명 창 X): 겹치는 영역이 작을수록 게임 화면 합성이 가볍다
@@ -511,7 +542,9 @@ class Overlay(threading.Thread):
                     canvas.config(width=bw, height=bh)
                     self._box = (bx0, by0, bw, bh)
                     last = key
+                    last_main, last_tim = (w, h, repr(main)), (len(tim[0][3]) if tim else None)
                     placed = None
+                    self._perf_add("그리기", t0)
                 bx0, by0, bw, bh = self._box
                 where = (x + bx0, y + by0, bw, bh)
                 if where != placed:  # 게임 창이 움직이면 위치만 옮긴다 (활성화 없이 맨 위로)

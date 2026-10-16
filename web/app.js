@@ -391,6 +391,14 @@ function selectChamp(next) {
 }
 
 function renderAll() {
+  // 다시 계산에 걸린 시간 (기록용: 게임 중 끊김이 화면 쪽 계산 때문인지 보려고). 다음 게임 화면 표시 때 같이 보낸다
+  const t0 = performance.now();
+  try { renderAllNow(); } finally {
+    state.calcMs = Math.round(performance.now() - t0);
+    state.calcSeq = (state.calcSeq || 0) + 1;
+  }
+}
+function renderAllNow() {
   // 쉽게 보기에서 숨긴 칸(능력치 표·아이템 목록·가중치)은 그리지 않는다. '자세히 보기'로 바꿀 때 그린다
   const simple = document.body.classList.contains("simple");
   renderChampCard();
@@ -1060,7 +1068,8 @@ function sendOverlay(src) {
   } : null;
   const sw = swapAdvice();
   const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0 } : null;
-  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null });
+  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
+    calcMs: state.calcMs, calcSeq: state.calcSeq });  // 기록용: 마지막 추천 다시 계산에 걸린 시간
 }
 
 function renderAugs() {

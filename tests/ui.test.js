@@ -605,3 +605,15 @@ test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이�
   assert.match(hud, /보호막 감소/);
   assert.deepEqual(p.errors, []);
 });
+
+test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (기록용)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 5, items: ["3006"] });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 5, items: ["3006", "6672"] });
+  const last = sent.at(-1);
+  assert.equal(typeof last.calcMs, "number");
+  assert.ok(last.calcSeq >= 1);
+  assert.deepEqual(p.errors, []);
+});
