@@ -349,7 +349,7 @@
     const num = { mw: metricWeights(conceptWeights(w, ctx, CONCEPTS[1])), norm: {} };
     const c = withChosenFeatures(champ, [...chosen, aug], rules);
     const base = augStatsOf(chosen, rules, c);
-    const empty = Stats.evaluate(c, 18, [], base, statOpts).m;
+    const empty = Stats.evaluate(c, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
     for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
     const v0 = valueOf(Stats.evaluate(c, 18, items, base, statOpts).m, num);
     const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c)], statOpts).m, num);
@@ -383,7 +383,9 @@
     const focus = num && opts.focus && num.augStats.length ? opts.focus : 0;
     const evalBare = (list) => Stats.evaluate(num.champ, num.level, list, [], num.statOpts).m;
     if (num) {
-      const m0 = evalM([]);
+      // 기준값은 증강 없는 맨몸: 증강이 키운 지표(치명타 증강 → 평타 피해)를 기준에 넣으면 그 지표 아이템이 오히려 싸 보였다
+      // (2026-10-16 가렌 + 치명적인 공격 → 탱커 빌드. 레벨당 공격력을 바로잡은 뒤 드러남)
+      const m0 = evalBare([]);
       num.norm = {};
       for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(m0[k], METRIC_FLOOR[k]);
     }
@@ -467,7 +469,7 @@
     const items = bal.pick.map((p) => p.item);
     const num = { mw: metricWeights(iw), norm: {} };
     const base = augStatsOf(chosen, rules, champ);
-    const empty = Stats.evaluate(champ, 18, [], base, statOpts).m;
+    const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
     for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
     const m0 = Stats.evaluate(champ, 18, items, base, statOpts).m;
     const v0 = valueOf(m0, num);
@@ -535,7 +537,7 @@
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts, mw: metricWeights(iw) } : null;
     let m0 = null;
     if (num) {
-      const empty = Stats.evaluate(champ, 18, [], num.augStats, statOpts).m;
+      const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
       num.norm = {};
       for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
       m0 = Stats.evaluate(champ, 18, fixed, num.augStats, statOpts).m;
