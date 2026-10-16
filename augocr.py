@@ -27,6 +27,8 @@ OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄�
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
+HUD_SETTLED = 60.0  # 초. 고른 증강을 증강 칸에서 다 찾았으면 다음 고르기 전까지는 이만큼에 한 번만 (확인용)
+MAX_AUGMENTS = 4  # 한 판에 고르는 증강 수. 다 찾으면 증강 칸은 다시 안 읽는다 (새로 고르면 그때만)
 HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
@@ -98,6 +100,10 @@ def rows_of(words):
         else:
             rows.append({"cy": cy, "h": wd[4], "words": [wd]})
     return [r["words"] for r in rows]
+
+
+def shop_bottom_key(width, height):
+    return (int(width), int(height))
 
 
 def find_shop(words, width, height):
@@ -486,6 +492,7 @@ class Reader(threading.Thread):
         self._shop_probes = 0
         self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
+        self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
 
     @property
     def state(self):
@@ -873,8 +880,19 @@ class Reader(threading.Thread):
                 else:
                     soon, self._hud_soon = getattr(self, "_hud_soon", False), False
                     # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
-                    self._hud_at = time.time() + (2 if soon or self._verify or self._recover else HUD_EVERY if self.offered else HUD_EVERY_MISSING)
+                    self._hud_at = time.time() + self._hud_wait(soon)
                 self._hud_busy = False
+
+    def _hud_wait(self, soon=False):
+        """다음 증강 칸 읽기까지 몇 초. 증강 칸 읽기가 이 프로그램에서 가장 무거운 일이라(평균 0.6초, 길면 4초)
+        이미 찾을 걸 다 찾았으면 드물게만 (2026-10-16 베인 판: 한 판 67번 중 대부분이 이미 아는 증강 다시 확인)"""
+        if soon or self._verify or self._recover:
+            return 2  # 확인 중: 연속 2번 보여야 인정
+        if len(self.hud_ids) >= MAX_AUGMENTS:
+            return float("inf")  # 다 골랐다. 새로 고르면(클릭) 그때 다시 읽는다
+        if self.hud_ids and len(self.hud_ids) >= len(self._picked_names):
+            return HUD_SETTLED
+        return HUD_EVERY if self.offered else HUD_EVERY_MISSING
 
     def urgent(self, now=None):
         """증강 선택 화면이 곧 뜨거나 떠 있을 때: 선택 화면이 보임·고른 뒤 확인 중·레벨이 막 오름·죽어 있음"""
@@ -934,7 +952,11 @@ class Reader(threading.Thread):
         sw, _, _, _ = self.read_band(cap, ocr, rect, bb, (bx0, bx1))
         shop = find_shop(sw, gw, gh)
         self._top_n = getattr(self, "_top_n", 0) + 1
-        if not shop and (self._shop_probe or self._top_n % 2 == 0):
+        if shop and shop_bottom_key(gw, gh) not in self._bottom_ok:
+            self._bottom_ok.add(shop_bottom_key(gw, gh))
+        # 이 창 크기에서 아래 버튼 줄로 알아본 적이 있으면 위쪽 탭 줄(큰 띠)은 막 샀을 때만 읽는다 (화면 잡기·글자 읽기를 줄인다)
+        top_due = self._top_n % 2 == 0 and shop_bottom_key(gw, gh) not in self._bottom_ok
+        if not shop and (self._shop_probe or top_due):
             tw_, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
             sw = sw + tw_
             shop = find_shop(tw_, gw, gh)

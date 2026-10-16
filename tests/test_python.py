@@ -875,6 +875,49 @@ class HudIcons(unittest.TestCase):
         self.assertEqual(shops[0]["window"], [2520, 1575])
         self.assertNotIn("image", shops[1], "곧바로 다시 열면 또 찍지 않는다")
 
+    def test_hud_reads_less_when_settled(self):
+        # 증강 칸 읽기는 가장 무겁다 → 고른 걸 다 찾았으면 드물게, 4개 다 찾았으면 안 읽는다 (새로 고르면 그때)
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.offered = {"a"}
+        r._picked_names = {"취약", "치명적 리듬"}
+        r.hud_ids = ["A1"]
+        self.assertEqual(r._hud_wait(), augocr.HUD_EVERY, "고른 것 중 못 찾은 게 있음")
+        r.hud_ids = ["A1", "A2"]
+        self.assertEqual(r._hud_wait(), augocr.HUD_SETTLED)
+        r.hud_ids = ["A1", "A2", "A3", "A4"]
+        self.assertEqual(r._hud_wait(), float("inf"))
+        self.assertEqual(r._hud_wait(soon=True), 2, "막 골랐으면 바로 확인")
+
+    def test_shop_top_band_skipped_after_bottom_works(self):
+        # 아래 버튼 줄로 상점을 알아본 창 크기에서는 위쪽 띠(큰 그림)를 따로 읽지 않는다
+        import augocr
+        reads = []
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                reads.append(y)
+                return b"\0" * ((tw or w) * (th or h) * 4)
+
+        class Ocr:
+            words_ = [("판매", 300, 20, 40, 15), ("되돌리기", 420, 20, 70, 15)]
+
+            def words(self, img, tw, th):
+                return self.words_
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._changed = lambda: None
+        o = Ocr()
+        for _ in range(augocr.SHOP_EVERY):  # SHOP_EVERY 번에 한 번 읽는다
+            r.scan_shop_only(Cap(), o, (0, 0, 2520, 1575))  # 열림 → 아래 줄로 알아봄
+        self.assertTrue(r.shop)
+        o.words_ = []
+        reads.clear()
+        for _ in range(8):
+            r.scan_shop_only(Cap(), o, (0, 0, 2520, 1575))
+        top_y = int(1575 * augocr.SHOP_BAND[0])
+        self.assertNotIn(top_y, reads, "위쪽 띠는 안 읽음")
+        self.assertTrue(reads, "아래 줄은 계속 읽음")
+
     def test_shop_probe_only_after_purchase(self):
         # 2026-10-15 베인 판: 그림 3번 중 1번은 물약을 마셔 아이템이 사라진 때 (상점과 무관) → 골드가 줄었을 때만
         import augocr
