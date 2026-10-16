@@ -317,6 +317,23 @@ test("치명적 리듬 베인: 무한의 대검이 불경한 히드라보다 위
   assert.ok(as([...owned, d.items.find((i) => i.id === "3031")]) > as(owned));
 });
 
+test("치명적 리듬 중첩 = 치명타 확률 × 초당 공격 × 유지 6초 (최대 10, 모두 게임 데이터 값)", () => {
+  const c = d.champions.find((x) => x.id === "Vayne");
+  const rh = d.augments.find((a) => a.id === "CriticalRhythm");
+  const r = d.rules.augments.CriticalRhythm.statsResolved;
+  assert.deepEqual([+r.critStackAS.toFixed(2), r.critStackMax, r.critStackSec], [0.06, 10, 6]);
+  const aug = S.augStatsOf([rh], d.rules, c);
+  // 아이템 없음: 치명타 25%(증강)만 → 6초에 터지는 치명타 수 = 0.25 × 공격 속도 × 6
+  const t0 = Stats.computeStats(c, 18, [], aug, { aram: true }).total;
+  assert.ok(Math.abs(t0.critStacks - 0.25 * t0.AS * 6) < 0.01, `중첩 ${t0.critStacks} · 공속 ${t0.AS}`);
+  assert.ok(t0.critStacks < 2.5, "예전 가정(치명타 확률 × 10 = 2.5)보다 적다");
+  // 치명타 100%면 최대 10
+  const full = ["3031", "6672", "3046", "3036"].map((id) => d.items.find((i) => i.id === id)).filter(Boolean);
+  const t1 = Stats.computeStats(c, 18, full, aug, { aram: true }).total;
+  assert.equal(t1.CRIT, 1);
+  assert.equal(t1.critStacks, 10);
+});
+
 test("효과 종류만 있는 증강은 몰빵 빌드에 그 효과 아이템을 하나는 넣는다 · 아이템으로 안 커지는 증강(lift {})은 안 넣는다", () => {
   const build = (cid, aid) => {
     const c = d.champions.find((x) => x.id === cid);

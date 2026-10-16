@@ -570,16 +570,27 @@ test("아이템 칸이 다 찼으면 바꾸기(판다 → 산다)를 아이콘�
   assert.equal(sw.sell, "3089");
   assert.notEqual(sw.buy, "3089");
   assert.match(p.text("#next-buy"), /바꾸면 더 좋아요/);
-  // 판매 환급(가정 70%)을 뺀 실제 골드와, 지금 골드로 되는지
+  // 판매가(게임 데이터 gold.sell)를 뺀 실제 골드와, 지금 골드로 되는지
   const rab = p.data.items.find((i) => i.id === "3089");
   const buy = p.data.items.find((i) => i.id === sw.buy);
-  assert.equal(sw.cost, Math.max(0, Number(buy.gold) - Math.floor(Number(rab.gold) * 0.7)));
+  assert.ok(Number(rab.sell) > 0, "아이템 데이터에 판매가가 있다");
+  assert.equal(sw.cost, Math.max(0, Number(buy.gold) - Number(rab.sell)));
   assert.match(p.text("#next-buy"), /팔면 [\d,]+G 돌려받아 실제로 [\d,]+G/);
   p.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 18, items: ["6672", "3006", "3032", "3036", "3153", "3089"], dead: true, gold: 99999 });
   p.w.renderNextBuy && p.w.sendOverlay();
   assert.equal(sent.at(-1).swap.ready, true, "골드가 충분하면 지금 바꿀 수 있음");
   assert.ok(!sent.at(-1).hud.some((x) => /라바돈/.test(x) && /팔/.test(x)), "상자 글은 늘리지 않는다 (아이콘으로만)");
   assert.deepEqual(p.errors, []);
+  // 판매가가 데이터에 없으면 짐작하지 않는다: 실제 비용 줄 없이 바꾸기만 안내
+  const p2 = await loadPage({ simple: true, edit: (x) => x.items.forEach((i) => delete i.sell) });
+  const sent2 = [];
+  p2.w.pywebview = { api: { set_overlay: (x) => sent2.push(x) } };
+  p2.w.applyLive({ enabled: true, inGame: true, champion: "Vayne", level: 18, items: ["6672", "3006", "3032", "3036", "3153", "3089"], dead: true, gold: 99999 });
+  assert.equal(sent2.at(-1).swap.cost, null);
+  assert.equal(sent2.at(-1).swap.ready, false);
+  assert.doesNotMatch(p2.text("#next-buy"), /돌려받아/);
+  assert.match(p2.text("#next-buy"), /바꾸면 더 좋아요/);
+  assert.deepEqual(p2.errors, []);
 });
 
 test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이템·소환사 주문 칸만 근거)", async () => {

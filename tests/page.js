@@ -6,7 +6,7 @@ const path = require("path");
 const WEB = path.join(__dirname, "..", "web");
 const DATA = fs.readFileSync(path.join(WEB, "data.json"), "utf8");
 
-async function loadPage({ simple = false } = {}) {
+async function loadPage({ simple = false, edit = null } = {}) {  // edit: data.json 을 바꿔서 띄울 때 (데이터에 값이 없는 경우 등)
   const html = fs.readFileSync(path.join(WEB, "index.html"), "utf8").replace(/<script src="[^"]+"><\/script>/g, "");
   const dom = new JSDOM(html, { runScripts: "outside-only", url: "http://localhost/" });
   const w = dom.window;
@@ -15,7 +15,11 @@ async function loadPage({ simple = false } = {}) {
   const alerts = [];
   w.addEventListener("error", (e) => errors.push(e.message));
   w.alert = (m) => alerts.push(m);
-  w.fetch = async () => ({ json: async () => JSON.parse(DATA) });
+  w.fetch = async () => ({ json: async () => {
+    const x = JSON.parse(DATA);
+    if (edit) edit(x);
+    return x;
+  } });
   for (const f of ["stats.js", "scoring.js", "app.js"]) w.eval(fs.readFileSync(path.join(WEB, f), "utf8"));
   await new Promise((r) => setTimeout(r, 50));
   const doc = w.document;

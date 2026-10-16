@@ -970,6 +970,7 @@ def main():
         effects, passive_html, mode_used = item_passive(items_bin.get(f"Items/{iid}"), strings)
         out_items.append({
             "id": iid, "name": it["name"], "kind": kind, "gold": it["gold"]["total"],
+            "sell": it["gold"].get("sell"),  # 팔 때 돌려받는 골드 (교체 추천의 실제 비용)
             "tags": tags, "stats": stats, "desc": html, "effects": effects,
             "limit": item_limit.get(iid),  # 같은 계열 고유 효과(주문 검·히드라 …)는 하나만
             "refs": [r for r in [

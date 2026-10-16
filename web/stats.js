@@ -3,7 +3,6 @@
 (function (root) {
   const AS_CAP = 2.5;
   const BASE_CRIT_DMG = 1.75;
-  const CRIT_STACK_MAX = 10;  // 치명적 리듬 최대 중첩 (설명)
   const CLEAVE_RANGED = 0.5;  // 원거리 쪼개기 = 근접의 절반 (공격력 20% / 40%)
   const DMG_KINDS = ["magic", "physical", "true"];
 
@@ -126,9 +125,16 @@
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     t.CRIT = Math.min(1, add.CRIT);
-    // 치명타마다 쌓이는 공격 속도 (치명적 리듬): 한타 평균 중첩 = 치명타 확률 × 최대 중첩 (가정, rules.json basis)
-    if (conv.critStackAS) bonusAS += conv.critStackAS * CRIT_STACK_MAX * t.CRIT;
-    t.AS = Math.min(AS_CAP, (base.AS + bonusAS * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
+    const asOf = (b) => Math.min(AS_CAP, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
+    // 치명타마다 쌓이는 공격 속도 (치명적 리듬): 계속 기본 공격할 때 유지 시간(초) 안에 터지는 치명타 수 = 중첩
+    // 중첩 = min(최대, 치명타 확률 × 초당 공격 × 유지 시간). 공격 속도가 다시 중첩을 늘리므로 몇 번 반복해 맞춘다
+    t.critStacks = 0;
+    if (conv.critStackAS && t.CRIT > 0) {
+      const max = conv.critStackMax || 0, sec = conv.critStackSec || 0;
+      for (let i = 0; i < 8; i++) t.critStacks = Math.min(max, t.CRIT * asOf(bonusAS + conv.critStackAS * t.critStacks) * sec);
+      bonusAS += conv.critStackAS * t.critStacks;
+    }
+    t.AS = asOf(bonusAS);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
     // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
     const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
