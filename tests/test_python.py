@@ -267,30 +267,6 @@ class Desktop(unittest.TestCase):
         checks = [d for k, d in got if k == "statcheck"]
         self.assertEqual([c["level"] for c in checks], [3, 4])
 
-    def test_item_set_in_game_logged_without_backup(self):
-        # 게임 중 다시 쓰기(시험): 기록에 남기고, 백업은 안 남긴다 (최근 10개라 등록 전 원래 목록 백업이 밀려 지워진다)
-        api = desktop.Api(Settings_stub())
-        got, calls = [], []
-
-        class Rec:
-            def event(self, kind, data=None, dedupe=False):
-                got.append((kind, data))
-
-        class Client:
-            def write_item_set(self, key, title, blocks, backup_dir=None):
-                calls.append(backup_dir)
-                return len(blocks)
-
-        api._rec = Rec()
-        api._lcu = type("L", (), {"client": Client()})()
-        blocks = [{"type": "지금 추천 (게임 5:05 갱신) · 왼쪽부터", "items": ["3031", "6672"]}]
-        self.assertTrue(api.write_item_set(222, "칼바람 증강 Addon · 징크스", blocks, True)["ok"])
-        self.assertTrue(api.write_item_set(222, "칼바람 증강 Addon · 징크스", blocks)["ok"])
-        self.assertIsNone(calls[0])
-        self.assertIsNotNone(calls[1], "챔피언 선택 때 등록은 백업")
-        self.assertEqual([k for k, _ in got], ["itemset"], "게임 중 다시 쓰기만 기록")
-        self.assertEqual(got[0][1]["first"], blocks[0]["type"])
-
     def test_live_url_local_only(self):
         old = os.environ.get("ARAM_LIVE_URL")
         try:

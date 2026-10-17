@@ -714,24 +714,3 @@ test("확인된 적 증강(급속 성장)의 체력을 상대 능력치에 넣�
   assert.deepEqual(p.errors, []);
 });
 
-test("게임 중 아이템 세트 다시 쓰기 (시험): 다음 구매가 바뀌면 게임 시각을 넣어, 1분에 한 번까지", async () => {
-  const p = await loadPage({ simple: true });
-  const writes = [];
-  const api = { set_overlay: () => {}, write_item_set: async (key, title, blocks, inGame) => { writes.push({ blocks, inGame }); return { ok: true, blocks: blocks.length }; } };
-  p.w.pywebview = { api };
-  p.q("#itemset-toggle").checked = true;
-  await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 222 });  // 징크스
-  assert.equal(writes.length, 1);
-  assert.notEqual(writes[0].inGame, true, "챔피언 선택 때 등록은 그대로");
-  await p.w.applyLcu(api, { connected: true, phase: "InProgress", championKey: 222 });
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gameTime: 305 });
-  const live = writes.filter((x) => x.inGame === true);
-  assert.equal(live.length, 1, "게임 중 한 번");
-  assert.match(live[0].blocks[0].type, /^지금 추천 \(게임 5:05 갱신\)/);
-  assert.equal(live[0].blocks[0].items.length, 3);
-  assert.equal(live[0].blocks.length, 2, "챔피언 선택 때 만든 기본 빌드 블록도 그대로");
-  const crit = p.data.items.find((i) => i.name === "크라켄 학살자").id;
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [crit], gameTime: 330 });
-  assert.equal(writes.filter((x) => x.inGame === true).length, 1, "1분 안에는 다시 쓰지 않는다");
-  assert.deepEqual(p.errors, []);
-});

@@ -831,9 +831,9 @@ class Api:
     def get_lcu(self):
         return self._lcu.state if self._lcu else {"connected": False}
 
-    def write_item_set(self, champion_key, title, blocks, in_game=False):
-        """상점 추천 칸에 우리 빌드 등록. 챔피언 선택 중에 등록한다.
-        in_game: 게임 중 다시 쓰기 (시험 — 상점에 바로 반영되는지 확인용으로 기록에 남긴다)"""
+    def write_item_set(self, champion_key, title, blocks):
+        """상점 추천 칸에 우리 빌드 등록. 게임 시작 전(챔피언 선택 중)에 해야 상점에 반영된다
+        (2026-10-17 우르곳 판 확인: 게임 중에 다시 써도 그 판 상점은 안 바뀐다)"""
         if not self._lcu or not self._lcu.client:
             return {"ok": False, "error": "롤 클라이언트에 연결되지 않았어요"}
         try:
@@ -841,17 +841,9 @@ class Api:
         except ValueError as e:
             return {"ok": False, "error": f"잘못된 아이템 세트: {e}"}
         try:
-            # 게임 중 다시 쓰기는 백업을 남기지 않는다 (최근 10개만 남겨서, 1분마다 쓰면 등록 전 원래 목록 백업이 밀려 지워진다.
-            # 사용자 세트는 write_item_set 이 그대로 두는지 확인한다)
-            backup = None if in_game else str(user_dir() / "itemset_backup")
-            n = self._lcu.client.write_item_set(champion_key, title, blocks, backup_dir=backup)
-            if in_game and self._rec:
-                self._rec.event("itemset", {"ok": True, "first": blocks[0]["type"] if blocks else None,
-                                            "items": blocks[0]["items"] if blocks else []})
+            n = self._lcu.client.write_item_set(champion_key, title, blocks, backup_dir=str(user_dir() / "itemset_backup"))
             return {"ok": True, "blocks": n}
         except Exception as e:
-            if in_game and self._rec:
-                self._rec.event("itemset", {"ok": False, "error": str(e)[:200]})
             return {"ok": False, "error": str(e)[:200]}
 
     def get_live(self):
