@@ -822,3 +822,27 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 적 회복 많음 \(소라카·유미\)/);
   assert.deepEqual(p.errors, []);
 });
+
+test("적 마법 비중이 높으면 마법 저항 아이템을 다음 구매에 (원인 표시) · 많이 큰 적은 구성 비율에 더 크게", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const stats = { attackDamage: 200, armor: 80, magicResist: 45, moveSpeed: 400, maxHealth: 2000 };
+  const ap = ["3089", "3135"];  // 라바돈·공허의 지팡이 (마법 아이템)
+  const live = (kills) => p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 11, items: ["6672", "3006"], stats,
+    enemies: ["Lux", "Brand", "Syndra", "Jinx", "Caitlyn"],
+    enemyBuilds: [{ champion: "Lux", level: 11, kills, items: ap }, { champion: "Brand", level: 11, kills: 0, items: ap },
+      { champion: "Syndra", level: 11, kills: 0, items: [] }, { champion: "Jinx", level: 11, kills: 0, items: [] }, { champion: "Caitlyn", level: 11, kills: 0, items: [] }] });
+  live(0);
+  p.w.renderItemList();
+  const m0 = Number(p.text("#next-buy").match(/마법 (\d+)%/)[1]);
+  live(12);
+  p.w.renderItemList();
+  const txt = p.text("#next-buy");
+  const m1 = Number(txt.match(/마법 (\d+)%/)[1]);
+  assert.ok(m1 > m0, `킬 12개 럭스 → 마법 비중 ${m0}% → ${m1}%`);
+  assert.match(txt, /많이 큼: 럭스/);
+  assert.match(txt, /마법 저항 우선: /);
+  assert.ok(sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
+  assert.deepEqual(p.errors, []);
+});

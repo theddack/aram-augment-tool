@@ -220,7 +220,7 @@ def parse_live(raw):
     foes = [p for p in players if mine and p.get("team") and p.get("team") != mine.get("team") and cid(p)]
     enemies = [cid(p) for p in foes]
     # 적이 산 아이템·레벨 (게임 안 Tab 점수판에 보이는 정보): 상대 능력치·관통·치유 감소 판단에 쓴다
-    enemy_builds = [{"champion": cid(p), "level": p.get("level"),
+    enemy_builds = [{"champion": cid(p), "level": p.get("level"), "kills": (p.get("scores") or {}).get("kills") or 0,
                      "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")],
                      "augments": spell_augments(p)} for p in foes]
     gd = raw.get("gameData") or {}

@@ -80,8 +80,14 @@ function enemyInfo() {
     const ap = its.filter((i) => ((i.tags || {}).AP || 0) >= 0.5).length, ad = its.filter((i) => ((i.tags || {}).AD || 0) >= 0.5).length;
     return its.length >= 2 && ap + ad ? ap / (ap + ad) : null;
   };
-  const magic = list.reduce((a, c) => a + (byItems(c) ?? share[c.damageType] ?? 0.5), 0) / list.length;
+  // 많이 큰 적을 더 크게: 킬 1개당 +0.1, 완성 아이템 1개당 +0.25 (5명을 똑같이 치면 킬 10개 먹은 마법사가 묻혔다)
+  const build = (c) => (state.enemyBuilds || []).find((e) => e.champ.id === c.id);
+  const weight = (c) => { const b = build(c); return b ? 1 + 0.1 * (b.kills || 0) + 0.25 * b.items.filter((i) => i.kind === "legendary").length : 1; };
+  const wsum = list.reduce((a, c) => a + weight(c), 0);
+  const magic = list.reduce((a, c) => a + weight(c) * (byItems(c) ?? share[c.damageType] ?? 0.5), 0) / wsum;
   const fromItems = list.some((c) => byItems(c) != null);
+  // 가장 위협적인 적 (킬·아이템으로 평균보다 1.5배 넘게 큰 적): 조언 문장에 이름을 쓴다
+  const fed = list.filter((c) => weight(c) >= 1.5 * (wsum / list.length) && (build(c) || {}).kills >= 5).map((c) => c.name);
   // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
@@ -90,7 +96,7 @@ function enemyInfo() {
   const healAug = (c) => enemyAugs(c).some((a) => (augTags(a).HEALSHIELD || 0) >= 0.5);
   const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c));
   const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
-  return { list, magic, healers, tanks, fromItems };
+  return { list, magic, healers, tanks, fromItems, fed };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -235,14 +241,23 @@ function enemyAdvice() {
   const out = [];
   const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
   const pct = Math.round(e.magic * 100);
-  // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)으로 짐작한 비율이라 '추정'이라고 쓴다
-  out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
   const items = state.data.items.filter((i) => i.kind === "legendary");
   const mineType = state.champ.damageType === "magic" ? "magic" : "physical";
   // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것
   const critOk = state.champ.tags.includes("Marksman") || !state.champ.melee || ((state.champ.traits || {}).CRIT || 0) > 0;
   const hasCrit = (i) => (i.tags.CRIT || 0) >= 0.5 || (i.stats && !Array.isArray(i.stats) && "CRIT" in i.stats);
   const fits = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  // 저항 우선이면 그 저항이 붙은 아이템까지 권한다 (조언만 있고 다음 구매엔 없던 것: 2026-10-17 그레이브즈 판 '마법 저항 우선').
+  // 내 유형에 맞는 공격 아이템 중 저항이 있는 것 (원딜: 맬모셔스의 아귀·수호천사), 탱커는 저항 아이템 전체. 이미 그 저항 아이템이 있으면 권하지 않는다
+  const resWant = pct >= 65 ? "MR" : pct <= 35 ? "ARMOR" : null;
+  const tank = state.champ.tags.includes("Tank");
+  const hasRes = (i, k) => !!(i.stats && !Array.isArray(i.stats) && (i.stats[k] || 0) > 0);
+  const resItems = resWant && !state.items.some((i) => hasRes(i, resWant))
+    ? items.filter((i) => hasRes(i, resWant) && (fits(i) || (tank && tankItem(i)))).map((i) => i.name) : [];
+  const resLabel = resWant === "MR" ? "마법 저항" : "방어력";
+  // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)·산 아이템·킬로 짐작한 비율이라 '추정'이라고 쓴다
+  out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (e.fed.length ? ` (많이 큼: ${e.fed.join("·")})` : "")
+    + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
   if (e.healers.length >= 2) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
     let gw = items.filter((i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처") && fits(i)).map((i) => i.name);
@@ -293,6 +308,7 @@ function enemyAdvice() {
     const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
     out.push(`${state.counter.why} → 적 대응: ${names.join(" 또는 ")}`);
   }
+  want(resItems, resLabel);  // 저항은 마지막 후보 (치유 감소·관통처럼 콕 집은 대응이 먼저)
   return out;
 }
 // 적 하나하나가 산 아이템으로 본 위협 (팀 평균에 묻히지 않게). 이름은 위협이 큰 순서로 최대 3명
@@ -1457,7 +1473,12 @@ function renderNextBuy(rows) {
   // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
   // 치유 감소·보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만
   const adv = enemyAdvice();
-  const wanted = (state.adviceWant || []).map((w) => ({ w, r: avail.slice(0, w.why === "관통" ? COUNTER_TOP : avail.length).find((x) => x.item.name === w.name) })).find((x) => x.r);
+  // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
+  const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {
+    const names = state.adviceWant.filter((w) => w.why === why).map((w) => w.name);
+    const r = avail.slice(0, why === "관통" ? COUNTER_TOP : avail.length).find((x) => names.includes(x.item.name));
+    return r ? { w: { name: r.item.name, why }, r } : null;
+  }).find(Boolean);
   if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3 && !pick[2].must) {
     wanted.r.advice = wanted.w.why;
     pick[2] = wanted.r;
@@ -1472,7 +1493,7 @@ function renderNextBuy(rows) {
   if (changed) state.nextSnap = now;
   if (prev && changed && now.names.length) {
     const newAug = now.augs.find((n) => !prev.augs.includes(n));
-    const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || r.advice).split(" → ")[0]
+    const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || adv.find((l) => l.includes(r.advice)) || r.advice).split(" → ")[0]
       : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
@@ -1712,6 +1733,7 @@ function applyLive(L) {
   const eb = (L.enemyBuilds || []).map((x) => ({
     champ: d.champions.find((c) => c.id.toLowerCase() === String(x.champion).toLowerCase()),
     level: x.level || 1,
+    kills: x.kills || 0,
     items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
       .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
     augments: (x.augments || []).map(spellAugment).filter(Boolean),
@@ -1720,8 +1742,8 @@ function applyLive(L) {
   if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
   else if (eb.length) {
     // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로
-    const lv = eb.map((x) => x.level).join(",");
-    if (lv !== (state.enemyBuilds || []).map((x) => x.level).join(",")) { state.enemyBuilds = eb; showTarget(); }
+    const lv = eb.map((x) => `${x.level}/${x.kills}`).join(",");
+    if (lv !== (state.enemyBuilds || []).map((x) => `${x.level}/${x.kills}`).join(",")) { state.enemyBuilds = eb; showTarget(); }
   }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
