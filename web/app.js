@@ -1143,9 +1143,20 @@ function sendOverlay(src) {
   if (!api || !api.set_overlay || !state.champ) return;
   // 게임 화면 상자: 지금 할 일(다음 구매·지금 살 것)을 맨 위에, 조언, 그다음 이미 아는 것(산 아이템·고른 증강)
   const hud = [];
-  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.label || e.title).slice(0, 3);
-  if (next.length) hud.push("다음 구매: " + next.join(" > "));
-  if (state.buyNowText) hud.push("💰 " + state.buyNowText);
+  // 이미 산 아이템은 빼고 (산 직후 추천을 다시 계산하기 전 몇 초 동안 산 아이템이 '다음 구매'에 남았다)
+  const owned = new Set(state.inventory || []);
+  const next = [...document.querySelectorAll("#next-buy .next-row")].filter((e) => !owned.has(e.dataset.id))
+    .map((e) => e.dataset.label || e.title).slice(0, 3);
+  const full = state.items.length >= S.SLOTS;
+  if (full) {
+    // 6칸이 다 차면 더 살 것 대신 '완성'과 바꿀 것만 (계속 다음 구매를 띄우면 '읭?' 2026-10-17 지적)
+    const sw0 = swapAdvice();
+    hud.push(sw0 ? `✅ 6칸 완성 · 바꾸면 더 좋아요: ${sw0.sell.name} → ${sw0.buy.name}` : "✅ 6칸 완성 · 지금 빌드 그대로 좋아요");
+  } else {
+    if (next.length) hud.push("다음 구매: " + next.join(" > "));
+    if (state.nextChange) hud.push(state.nextChange);
+    if (state.buyNowText) hud.push("💰 " + state.buyNowText);
+  }
   // 게임 화면 상자는 짧게: 할 일(→)이 없는 정보 줄(적별 위협·확인된 적 증강)은 애드온 창에만
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
@@ -1451,7 +1462,24 @@ function renderNextBuy(rows) {
     wanted.r.advice = wanted.w.why;
     pick[2] = wanted.r;
   }
+  // 추천이 바뀌면 왜 바뀌었는지 (상황 → 필요): 사람이 보고 따를지 정하게.
+  // 새로 들어온 아이템마다 원인을 붙인다: 적 상황(조언·적 대응)이 먼저, 그다음 고른 증강
+  // (2026-10-17 그레이브즈 판: 탄환 세례를 고르자 세릴다의 원한이 들어왔는데 이유가 안 보였다)
+  const now = { names: pick.map((r) => r.item.name), augs: state.chosen.map((a) => a.name), enemy: enemyMoved() ? enemyItemSummary() : "" };
+  // 비교 기준은 '추천이 마지막으로 바뀐 때' (고른 직후엔 예전 순위로 한 번 그린 뒤 다시 계산해 그려서, 바로 앞과만 비교하면 원인을 놓친다)
+  const prev = state.nextSnap;
+  const changed = !prev || now.names.join() !== prev.names.join();
+  if (changed) state.nextSnap = now;
+  if (prev && changed && now.names.length) {
+    const newAug = now.augs.find((n) => !prev.augs.includes(n));
+    const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || r.advice).split(" → ")[0]
+      : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
+      : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
+    const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
+    state.nextChange = added.length ? added.map(([n, w]) => `🔁 ${n} ← ${w}`).join(" / ") : null;
+  } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
+    + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
       <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
@@ -1465,8 +1493,8 @@ function renderNextBuy(rows) {
 
 function swapHtml() {
   const sw = swapAdvice();
-  if (!sw) return `<p class="muted small">아이템 칸이 다 찼어요.</p>`;
-  return `<p class="muted small">아이템 칸이 다 찼어요. 바꾸면 더 좋아요:</p>
+  if (!sw) return `<p class="small">✅ 6칸 완성이에요. 지금 빌드 그대로 좋아요.</p>`;
+  return `<p class="small">✅ 6칸 완성이에요. 바꾸면 더 좋아요:</p>
     <div class="swap-row" title="${esc(sw.sell.name)} 팔고 ${esc(sw.buy.name)}"><b>🔁</b><img src="${icon("item", sw.sell.id)}" alt="" class="sell"><span>→</span><img src="${icon("item", sw.buy.id)}" alt="">
     <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div>
     ${sw.cost == null ? "" : `<div class="small muted" title="판매가: 게임 데이터 값">팔면 ${fmt(sw.refund)}G 돌려받아 실제로 <b>${fmt(sw.cost)}G</b>`

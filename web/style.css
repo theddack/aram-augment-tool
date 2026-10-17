@@ -270,3 +270,5 @@ body.light.searching #champ-grid { display: grid; }
 .slot .src { font-size: 11px; margin-left: 4px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
 .slot .src.ok { color: #4caf50; border: 1px solid #4caf5066; }
 .slot .src.guess { color: #c8aa6e; border: 1px dashed #c8aa6e88; }
+/* 추천이 바뀐 이유 (상황 → 필요) */
+.next-change { color: var(--accent); margin: 2px 0 6px; }
