@@ -17,6 +17,7 @@ import threading
 import time
 
 GAME_TITLE = "League of Legends (TM) Client"
+BEST_EDGE = "#ffd54f"  # 1순위 카드 테두리
 KEY = "#ff00ff"  # 이 색은 투명하게 처리된다
 TIER_COLORS = {"S": "#ff7043", "A": "#ffb300", "B": "#9ccc65", "C": "#90a4ae", "D": "#78909c", "X": "#546e7a"}
 # 기본 위치: 위키의 칼바람 증강 선택 화면 스크린샷 기준 추정 (카드 안 설명 밑 빈 곳, 카드 간격 ≈ 화면 폭 25%).
@@ -270,8 +271,10 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             y2 = tb[3] if tb else y
             reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=int(w * 0.18),
                                         font=(font, small), fill="#ffffff", anchor="n")
+            # 1순위 카드는 금색 굵은 테두리로 한눈에 (선택 순간 3초 안에 보이게)
+            edge, ew = (BEST_EDGE, 3) if c.get("best") else ("", 0)
             if tb:
-                canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline="")
+                canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline=edge, width=ew)
             rb = canvas.bbox(reason)
             # 새로고침 버튼을 가리지 않게: 넘치면 이유 글자를 한 픽셀씩 줄인다 (가장 작게까지)
             size = small
@@ -289,7 +292,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 canvas.itemconfig(reason, text=text)
                 rb = canvas.bbox(reason)
             if rb:
-                canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=color)
+                canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=edge or color, width=ew or 1)
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
         elif kind == "timers":
@@ -301,8 +304,15 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                                    fill="#e6e9ec", width=int(w * 0.22))
             hb = canvas.bbox(t)
             if hb:
-                canvas.create_rectangle(hb[0] - 10, hb[1] - 8, hb[2] + 10, hb[3] + 8, fill="#111820", outline="#c8aa6e")
-                box_bottom = hb[3] + 8
+                # 상자 크기를 고정: 폭은 글자 폭 한도 그대로, 높이는 이 게임 창에서 본 가장 큰 높이 (줄 수가 바뀔 때마다
+                # 상자가 커졌다 작아졌다 해서 '창이 움직인다'고 느꼈다, 2026-10-17 로그: 가로 0.20↔0.25 · 세로 0.15~0.30)
+                bw = int(w * 0.22)
+                x0 = hb[0] if anchor == "nw" else hb[2] - bw
+                tall = getattr(canvas, "hud_tall", {})
+                tall[(w, h)] = bh = max(tall.get((w, h), 0), hb[3] - hb[1])
+                canvas.hud_tall = tall
+                canvas.create_rectangle(x0 - 10, hb[1] - 8, x0 + bw + 10, hb[1] + bh + 8, fill="#111820", outline="#c8aa6e")
+                box_bottom = hb[1] + bh + 8
             canvas.tag_raise(t)
         elif kind == "swap":
             draw_swap(canvas, c, x, (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6, h, icon_dir, (font, small))

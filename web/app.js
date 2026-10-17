@@ -1031,7 +1031,7 @@ function pushOverlay(rows, src) {
     const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
-      name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier,
+      name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier, best: !!x.best,
       // 게임 화면은 짧게: '고르면 ○○형으로 가볼 수 있어요'는 변신 표시와 겹쳐서 뺀다
       reason: (t && t.link && ["strong", "conflict"].includes(t.link.kind) ? `${LINK_LABEL[t.link.kind][0]} ${LINK_LABEL[t.link.kind][1]} · ` : "")
         + (x.counter ? "🛡️ 적 대응 · " : "") + (tr ? `🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신 · ` : "") + x.reason.replace(/\s*고르면 .*?가볼 수 있어요\./, ""),
@@ -1141,17 +1141,18 @@ function timersPayload() {
 function sendOverlay(src) {
   const api = window.pywebview && window.pywebview.api;
   if (!api || !api.set_overlay || !state.champ) return;
+  // 게임 화면 상자: 지금 할 일(다음 구매·지금 살 것)을 맨 위에, 조언, 그다음 이미 아는 것(산 아이템·고른 증강)
   const hud = [];
-  if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
-  const v = itemVerdicts();
-  if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
+  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.label || e.title).slice(0, 3);
+  if (next.length) hud.push("다음 구매: " + next.join(" > "));
+  if (state.buyNowText) hud.push("💰 " + state.buyNowText);
   // 게임 화면 상자는 짧게: 할 일(→)이 없는 정보 줄(적별 위협·확인된 적 증강)은 애드온 창에만
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
   hud.push(...adv.filter((l) => !INFO_ONLY.test(l)));
-  const next = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.label || e.title).slice(0, 3);
-  if (next.length) hud.push("다음 구매: " + next.join(" > "));
-  if (state.buyNowText) hud.push("💰 " + state.buyNowText);
+  const v = itemVerdicts();
+  if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
+  if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
   // 기록용: 적이 산 아이템으로 잡은 상대 능력치와 조언 (잘 돌아가는지 나중에 확인)
   const enemy = (state.enemyBuilds || []).length ? {
     auto: !state.target,

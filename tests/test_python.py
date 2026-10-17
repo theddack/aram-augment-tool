@@ -305,6 +305,8 @@ class FakeCanvas:
     def create_rectangle(self, *a, **kw):
         self.n += 1
         self.items[self.n] = a
+        self.kw = getattr(self, "kw", {})
+        self.kw[self.n] = kw
         return self.n
 
     def bbox(self, i):
@@ -324,6 +326,26 @@ class Overlay(unittest.TestCase):
         c = FakeCanvas()
         overlay.draw(c, payload, 1600, 900)  # 예외 없이
         self.assertGreater(len(c.items), 3)
+
+    def test_best_card_edge_and_steady_box(self):
+        """1순위 카드는 금색 테두리. 상점 상자는 줄 수가 줄어도 크기가 그대로 (커졌다 작아졌다 = '창이 움직임')"""
+        import overlay
+
+        class Lines(FakeCanvas):
+            def bbox(self, i):
+                x, y, text = self.items[i]
+                return None if not text else (x, y, x + 100, y + 20 * (text.count("\n") + 1))
+
+        c = Lines()
+        cards = [{"label": "S · 1순위", "tier": "S", "reason": "잘 맞아요", "best": True}, None, {"label": "B", "tier": "B", "reason": "보통"}]
+        overlay.draw(c, {"cards": cards}, 1600, 900)
+        edges = [kw.get("outline") for kw in c.kw.values()]
+        self.assertEqual(edges.count(overlay.BEST_EDGE), 2, edges)  # 1순위 카드의 제목·이유 상자
+        boxes = []
+        for n in (5, 2):
+            overlay.draw(c, {"hud": [f"줄{i}" for i in range(n)], "shop": True}, 1600, 900)
+            boxes.append([a for a in c.items.values() if len(a) == 4 and not isinstance(a[2], str)][0])
+        self.assertEqual(boxes[0], boxes[1])
 
     def test_card_reason_stays_above_reroll(self):
         """이유가 길어도 새로고침 버튼(이름 줄 + CARD_BOTTOM) 위에서 끝난다. 글자 크기는 픽셀(음수)이라 화면 배율을 안 탄다 (2026-10-15 지적)"""

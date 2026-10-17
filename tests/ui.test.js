@@ -779,3 +779,19 @@ test("트리스타나 판: 지금 능력치의 무한 반복 가속은 처치 �
   assert.deepEqual([...rows.AS], [1.88, 1.88]);
   assert.deepEqual(p.errors, []);
 });
+
+test("게임 화면 상자는 다음 구매가 맨 위, 고른 증강은 맨 아래 · 자주 안 쓰는 버튼은 더보기 메뉴 안", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const stats = { attackDamage: 163.32, armor: 60, magicResist: 40, moveSpeed: 400, maxHealth: 2000 };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Samira", level: 11, items: [], stats });
+  p.w.applyAug({ offers: null, seq: 1, picked: "바늘에 실 끼우기", pickSeq: 1 });
+  p.w.sendOverlay();
+  const hud = sent.at(-1).hud;
+  assert.match(hud[0], /^다음 구매: /);
+  assert.match(hud.at(-1), /^고른 증강: /);
+  for (const id of ["reset-all", "update-data", "changelog-link", "sources-link", "verify-link"])
+    assert.ok(p.w.document.querySelector(`#more-menu #${id}`), id);
+  assert.deepEqual(p.errors, []);
+});
