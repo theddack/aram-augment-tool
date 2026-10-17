@@ -733,3 +733,19 @@ test("우르곳 판 카드 문구: 역할에 있는 방향은 변신이 아니�
   assert.doesNotMatch(second[0].reason, /잘 맞아요/, second[0].reason);
   assert.deepEqual(p.errors, []);
 });
+
+test("사미라 판: 불러오는 중(능력치 0)엔 비교하지 않고, 증강에 필요한 아이템은 사도 🤔가 아니다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const zero = { attackDamage: 0, armor: 0, magicResist: 0, moveSpeed: 0, maxHealth: 0 };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Samira", level: 1, items: [], stats: zero });
+  p.w.sendOverlay();
+  assert.equal(sent.at(-1).statCheck, null);
+  const collector = p.data.items.find((i) => i.name === "징수의 총").id;
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Samira", level: 14, items: [collector] });
+  p.w.applyAug({ offers: null, seq: 1, picked: "징수의 총 업그레이드", pickSeq: 1 });
+  p.w.sendOverlay();
+  assert.match(sent.at(-1).hud.find((x) => x.startsWith("산 아이템")), /징수의 총 ✅/);
+  assert.deepEqual(p.errors, []);
+});

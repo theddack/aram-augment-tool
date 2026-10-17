@@ -1025,7 +1025,10 @@ function itemVerdicts() {
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
+  const must = new Set(S.augContext(state.chosen, d.rules).must.flat());
   const value = state.items.map((it) => {
+    // 증강에 필요한 아이템(징수의 총 업그레이드 → 징수의 총)은 순위와 상관없이 맞는 것 (사미라 판: 사고 나니 🤔)
+    if (must.has(it.name)) return { item: it, mark: "✅", text: "고른 증강에 필요해요", swap: null };
     const others = state.items.filter((x) => x.id !== it.id);
     const rows = S.rankItems(d.items, state.weights, state.chosen, others, d.rules, state.champ, statOpts(), concept)
       .filter((r) => r.item.kind === it.kind);
