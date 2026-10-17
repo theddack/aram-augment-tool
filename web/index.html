@@ -17,14 +17,20 @@
     <label class="small" id="overlay-wrap" hidden title="롤 게임 창(창 모드·테두리 없는 창 모드) 위에 평가를 표시. 클릭은 게임으로 통과해요"><input id="overlay-toggle" type="checkbox"> 게임 화면 표시</label>
     <label class="small" title="챔피언이 정해지면 상점 추천 칸에 우리 빌드(아이템 세트)를 등록해요. 블리츠·OP.GG와 같은 방식"><input id="itemset-toggle" type="checkbox"> 상점 추천 등록</label>
     <span id="itemset-status" class="small muted"></span>
-    <button id="update-data" class="reset" title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
   </span>
-  <a id="changelog-link" class="small" href="changelog.html" title="버전마다 바뀐 점">업데이트 내역</a>
-  <a id="sources-link" class="small" href="sources.html" title="데이터를 가져온 곳, 라이선스, 가져온 시각">데이터 출처</a>
-  <a id="verify-link" class="small" href="https://theddack.github.io/kalbaram-addon/verify.html" target="_blank" rel="noopener" title="받은 프로그램 파일이 공식 릴리스 파일인지 확인 (브라우저에서 열려요)">받은 파일 확인</a>
   <button id="simple-toggle" class="reset" title="쉽게 보기: 추천·이유·살 아이템만 / 자세히 보기: 능력치 표·점수·가중치까지">자세히 보기</button>
   <button id="mini-toggle" class="reset" title="게임 옆에 띄울 작은 화면 (선택지·티어·빌드만)">작게 보기</button>
-  <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
+  <!-- 자주 안 쓰는 것은 메뉴 하나로 (헤더에 10개가 늘어서 있었다) -->
+  <details id="more-menu">
+    <summary class="reset" title="데이터 갱신·업데이트 내역·출처·초기화">⚙ 더보기</summary>
+    <div class="menu">
+      <button id="update-data" class="reset" hidden title="최신 패치 데이터 받기 (몇 분 걸려요)">데이터 갱신</button>
+      <a id="changelog-link" class="small" href="changelog.html" title="버전마다 바뀐 점">업데이트 내역</a>
+      <a id="sources-link" class="small" href="sources.html" title="데이터를 가져온 곳, 라이선스, 가져온 시각">데이터 출처</a>
+      <a id="verify-link" class="small" href="https://theddack.github.io/kalbaram-addon/verify.html" target="_blank" rel="noopener" title="받은 프로그램 파일이 공식 릴리스 파일인지 확인 (브라우저에서 열려요)">받은 파일 확인</a>
+      <button id="reset-all" class="reset" title="고른 증강·아이템을 비우고 가중치를 챔피언 기본값으로">전체 초기화</button>
+    </div>
+  </details>
 </header>
 <main>
   <section id="champ-panel" class="panel">

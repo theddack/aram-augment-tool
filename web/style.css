@@ -24,12 +24,16 @@ main { display: grid; grid-template-columns: 280px 1fr 340px; gap: 12px; padding
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-y: auto; }
 input[type=search] { width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; }
 button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-header #reset-all { margin-left: auto; }
-#changelog-link, #sources-link, #verify-link { color: var(--muted); margin-left: 8px; }
-body.mini #changelog-link, body.mini #sources-link, body.mini #verify-link { display: none; }
+/* 더보기 메뉴: 데이터 갱신·업데이트 내역·출처·파일 확인·전체 초기화 */
+#more-menu { position: relative; }
+#more-menu > summary { list-style: none; display: inline-block; }
+#more-menu > summary::-webkit-details-marker { display: none; }
+#more-menu .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 6px;
+  min-width: 140px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+#changelog-link, #sources-link, #verify-link { color: var(--muted); }
 #desktop-tools { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+#desktop-tools[hidden] + #simple-toggle { margin-left: auto; }  /* 웹(데스크톱 도구 없음)에서도 오른쪽 정렬 */
 #desktop-tools[hidden] { display: none; }
-#desktop-tools:not([hidden]) + #reset-all { margin-left: 8px; }
 button.reset { font-size: 12px; color: var(--muted); }
 button.reset:hover { color: #ff8a80; border-color: #ff8a80; }
 button.on { border-color: var(--accent); color: var(--accent); }
@@ -42,7 +46,7 @@ button.on { border-color: var(--accent); color: var(--accent); }
 #champ-card { display: flex; gap: 12px; align-items: center; }
 #champ-card img { width: 64px; height: 64px; border-radius: 8px; }
 #champ-card.empty { color: var(--muted); }
-.chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--line); margin: 2px 2px 0 0; color: var(--muted); }
+.chip { display: inline-block; font-size: 12px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--line); margin: 2px 2px 0 0; color: var(--muted); }
 .chip.syn { border-color: var(--syn); color: var(--syn); }
 
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -152,7 +156,10 @@ body.mini .how-list { display: none; }
 .offer-table th:first-child, .offer-table td:first-child { text-align: left; }
 .offer-table th { color: var(--muted); font-weight: 500; }
 .offer-table td:first-child img { width: 24px; height: 24px; vertical-align: middle; }
-.offer-table tr.best { background: #1a2a22; }
+/* 1순위: 한눈에 (금색 왼쪽 띠·굵은 이름) */
+.offer-table tr.best { background: #1d3327; box-shadow: inset 4px 0 0 #ffd54f; }
+.offer-table tr.best td:first-child > span:first-of-type { font-size: 15px; font-weight: 700; }
+.offer-table tr.best .chip.best { border-color: #ffd54f; color: #111; background: #ffd54f; font-weight: 700; }
 .mini-build img { width: 20px; height: 20px; border-radius: 3px; margin-left: 1px; }
 
 /* 능력치 패널 */
@@ -248,6 +255,8 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 .enemy-advice { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
 /* 게임 중엔 챔피언 목록을 접는다 (검색 중이면 보임) */
 body.ingame #champ-grid { display: none; }
+/* 목록을 접으면 칸도 좁혀서 그 자리를 선택지·다음 구매에 준다 (검색 칸만 남김) */
+body.ingame:not(.searching):not(.mini) main { grid-template-columns: 150px 1fr 340px; }
 body.ingame.searching #champ-grid { display: grid; }
 /* 가벼운 모드: 자세히 보기 버튼 숨김 (쉽게 보기만), 챔피언 목록은 검색할 때만 */
 body.light #champ-grid { display: none; }
@@ -258,6 +267,6 @@ body.light.searching #champ-grid { display: grid; }
 #next-buy .swap-row img.sell { opacity: .55; outline: 2px solid #e53935; }
 
 /* 고른 증강 출처: 확인됨(증강 칸 그림) / 화면 추정(클릭 짐작) */
-.slot .src { font-size: 10px; margin-left: 4px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.slot .src { font-size: 11px; margin-left: 4px; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
 .slot .src.ok { color: #4caf50; border: 1px solid #4caf5066; }
 .slot .src.guess { color: #c8aa6e; border: 1px dashed #c8aa6e88; }

@@ -584,7 +584,7 @@ function renderChosen() {
     // 게임 중이면 어디서 알았는지: 증강 칸 그림으로 봄(확인됨) / 클릭으로 짐작(화면 추정, 틀릴 수 있음)
     const src = !liveOn ? "" : state.hudSure && state.hudSure.has(a.id)
       ? `<span class="src ok" title="게임 화면 증강 칸 그림으로 확인했어요">✔ 확인됨</span>`
-      : `<span class="src guess" title="선택 화면에서 누른 카드로 짐작했어요. 증강 칸에서 확인되면 '확인됨'으로 바뀌어요">화면 추정</span>`;
+      : `<span class="src guess" title="선택 화면에서 누른 카드로 알았어요 (설명 창이 이름을 가리면 틀릴 수 있어요). 증강 칸에서 확인되면 '확인됨'으로 바뀌어요">클릭으로 앎</span>`;
     return `<div class="slot" data-i="${i}" title="해제"><img src="${icon("augment", a.id)}" alt=""><span class="r${a.rarity}">${esc(a.name)}</span>${src}</div>`;
   });
   const tips = state.chosen.map((a) => [a, playTip(a)]).filter(([, t]) => t);
@@ -980,7 +980,7 @@ function renderOfferResult() {
         const f = r.aug && r.aug.final;
         return `<tr class="${r === best ? "best" : ""}">
           <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-            ${newChips(r.a)}${r === best ? `<span class="chip syn">추천</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${newChips(r.a)}${r === best ? `<span class="chip best">👍 1순위</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
             ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
             ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
             ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
@@ -1730,6 +1730,7 @@ window.addEventListener("pywebviewready", async () => {
   const api = window.pywebview.api;
   const st = await api.get_state();
   $("#desktop-tools").hidden = false;
+  $("#update-data").hidden = false;
   // 새 프로그램 버전 알림 (받기는 공식 릴리스 페이지에서 직접. 프로그램이 스스로 바꾸지 않는다)
   api.check_app_update().then((u) => {
     if (!u || !u.newer || !/^https:\/\/github\.com\/theddack\/kalbaram-addon\//.test(u.url || "")) return;
