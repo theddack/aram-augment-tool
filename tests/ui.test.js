@@ -692,3 +692,24 @@ test("확인된 적 증강(급속 성장)의 체력을 상대 능력치에 넣�
   assert.ok(b.target.HP > a.target.HP && b.now.HP > a.now.HP, `${a.target.HP} → ${b.target.HP}`);
   assert.deepEqual(p.errors, []);
 });
+
+test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유와 함께 (치유 감소는 점수에 없어 순위와 상관없이)", async () => {
+  // 2026-10-17 지적: 조언은 '치유 감소: 필멸자의 운명'인데 다음 구매엔 없었다
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const foes = ["Vladimir", "Soraka", "Aatrox", "Lux", "Malphite"];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
+  p.w.sendOverlay();
+  const next = sent.at(-1).hud.find((x) => x.startsWith("다음 구매"));
+  assert.match(next, /> 필멸자의 운명\(치유 감소\)$/, next);
+  assert.match(p.text("#next-buy"), /🛡️ 치유 감소/);
+  // 이미 샀으면 다시 권하지 않는다
+  const mr = p.data.items.find((i) => i.name === "필멸자의 운명").id;
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [mr], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
+  p.w.sendOverlay();
+  assert.doesNotMatch(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /필멸자의 운명/);
+  assert.deepEqual(p.errors, []);
+});

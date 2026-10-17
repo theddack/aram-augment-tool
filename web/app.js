@@ -207,8 +207,10 @@ function counterItems(avail, keep) {
 
 function enemyAdvice() {
   const e = enemyInfo();
+  state.adviceWant = [];  // 조언이 권한 완성 아이템 {name, why} → 다음 구매 3번째 자리 후보 (renderNextBuy)
   if (!e || !state.champ) return [];
   const out = [];
+  const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
   const pct = Math.round(e.magic * 100);
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)으로 짐작한 비율이라 '추정'이라고 쓴다
   out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
@@ -228,6 +230,7 @@ function enemyAdvice() {
       gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
     }
     out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
+    want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
   // 근거는 적이 실제로 산 아이템만 (예상 빌드로 채운 값이 아니라): 내 피해 쪽 방어 아이템을 팀이 3개 이상 샀으면
@@ -241,6 +244,7 @@ function enemyAdvice() {
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
+    want(pen, "관통");
   }
   // 팀 평균에 묻히는 위협을 적 하나하나로 (2026-10-16 기획: "탱커 2명이 체력 아이템 다수" 처럼)
   const threats = enemyThreats();
@@ -249,12 +253,14 @@ function enemyAdvice() {
   if (threats.shield >= 3) {
     const cut = items.filter((i) => i.name === "독사의 송곳니" && fits(i)).map((i) => i.name);
     out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : ""));
+    want(cut, "보호막 감소");
   }
   // 공격 속도: 공격 속도 아이템을 2개 이상 산 적이 있고 내가 앞에서 맞는 챔피언이면 공격 속도 대응 방어 아이템
   const front = state.champ.tags.includes("Tank") || (state.champ.melee && !state.champ.tags.includes("Assassin"));
   if (threats.as.length && front) {
     const def = items.filter((i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name)).map((i) => i.name).slice(0, 2);
     out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
+    want(def, "공속 대응");
   }
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
@@ -1400,11 +1406,19 @@ function renderNextBuy(rows) {
   state.counter = counter.length ? { items: counter, why: enemyItemSummary() } : null;
   for (const r of avail) r.counter = counter.includes(r.item.id);
   if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !pick[2].must) pick[2] = avail.find((r) => r.counter);
-  box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
-    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : ""))}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
-      <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
+  // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
+  // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
+  // 치유 감소·보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만
   const adv = enemyAdvice();
+  const wanted = (state.adviceWant || []).map((w) => ({ w, r: avail.slice(0, w.why === "관통" ? COUNTER_TOP : avail.length).find((x) => x.item.name === w.name) })).find((x) => x.r);
+  if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3 && !pick[2].must) {
+    wanted.r.advice = wanted.w.why;
+    pick[2] = wanted.r;
+  }
+  box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
+    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+      <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
   state.nextTop = pick.length ? pick[0].item : null;
