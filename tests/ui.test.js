@@ -811,9 +811,9 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   // 추천이 바뀌면 새로 들어온 아이템마다 원인 (고른 증강 / 적 상황)
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats });
   p.w.renderItemList();
-  p.w.applyAug({ offers: null, seq: 1, picked: "탄환 세례", pickSeq: 1 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "무한 반복", pickSeq: 1 });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 몰락한 왕의 검 ← 탄환 세례 골라서/);
+  assert.match(p.text("#next-buy"), /🔁 삼위일체 ← 무한 반복 골라서/);
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],

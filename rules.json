@@ -1707,6 +1707,14 @@
           "from": "8초마다 자동 사용"
         }
       ]
+    },
+    "ARAM_FanTheHammer": {
+      "tags": {
+        "AD": 0.6,
+        "CRIT": 0.6,
+        "ONHIT": 0.6
+      },
+      "_why": "방향마다 8초 재사용 대기시간은 스킬 가속과 무관해서 HASTE 태그를 뺐다 (2026-10-17 그레이브즈 판: 세릴다·히드라·그림자 검이 추천됨)"
     }
   },
   "items": {
@@ -2121,6 +2129,16 @@
             "noData": true
           }
         ]
+      }
+    },
+    "Graves": {
+      "asCap": [
+        0.651,
+        0.891
+      ],
+      "basis": {
+        "calc": "공격 속도 표시값 = 재장전 속도. 상한 0.651~0.891 (레벨 비례), 추가 공격 속도 150~200%는 오히려 손해 (위키 Graves)",
+        "source": "https://wiki.leagueoflegends.com/en-us/Graves"
       }
     }
   }

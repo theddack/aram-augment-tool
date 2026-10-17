@@ -360,3 +360,12 @@ test("적응형은 추가 공격력과 주문력 중 큰 쪽으로 (2026-10-17 �
   assert.equal(t.AP, 0);
   assert.ok(Math.abs(t.AD - 334.05) < 0.05, `AD ${t.AD}`);
 });
+
+test("그레이브즈 공격 속도는 재장전 속도 상한(0.651~0.891, 레벨 비례)에서 막힌다 (2026-10-17 판: 계산 1.78 · 실제 0.89)", () => {
+  const its = ["크라켄 학살자", "루난의 허리케인", "윤 탈 야생화살", "광전사의 군화"].map(item);
+  assert.ok(Math.abs(St.computeStats(champ("Graves"), 18, its, [], { aram: true }).total.AS - 0.891) < 0.001);
+  assert.ok(St.computeStats(champ("Graves"), 1, its, [], { aram: true }).total.AS <= 0.651 + 1e-9);
+  assert.ok(St.computeStats(champ("Jinx"), 18, its, [], { aram: true }).total.AS > 1.5, "다른 챔피언은 그대로");
+  // 탄환 세례: 방향마다 8초 대기시간은 스킬 가속과 무관 → 가속 아이템을 끌어오지 않는다
+  assert.ok(!("HASTE" in d.rules.augments.ARAM_FanTheHammer.tags));
+});

@@ -133,7 +133,9 @@
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     t.CRIT = Math.min(1, add.CRIT);
-    const asOf = (b) => Math.min(ms.asCap || AS_CAP, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
+    // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
+    const cap = champ.asCapLv ? champ.asCapLv[0] + (champ.asCapLv[1] - champ.asCapLv[0]) * (L - 1) / 17 : ms.asCap || AS_CAP;
+    const asOf = (b) => Math.min(cap, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
     // 치명타마다 쌓이는 공격 속도 (치명적 리듬): 계속 기본 공격할 때 유지 시간(초) 안에 터지는 치명타 수 = 중첩
     // 중첩 = min(최대, 치명타 확률 × 초당 공격 × 유지 시간). 공격 속도가 다시 중첩을 늘리므로 몇 번 반복해 맞춘다
     t.critStacks = 0;

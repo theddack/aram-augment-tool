@@ -1213,7 +1213,9 @@ def main():
         to_cstacks(c["spells"])
         to_cstacks(c["passive"]["effects"])
         rc = rules_champs.get(c["id"])
-        if rc:  # 중첩형 패시브·스킬: 게임 중반 평균 중첩
+        if rc and rc.get("asCap"):  # 공격 속도 상한이 챔피언마다 다른 경우 (그레이브즈: 재장전 속도 상한, 레벨 1·18 값)
+            c["asCapLv"] = rc["asCap"]
+        if rc and (rc.get("stats") or rc.get("stacks")):  # 중첩형 패시브·스킬: 게임 중반 평균 중첩
             c["stackStats"] = rc.get("stats") or {}
             c["stacks"] = rc.get("stacks", 0)
             text = c["passive"]["desc"] + " ".join(sp["tooltip"] for sp in c["spells"])
