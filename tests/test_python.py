@@ -1013,8 +1013,10 @@ class HudIcons(unittest.TestCase):
 
     @unittest.skipUnless(HAS_IMG, "numpy·Pillow 필요")
     def test_shop_items_located_and_logged(self):
-        # 시험: 상점 그림에서 추천 아이템 자리를 찾아 기록만 한다 (화면 표시는 아직)
+        # 시험: 상점 그림에서 추천 아이템 자리를 찾아 기록만 한다 (화면 표시는 아직). 지금은 꺼 둠(SHOP_FIND) → 켰을 때 동작만 본다
         import augocr
+        self.addCleanup(setattr, augocr, "SHOP_FIND", augocr.SHOP_FIND)
+        augocr.SHOP_FIND = True
 
         class Cap:
             def grab(self, x, y, w, h, tw=None, th=None):

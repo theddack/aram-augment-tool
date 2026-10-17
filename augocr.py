@@ -23,6 +23,9 @@ SHOP_PROBE_AREA = (0.25, 0.04, 0.85, 0.84)  # 못 알아봤을 때 남기는 그
 # 2520x1575 창에서 버튼 줄 y ≈ 0.81, x ≈ 0.35~0.63. 위쪽 탭보다 글자가 또렷하고 띠가 작아 가볍다 → 먼저 본다
 SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))
 SHOP_FIND_MAX = 4  # 상점에서 자리를 찾아볼 아이템 수 (다음 구매 3 + 바꿀 것 1)
+# 상점 안 아이템 자리 찾기 (시험) 끔: 실제 판 4번 모두 확실한 결과 0개이고 한 번에 7.5초(사미라 판)라 게임을 무겁게 한다.
+# 찾는 방식을 바꾸기 전까진 상점 그림만 남긴다
+SHOP_FIND = False
 SHOP_IMGS, SHOP_IMG_GAP = 2, 300.0  # 상점을 알아봤을 때 상점 창 그림: 한 판 최대 장수, 다음 장까지 최소 간격(초)  # (가로 범위, 세로 범위)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
@@ -1125,7 +1128,8 @@ class Reader(threading.Thread):
                 data["area"], data["window"] = list(SHOP_PROBE_AREA), [gw, gh]
                 self._shop_imgs += 1
                 self._shop_img_at = now + SHOP_IMG_GAP
-                self._find_shop_items(img, iw, ih, gh, data["image"])
+                if SHOP_FIND:
+                    self._find_shop_items(img, iw, ih, gh, data["image"])
             self._rec("shop", data)
             self.shop = shop
             self._changed()
