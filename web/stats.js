@@ -63,7 +63,10 @@
     if (ms.hp) base.HP += ms.hp[0] + (ms.hp[1] - ms.hp[0]) * (L - 1) / 17;
     const add = { HP: 0, AD: 0, AP: 0, ARMOR: 0, MR: 0, HASTE: 0, MANA: 0, LETHALITY: 0, MPEN: 0,
       MS: 0, AS: 0, CRIT: 0, CRITDMG: 0, MSP: 0, LS: 0, OMNIVAMP: 0, ARPEN: 0, MPENP: 0, HSP: 0 };
-    for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) add[k] += v;
+    // 관통력 %는 게임처럼 곱해서 합친다: 35% + 35% = 1 − 0.65 × 0.65 = 57.75% (더하면 70%로 과대평가해 세릴다·도미닉을 같이 권했다)
+    const PCT_PEN = new Set(["ARPEN", "MPENP"]);
+    const addTo = (k, v) => { add[k] = PCT_PEN.has(k) ? 1 - (1 - add[k]) * (1 - v) : add[k] + v; };
+    for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) addTo(k, v);
     const goldAug = augStats.reduce((a, s) => a + (Number((s || {}).goldValue) || 0), 0);
     if (goldAug) {
       const main = (champ.magicShare ?? 0.5) >= 0.5 ? "AP" : "AD";
@@ -84,7 +87,7 @@
       for (const [k, raw] of Object.entries(s || {})) {
         if (k === "_effects") { effects.push(...raw); continue; }
         const v = levelValue(raw, L);
-        if (k in add) add[k] += v;
+        if (k in add) addTo(k, v);
         else if (k in mult) mult[k] += v;
         else if (k === "slotHaste") for (const [slot, h] of Object.entries(v)) flags.slotHaste[slot] = (flags.slotHaste[slot] || 0) + h;
         else if (k === "noUlt") flags.noUlt = flags.noUlt || v;

@@ -369,3 +369,9 @@ test("그레이브즈 공격 속도는 재장전 속도 상한(0.651~0.891, 레�
   // 탄환 세례: 방향마다 8초 대기시간은 스킬 가속과 무관 → 가속 아이템을 끌어오지 않는다
   assert.ok(!("HASTE" in d.rules.augments.ARAM_FanTheHammer.tags));
 });
+
+test("관통력 %는 곱해서 합친다 (35% + 35% = 57.75%, 게임 규칙)", () => {
+  const its = ["도미닉 경의 인사", "세릴다의 원한"].map(item);
+  const t = St.computeStats(champ("Graves"), 18, its, [], { aram: true }).total;
+  assert.ok(Math.abs(t.ARPEN - (1 - 0.65 * 0.65)) < 1e-9, `ARPEN ${t.ARPEN}`);
+});
