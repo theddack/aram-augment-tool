@@ -659,10 +659,42 @@ class AugOcr(unittest.TestCase):
         t.feed(["눈 폭발", "탱크 엔진", "정신 변환"])  # 새로고침 → 새 선택지, 앞 클릭 무효
         self.assertEqual(t.state["seq"], 2)
         t.click(None)  # 카드 밖 클릭
-        t.feed(None)
-        t.feed(None)
+        now = [1000.0]
+        orig = self.o.time.time
+        self.o.time.time = lambda: now[0]
+        try:
+            t.feed(None)
+            t.feed(None)
+            self.assertEqual(t.state["pickSeq"], 0, "클릭 없이 닫히면 바로 정하지 않는다 (화면만 내렸을 수 있다)")
+            self.assertIsNone(t.state["offers"], "카드 표시는 지운다")
+            now[0] += t.REOPEN_WAIT
+            t.feed(None)
+        finally:
+            self.o.time.time = orig
+        self.assertEqual(t.state["pickSeq"], 1)
         self.assertIsNone(t.state["picked"])  # 클릭을 못 봤으면 정하지 않는다
         self.assertEqual(t.state["pickedFrom"], ["눈 폭발", "탱크 엔진", "정신 변환"])
+
+    def test_tracker_screen_hidden_then_reopened(self):
+        # 2026-10-17 우르곳 판: 첫 선택 화면이 8초 만에 사라졌다 2초 뒤 같은 선택지로 다시 떴다 → '못 정함'을 먼저 알렸다
+        t = self.o.Tracker()
+        offers = ["강타자", "도주 계획", "불을 밝혀"]
+        t.feed(offers)
+        t.feed(None)
+        t.feed(None)
+        t.feed(offers)
+        self.assertEqual(t.state["pickSeq"], 0, "같은 선택지가 다시 뜨면 이어서")
+        self.assertEqual(t.state["offers"], offers)
+        t.click(2)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual((t.state["picked"], t.state["pickSeq"]), ("불을 밝혀", 1))
+        # 다른 선택지(다음 선택 화면)가 뜨면 앞 것은 그때 못 정함으로
+        t.feed(["궁극기 봇", "한 발에 두 놈", "열의"])
+        t.feed(None)
+        t.feed(None)
+        t.feed(["검을 뽑아라", "판도라의 상자", "보석 건틀릿"])
+        self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["pickedFrom"]), (None, 2, ["궁극기 봇", "한 발에 두 놈", "열의"]))
 
 class UpdateData(unittest.TestCase):
     """데이터 받기는 별도 프로그램에서 (창이 '응답 없음'이 되지 않게), 진행은 기록 파일로 본다"""

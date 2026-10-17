@@ -241,6 +241,9 @@ class Tracker:
 
     CLOSE_AFTER = 2  # 연속으로 이만큼 못 읽으면 선택 화면이 닫힌 걸로
     PARTIAL_HOLD = 25  # 초. 잘린 이름만 보여도 열린 걸로 보는 최대 시간 (게임 중 비슷한 글자로 안 닫히는 일 없게)
+    # 초. 카드를 안 누르고 닫혔으면 이만큼 기다렸다가 '못 정함'으로 (선택 화면을 잠깐 내렸다 다시 띄우는 경우.
+    # 2026-10-17 우르곳 판: 첫 선택 화면이 8초 만에 사라졌다가 2초 뒤 같은 선택지로 다시 떠서 '못 정함'을 먼저 알렸다)
+    REOPEN_WAIT = 20
 
     def __init__(self):
         self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0}
@@ -248,6 +251,7 @@ class Tracker:
         self._click = None  # 이번 선택 화면에서 처음 클릭한 카드 칸
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
+        self._pending = None  # 클릭 없이 닫힌 선택지 {"from": 선택지, "at": 시각} (REOPEN_WAIT 안에 다시 뜨면 이어서)
 
     @property
     def showing(self):
@@ -266,6 +270,11 @@ class Tracker:
         if not offers3 and partial and self._last is not None and now - self._full_at < self.PARTIAL_HOLD:
             self._miss = 0
             return
+        if self._pending and (offers3 or now - self._pending["at"] >= self.REOPEN_WAIT):
+            frm, self._pending = self._pending["from"], None
+            if not offers3 or offers3 != frm:  # 안 돌아왔거나 다른 선택지(다음 선택 화면)가 떴다 → 그때 못 정함으로
+                self.state = {**self.state, "picked": None, "pickedFrom": frm, "replaces": None, "by": "click",
+                              "pickSeq": self.state["pickSeq"] + 1}
         if offers3:
             self._full_at = now
             self._miss = 0
@@ -279,9 +288,13 @@ class Tracker:
             return
         self._miss += 1
         if self._miss >= self.CLOSE_AFTER:
-            p = self._last[self._click] if self._click is not None else None
-            self.state = {**self.state, "offers": None, "pos": None, "picked": p, "pickedFrom": self._last,
-                          "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
+            if self._click is None:
+                # 카드를 안 눌렀다: 화면만 내렸을 수 있다 → 카드 표시는 지우고, 고른 것은 REOPEN_WAIT 뒤에 정한다
+                self._pending = {"from": self._last, "at": now}
+                self.state = {**self.state, "offers": None, "pos": None}
+            else:
+                self.state = {**self.state, "offers": None, "pos": None, "picked": self._last[self._click], "pickedFrom": self._last,
+                              "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._click, self._miss = None, None, 0
 
 
