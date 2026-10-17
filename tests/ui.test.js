@@ -749,3 +749,17 @@ test("사미라 판: 불러오는 중(능력치 0)엔 비교하지 않고, 증�
   assert.match(sent.at(-1).hud.find((x) => x.startsWith("산 아이템")), /징수의 총 ✅/);
   assert.deepEqual(p.errors, []);
 });
+
+test("게임 중 지금 능력치엔 즉시 골드 증강의 능력치 환산을 넣지 않는다 (사미라 판 공격력 +3.57)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const stats = { attackDamage: 163.32, armor: 60, magicResist: 40, moveSpeed: 400, maxHealth: 2000 };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Samira", level: 11, items: [], stats });
+  p.w.sendOverlay();
+  const before = sent.at(-1).statCheck.rows.AD[0];
+  p.w.applyAug({ offers: null, seq: 1, picked: "징수의 총 업그레이드", pickSeq: 1 });
+  p.w.sendOverlay();
+  assert.equal(sent.at(-1).statCheck.rows.AD[0], before);
+  assert.deepEqual(p.errors, []);
+});

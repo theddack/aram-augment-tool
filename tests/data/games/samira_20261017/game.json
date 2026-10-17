@@ -1,0 +1,52 @@
+{
+  "champion": "Samira",
+  "note": "2026-10-17 사미라 판 (v0.1.37). 첫 증강은 클릭 짐작 '지옥불 영혼'이 아니라 경기 결과 파일의 지옥불 난사 발동. 시각 = 기록 시각 - 10초(게임 시간)",
+  "augments": [
+    [
+      "ARAM_InfernoTriggered",
+      19
+    ],
+    [
+      "TrustyWeapon",
+      389
+    ],
+    [
+      "ARAM_Upgrade_Collector",
+      545
+    ],
+    [
+      "ARAM_ThreadtheNeedle",
+      816
+    ]
+  ],
+  "known": {},
+  "gaps": {
+    "live_290s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_591s.json": {
+      "HP": 0,
+      "AD": 0.01,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_891s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    }
+  }
+}

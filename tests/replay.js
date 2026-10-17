@@ -28,7 +28,9 @@ function replay(name) {
     const items = ids.map((id) => d.items.find((i) => i.id === id) || ((d.parts || {})[id] && (d.parts[id].stats ? { id, name: d.parts[id].name, stats: d.parts[id].stats } : null))).filter(Boolean);
     const augs = game.augments.filter(([, at]) => at <= t).map(([id]) => d.augments.find((a) => a.id === id));
     const c = S.withChosenFeatures(champ, augs, d.rules);
-    const st = Stats.computeStats(c, ap.level, items, S.augStatsOf(augs, d.rules, c), { aram: true }).total;
+    // 게임 중 지금 능력치처럼 즉시 골드 환산은 뺀다 (app.js nowAugStats)
+    const augSt = S.augStatsOf(augs, d.rules, c).map((s) => s && s.goldValue ? { ...s, goldValue: 0 } : s);
+    const st = Stats.computeStats(c, ap.level, items, augSt, { aram: true }).total;
     const stats = {};
     for (const [k, lk] of Object.entries(LIVE)) stats[k] = [Math.round((st[k] || 0) * 100) / 100, Math.round(ap.championStats[lk] * 100) / 100];
     rows.push({ file: f, t: Math.round(t), level: ap.level, items: items.map((i) => i.name),

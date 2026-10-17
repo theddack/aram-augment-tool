@@ -14,6 +14,9 @@ const statOpts = () => {
   return e ? { aram: state.aram, enemyMagic: Math.round((0.5 + (e.magic - 0.5) * 0.6) * 10) / 10 } : { aram: state.aram };
 };
 const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ);
+// 지금 능력치(게임 중): 즉시 골드 증강(징수의 총 업그레이드 250G 등)을 능력치로 환산한 값은 뺀다. 그 골드로 산 아이템이
+// 이미 게임 데이터에 들어와 있어 두 번 센다 (2026-10-17 사미라 판: 공격력 +3.57 차이). 추천 점수(18레벨 완성)엔 그대로 둔다
+const nowAugStats = () => liveOn ? augStats().map((s) => s && s.goldValue ? { ...s, goldValue: 0 } : s) : augStats();
 
 // ---- 계산 vs 게임 실제 능력치 (게임 연동 championStats). 계산이 틀린 곳(데이터·룬·중첩)을 찾는 근거.
 // 계산값엔 한타 평균 중첩(치명적 리듬 등)이 들어가 있어 싸움 밖에선 실제보다 클 수 있다
@@ -33,7 +36,7 @@ function statCheck() {
   // 게임 레벨을 아직 반영하기 전(쿨타임 다시 그리기가 먼저 보낸다)이면 비교하지 않는다 (2026-10-17 카이사 판: 첫 기록이 18레벨 vs 실제 3레벨)
   if (state.liveLevel != null && state.liveLevel !== state.level) return null;
   const c = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
-  const t = St.computeStats(c, state.level, [...state.items, ...partItems()], augStats(), statOpts()).total;
+  const t = St.computeStats(c, state.level, [...state.items, ...partItems()], nowAugStats(), statOpts()).total;
   const r2 = (v) => Math.round(v * 100) / 100;
   const rows = {};
   for (const [k, lk] of Object.entries(LIVE_STAT)) {
@@ -506,7 +509,7 @@ function renderStatsNow() {
   const L = state.level, o = statOpts(), have = [...state.items, ...partItems()];
   const e0 = St.computeStats(c, L, [], [], o).total;
   const e1 = St.computeStats(c, L, have, [], o).total;
-  const full = St.evaluate(c, L, have, augStats(), o);
+  const full = St.evaluate(c, L, have, nowAugStats(), o);
   const e2 = full.stats.total, m = full.m;
   const base = St.evaluate(c, L, [], [], o).m;
   const tile = (name, v, b, sub) => {
