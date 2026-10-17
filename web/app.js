@@ -85,6 +85,8 @@ function avgSlotBonus() {
   slotBonus = Object.fromEntries(Object.keys(sum).map((k) => [k, Math.max(0, (D[k] - sum[k]) / S.SLOTS)]));
   return slotBonus;
 }
+// 확인된 적 증강(소환사 주문 칸)의 능력치: 급속 성장·차원 이동처럼 체력을 올리는 것 (나머지 증강은 공식 데이터에 없다)
+const enemyAugStats = (e) => (e.augments || []).length ? S.augStatsOf(e.augments, state.data.rules, e.champ) : [];
 // 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
 function enemyTarget() {
   const b = state.enemyBuilds || [];
@@ -92,7 +94,7 @@ function enemyTarget() {
   const sb = avgSlotBonus();
   const sum = { ARMOR: 0, MR: 0, HP: 0 };
   for (const e of b) {
-    const t = St.computeStats(e.champ, 18, e.items, [], { aram: state.aram }).total;
+    const t = St.computeStats(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).total;
     const empty = Math.max(0, S.SLOTS - e.items.length);
     for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
   }
@@ -107,7 +109,7 @@ function enemyNow() {
   const sum = { ARMOR: 0, MR: 0, HP: 0, level: 0 };
   for (const e of b) {
     const L = Math.max(1, Math.min(18, e.level || 1));
-    const t = St.computeStats(e.champ, L, e.items, [], { aram: state.aram }).total;
+    const t = St.computeStats(e.champ, L, e.items, enemyAugStats(e), { aram: state.aram }).total;
     for (const k of ["ARMOR", "MR", "HP"]) sum[k] += t[k] / b.length;
     sum.level += L / b.length;
   }

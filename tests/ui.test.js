@@ -676,3 +676,19 @@ test("적 구성 비율: 완성 아이템 2개 이상 산 적은 산 아이템�
   assert.match(p.text("#next-buy"), /적 구성 \(산 아이템 반영\): 마법 100%/);
   assert.deepEqual(p.errors, []);
 });
+
+test("확인된 적 증강(급속 성장)의 체력을 상대 능력치에 넣는다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const foes = ["Ezreal", "Kaisa", "Corki", "Varus", "Garen"];
+  const hp = (augments) => {
+    p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
+      enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [], augments })) });
+    p.w.sendOverlay();
+    return sent.at(-1).enemy;
+  };
+  const a = hp([]), b = hp(["GrowthSpurt"]);
+  assert.ok(b.target.HP > a.target.HP && b.now.HP > a.now.HP, `${a.target.HP} → ${b.target.HP}`);
+  assert.deepEqual(p.errors, []);
+});
