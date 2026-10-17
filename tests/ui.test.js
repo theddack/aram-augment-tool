@@ -813,7 +813,7 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.renderItemList();
   p.w.applyAug({ offers: null, seq: 1, picked: "무한 반복", pickSeq: 1 });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 삼위일체 ← 무한 반복 골라서/);
+  assert.match(p.text("#next-buy"), /🔁 정수 약탈자 먼저 ← 무한 반복 골라서/);
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
@@ -844,5 +844,25 @@ test("적 마법 비중이 높으면 마법 저항 아이템을 다음 구매에
   assert.match(txt, /많이 큼: 럭스/);
   assert.match(txt, /마법 저항 우선: /);
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
+  assert.deepEqual(p.errors, []);
+});
+
+test("다음 구매 3개는 같이 가질 수 있는 것만 (같은 계열 고유 효과는 하나) · 이미 가진 계열은 조언에도 안 나온다 (그레이브즈 판 '도미닉 > 필멸자 > 세릴다')", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const stats = { attackDamage: 250, armor: 90, magicResist: 50, moveSpeed: 400, maxHealth: 2400 };
+  const enemyBuilds = [{ champion: "Soraka", level: 16, items: [] }, { champion: "Yuumi", level: 16, items: [] }, { champion: "Kalista", level: 16, items: [] }];
+  const live = (items) => p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 16, items, stats, enemies: ["Soraka", "Yuumi", "Kalista"], enemyBuilds });
+  live(["6672", "3085", "3032", "3006"]);
+  p.w.applyAug({ offers: null, seq: 1, picked: "바늘에 실 끼우기", pickSeq: 1 });
+  p.w.applyAug({ offers: null, seq: 2, picked: "탄환 세례", pickSeq: 2 });
+  p.w.renderItemList();
+  const ids = [...p.w.document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id);
+  const lim = ids.map((id) => p.data.items.find((i) => i.id === id).limit).filter(Boolean);
+  assert.equal(new Set(lim).size, lim.length, ids.join(","));
+  live(["6672", "3085", "3032", "3006", "3036"]);  // 도미닉(치명상 계열)을 삼
+  p.w.renderItemList();
+  assert.doesNotMatch(p.text("#next-buy"), /치유 감소: 필멸자의 운명/);
   assert.deepEqual(p.errors, []);
 });

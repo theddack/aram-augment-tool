@@ -246,21 +246,27 @@ function enemyAdvice() {
   // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것
   const critOk = state.champ.tags.includes("Marksman") || !state.champ.melee || ((state.champ.traits || {}).CRIT || 0) > 0;
   const hasCrit = (i) => (i.tags.CRIT || 0) >= 0.5 || (i.stats && !Array.isArray(i.stats) && "CRIT" in i.stats);
-  const fits = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  // 이미 산 아이템과 같은 계열 고유 효과면 못 산다 (도미닉을 가졌는데 치유 감소로 필멸자의 운명을 권하던 것)
+  const ownedLimits = new Set(state.items.map((i) => i.limit).filter(Boolean));
+  const fits = (i) => !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name)
+    && (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  // 후보 이름은 지금 다음 구매 순위 순서로 (조언에 먼저 쓴 아이템 = 다음 구매에 들어가는 아이템)
+  const order = state.rankOrder || [];
+  const byRank = (names) => names.slice().sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9));
   // 저항 우선이면 그 저항이 붙은 아이템까지 권한다 (조언만 있고 다음 구매엔 없던 것: 2026-10-17 그레이브즈 판 '마법 저항 우선').
   // 내 유형에 맞는 공격 아이템 중 저항이 있는 것 (원딜: 맬모셔스의 아귀·수호천사), 탱커는 저항 아이템 전체. 이미 그 저항 아이템이 있으면 권하지 않는다
   const resWant = pct >= 65 ? "MR" : pct <= 35 ? "ARMOR" : null;
   const tank = state.champ.tags.includes("Tank");
   const hasRes = (i, k) => !!(i.stats && !Array.isArray(i.stats) && (i.stats[k] || 0) > 0);
   const resItems = resWant && !state.items.some((i) => hasRes(i, resWant))
-    ? items.filter((i) => hasRes(i, resWant) && (fits(i) || (tank && tankItem(i)))).map((i) => i.name) : [];
+    ? byRank(items.filter((i) => hasRes(i, resWant) && (fits(i) || (tank && tankItem(i) && !(i.limit && ownedLimits.has(i.limit))))).map((i) => i.name)) : [];
   const resLabel = resWant === "MR" ? "마법 저항" : "방어력";
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)·산 아이템·킬로 짐작한 비율이라 '추정'이라고 쓴다
   out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (e.fed.length ? ` (많이 큼: ${e.fed.join("·")})` : "")
     + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
   if (e.healers.length >= 2) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
-    let gw = items.filter((i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처") && fits(i)).map((i) => i.name);
+    let gw = byRank(items.filter((i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처") && fits(i)).map((i) => i.name));
     // 맞는 완성 아이템이 없으면(치명타를 못 살리는 전사 등) 치유 감소 부품을 (처형인의 대검 · 망각의 구 · 덤불 조끼)
     if (!gw.length) {
       const want = mineType === "magic" ? ["망각의 구"] : ["처형인의 대검"];
@@ -277,8 +283,9 @@ function enemyAdvice() {
   const resHigh = resN >= 3;
   const now = resHigh ? enemyNow() : null;
   if (e.tanks.length >= 2 || resHigh) {
-    const pen = items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
-      : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name).slice(0, 2);
+    const pen = byRank(items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
+      : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name));
+    pen.splice(2);
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
@@ -1463,12 +1470,24 @@ function renderNextBuy(rows) {
     const r = avail.find((x) => group.includes(x.item.name) && !must.includes(x));
     if (r) { r.must = true; must.push(r); }
   }
-  const pick = [...must, ...avail.filter((r) => !must.includes(r))].slice(0, 3);
+  // 3개끼리도 같이 가질 수 있어야 한다: 같은 계열 고유 효과(도미닉·필멸자·세릴다 = 치명상 계열)·신발 2개를 함께 권하지 않는다
+  // (2026-10-17 그레이브즈 판: '도미닉 경의 인사 > 필멸자의 운명 > 세릴다의 원한' — 셋 중 하나만 살 수 있다)
+  const clash = (r, others) => others.some((o) => o !== r && ((r.item.limit && r.item.limit === o.item.limit) || (r.item.kind === "boots" && o.item.kind === "boots")));
+  const pick = [];
+  for (const r of [...must, ...avail.filter((r) => !must.includes(r))]) {
+    if (pick.length >= 3) break;
+    if (!clash(r, pick)) pick.push(r);
+  }
+  state.rankOrder = avail.map((r) => r.item.name);  // 조언의 후보 이름을 이 순서로 (조언과 다음 구매가 같은 아이템을 먼저 말하게)
   // 적 대응: 순위가 크게 오른 아이템이 위 3개에 없으면 3번째 자리에 (증강에 필요한 아이템은 밀어내지 않는다)
   const counter = counterItems(avail, keep);
   state.counter = counter.length ? { items: counter, why: enemyItemSummary() } : null;
   for (const r of avail) r.counter = counter.includes(r.item.id);
-  if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !pick[2].must) pick[2] = avail.find((r) => r.counter);
+  const fit3 = (r) => r && !clash(r, pick.slice(0, 2));
+  if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !pick[2].must) {
+    const c = avail.find((r) => r.counter && fit3(r));
+    if (c) pick[2] = c;
+  }
   // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
   // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
   // 치유 감소·보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만
@@ -1476,12 +1495,18 @@ function renderNextBuy(rows) {
   // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
   const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {
     const names = state.adviceWant.filter((w) => w.why === why).map((w) => w.name);
-    const r = avail.slice(0, why === "관통" ? COUNTER_TOP : avail.length).find((x) => names.includes(x.item.name));
+    // 위 2개 중 같은 계열(치명상 등)과 겹치면 그 자리를 대응 아이템으로 바꾼다 (도미닉 대신 필멸자의 운명: 둘 다 관통, 필멸자는 치유 감소까지)
+    const r = avail.slice(0, why === "관통" ? COUNTER_TOP : avail.length).find((x) => names.includes(x.item.name)
+      && (fit3(x) || pick.slice(0, 2).some((o) => !o.must && o.item.limit && o.item.limit === x.item.limit)));
     return r ? { w: { name: r.item.name, why }, r } : null;
   }).find(Boolean);
-  if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3 && !pick[2].must) {
-    wanted.r.advice = wanted.w.why;
-    pick[2] = wanted.r;
+  if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3) {
+    const at = pick.slice(0, 2).findIndex((o) => !o.must && o.item.limit && o.item.limit === wanted.r.item.limit);
+    const slot = at >= 0 ? at : !pick[2].must ? 2 : -1;
+    if (slot >= 0) {
+      wanted.r.advice = wanted.w.why;
+      pick[slot] = wanted.r;
+    }
   }
   // 추천이 바뀌면 왜 바뀌었는지 (상황 → 필요): 사람이 보고 따를지 정하게.
   // 새로 들어온 아이템마다 원인을 붙인다: 적 상황(조언·적 대응)이 먼저, 그다음 고른 증강
@@ -1497,7 +1522,9 @@ function renderNextBuy(rows) {
       : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
-    state.nextChange = added.length ? added.map(([n, w]) => `🔁 ${n} ← ${w}`).join(" / ") : null;
+    // 새로 들어온 게 없고 1순위만 바뀌었으면 '먼저'로 (고른 증강·적 변화가 원인일 때만)
+    const top = !added.length && now.names[0] !== prev.names[0] ? why(pick[0]) : null;
+    state.nextChange = added.length ? added.map(([n, w]) => `🔁 ${n} ← ${w}`).join(" / ") : top ? `🔁 ${now.names[0]} 먼저 ← ${top}` : null;
   } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
