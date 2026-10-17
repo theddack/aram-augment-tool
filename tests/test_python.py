@@ -1104,6 +1104,50 @@ class HudIcons(unittest.TestCase):
         self.assertNotIn(top_y, reads, "위쪽 띠는 안 읽음")
         self.assertTrue(reads, "아래 줄은 계속 읽음")
 
+    def test_shop_key_reads_shop_right_away(self):
+        # 2026-10-17 우르곳 판: 2초 간격 읽기 사이에 상점을 열고 닫아 못 알아봤다 → P·ESC·클릭을 보면 바로 읽는다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._changed = lambda: None
+
+        class Mouse:
+            def __init__(self, keys=(), clicks=0):
+                self.keys, self.clicks = list(keys), clicks
+
+            def pressed(self, vk):
+                if vk in self.keys:
+                    self.keys.remove(vk)
+                    return True
+                return False
+
+            def clicked(self):
+                if self.clicks:
+                    self.clicks -= 1
+                    return (1, 1)
+                return None
+        t0 = time.time()
+        r.wait_shop_keys(Mouse(keys=[0x50]), time.time() + 5)
+        self.assertLess(time.time() - t0, 1.5, "P 를 보면 2초를 다 기다리지 않는다")
+        self.assertTrue(r._shop_now)
+        reads = []
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                reads.append(y)
+                return b"\0" * ((tw or w) * (th or h) * 4)
+
+        class Ocr:
+            def words(self, img, tw, th):
+                return [("되돌리기", 420, 20, 70, 15)]
+        r._shop_n = 0  # SHOP_EVERY 번에 한 번 차례가 아니어도
+        r.scan_shop_only(Cap(), Ocr(), (0, 0, 2520, 1575))
+        self.assertTrue(r.shop, "바로 읽어서 상점을 알아본다")
+        self.assertFalse(r._shop_now)
+        r._shop_click_at = time.time()
+        t0 = time.time()
+        r.wait_shop_keys(Mouse(clicks=1), time.time() + 0.3)
+        self.assertFalse(r._shop_now, "클릭은 SHOP_CLICK_GAP 에 한 번만")
+
     def test_auto_protect_when_slow(self):
         # 느려지면 진단용 그림부터 줄이고(자동 보호), 다시 빨라지면 끈다. 증강 선택 읽기는 건드리지 않는다
         import augocr

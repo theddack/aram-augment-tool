@@ -41,6 +41,11 @@ CALM_EVERY = 3  # 레벨이 그대로인 전투 중엔 증강 이름 줄을 이�
 FAST_AFTER_LEVEL = 20  # 초. 레벨이 오르면 이만큼은 매번 (증강은 레벨에 맞춰 생긴다. 미뤘다 여는 화면은 6초 안에)
 IDLE_INTERVAL = 2.0  # 초 (선택 화면이 아닐 때. 뜨면 2초 안에 알아채고 그때부터 1초마다)
 CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
+# 상점 여닫기 키·클릭을 보면 2초를 기다리지 않고 곧바로 상점 창을 읽는다 (2026-10-17 지적: 상점을 열고 닫을 때 상자가 뜨다 말다.
+# 우르곳 판: 6:40 에 상점에서 두 번 샀는데 2초 간격 읽기 사이에 열고 닫아서 한 번도 못 알아봄). 키 상태만 읽고 게임에 입력은 안 보낸다
+SHOP_KEYS = (0x50, 0x1B)  # P(상점 기본 키) · ESC(닫기)
+SHOP_KEY_DELAY = 0.25  # 초. 키를 누른 뒤 상점 창이 그려질 때까지
+SHOP_CLICK_GAP = 2.0  # 초. 왼쪽 클릭(상점 버튼·닫기 ✕)으로 바로 읽기는 이 간격에 한 번만 (싸울 때 클릭마다 읽지 않게)
 
 
 def norm(s):
@@ -452,6 +457,14 @@ class _Mouse:
         self.u.GetAsyncKeyState.restype = ctypes.c_short
         self.down = False
 
+    def pressed(self, vk):
+        """키를 새로 누른 순간만 True (누르고 있는 동안은 한 번만)"""
+        downs = self.__dict__.setdefault("keys", {})
+        down = bool(self.u.GetAsyncKeyState(vk) & 0x8000)
+        hit = down and not downs.get(vk, False)
+        downs[vk] = down
+        return hit
+
     def clicked(self):
         down = bool(self.u.GetAsyncKeyState(0x01) & 0x8000)  # VK_LBUTTON
         hit = None
@@ -751,7 +764,7 @@ class Reader(threading.Thread):
         if not (rect and self.tracker.showing):
             # 선택 화면이 아니면 2초마다 (글자 인식이 CPU 를 가장 많이 쓴다). 직전 10초 안에 떴었으면 1초 (새로고침·다음 화면)
             recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10
-            time.sleep(INTERVAL if recent else IDLE_INTERVAL)
+            self.wait_shop_keys(mouse, time.time() + (INTERVAL if recent else IDLE_INTERVAL), bool(rect))
             return
         gx, gy, gw, gh = rect
         while time.time() < end:
@@ -761,6 +774,21 @@ class Reader(threading.Thread):
                 slot = card_at(self.tracker.state.get("pos"), rx, ry)
                 self.tracker.click(slot)
                 self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
+            time.sleep(CLICK_POLL)
+
+    def wait_shop_keys(self, mouse, end, active=True):
+        """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""
+        while time.time() < end:
+            if active and mouse is not None:
+                key = any(mouse.pressed(vk) for vk in SHOP_KEYS)
+                click = mouse.clicked() is not None and time.time() - getattr(self, "_shop_click_at", 0.0) >= SHOP_CLICK_GAP
+                if key or click:
+                    if click:
+                        self._shop_click_at = time.time()
+                    self._shop_now = True
+                    self._count("상점 키" if key else "상점 클릭")
+                    time.sleep(SHOP_KEY_DELAY)
+                    return
             time.sleep(CLICK_POLL)
 
     def read_band(self, cap, ocr, rect, band, xr=(0.0, 1.0)):
@@ -795,6 +823,9 @@ class Reader(threading.Thread):
         self._name_n = getattr(self, "_name_n", 0) + 1
         if self.shop and not self.tracker.showing and self._name_n % 3:
             self.scan_shop_only(cap, ocr, rect)
+            return
+        if getattr(self, "_shop_now", False) and not self.tracker.showing:
+            self.scan_shop_only(cap, ocr, rect)  # 상점 키를 봤다: 이름 줄은 건너뛰고 상점부터 (빨리 띄우게)
             return
         if not self.urgent() and self._name_n % CALM_EVERY:
             self._hud_tick(rect)
@@ -1041,7 +1072,8 @@ class Reader(threading.Thread):
         self._last_rect = rect
         self._watch_inventory()
         self._shop_n = getattr(self, "_shop_n", 0) + 1
-        if self._shop_n % SHOP_EVERY and not self._shop_probe:
+        now_due, self._shop_now = getattr(self, "_shop_now", False), False
+        if self._shop_n % SHOP_EVERY and not self._shop_probe and not now_due:
             return
         t0 = time.time()
         # 아래 버튼 줄(작은 띠) 먼저, 못 찾으면 위쪽 탭 줄은 두 번에 한 번 (또는 막 샀을 때)
@@ -1053,7 +1085,7 @@ class Reader(threading.Thread):
             self._bottom_ok.add(shop_bottom_key(gw, gh))
         # 이 창 크기에서 아래 버튼 줄로 알아본 적이 있으면 위쪽 탭 줄(큰 띠)은 막 샀을 때만 읽는다 (화면 잡기·글자 읽기를 줄인다)
         top_due = self._top_n % 2 == 0 and shop_bottom_key(gw, gh) not in self._bottom_ok and not self.protect
-        if not shop and (self._shop_probe or top_due):
+        if not shop and (self._shop_probe or top_due or (now_due and not self.protect)):
             tw_, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
             sw = sw + tw_
             shop = find_shop(tw_, gw, gh)
