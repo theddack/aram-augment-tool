@@ -1513,6 +1513,30 @@ class GameLog(unittest.TestCase):
         for t in ("징수의", "아이팀 핓 지속 피해 효과에 지영다가", "공격력이 20% 증가할니다.", "` 치명하 활률이 25% 증가할니다."):
             self.assertFalse(augocr.SHOP_TEXT.search(t), t)
 
+    def test_perf_line_with_counts(self):
+        # 처리 시간 줄에 '횟수'(n 없는 칸)가 있어도 오류 없이 (2026-10-17: KeyError 로 게임 연동이 멈췄다)
+        line = desktop.perf_line({"이름 줄": {"n": 3, "avg": 40, "p95": 70, "max": 90}, "횟수": {"상점 키": 21}})
+        self.assertIn("이름 줄 3번 평균 40", line)
+        self.assertIn("횟수 {'상점 키': 21}", line)
+
+    def test_watcher_survives_game_end_error(self):
+        # 판 끝 처리가 실패해도 게임은 끝난 것으로 두고 감시 스레드는 계속 돈다
+        w = desktop.LiveWatcher.__new__(desktop.LiveWatcher)
+        w.state, w._fails, w._game_key = {"inGame": True}, 2, "x"
+        def boom():
+            raise KeyError("n")
+        w.on_game_end = boom
+        orig = desktop._local.open
+        desktop._local.open = lambda *a, **k: (_ for _ in ()).throw(OSError("끊김"))
+        try:
+            with self.assertRaises(KeyError):
+                w.poll()
+        finally:
+            desktop._local.open = orig
+        self.assertEqual(w.state, {"inGame": False})
+        src = pathlib.Path(desktop.__file__).read_text(encoding="utf-8")
+        self.assertIn("self.state = {\"inGame\": False, \"error\"", src)
+
 class LowResource(unittest.TestCase):
     def test_one_mode_low_resource(self):
         # 모드는 하나: 게임 중 CPU 상한이 게임 밖보다 낮고, 화면 엔진은 저사양 옵션

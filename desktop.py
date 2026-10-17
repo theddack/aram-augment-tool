@@ -290,6 +290,14 @@ def redact_names(raw):
     return walk(raw)
 
 
+def perf_line(perf):
+    """한 판 처리 시간 한 줄. 시간이 아닌 칸(횟수 등)은 따로 (2026-10-17: '횟수'에 n 이 없어 KeyError → 게임 연동 스레드가 죽었다)"""
+    timed = [f"{k} {v['n']}번 평균 {v['avg']} p95 {v['p95']} 최대 {v['max']}" for k, v in perf.items()
+             if isinstance(v, dict) and {"n", "avg", "p95", "max"} <= set(v)]
+    other = [f"{k} {v}" for k, v in perf.items() if not (isinstance(v, dict) and {"n", "avg", "p95", "max"} <= set(v))]
+    return "한 판 처리 시간(ms): " + " · ".join(timed + other)
+
+
 def prune_logs(log_dir, keep):
     """오래된 게임 기록 지우기 (최근 keep 개만)"""
     files = sorted(log_dir.glob("game_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -317,8 +325,12 @@ class LiveWatcher(threading.Thread):
             now = time.time()
             gap, self.beat = now - self.beat, now
             if self.enabled:
-                self.watch_resources(now, gap)
-                self.poll()
+                # 한 바퀴가 실패해도 감시는 계속 (2026-10-17 판 끝 처리 오류로 이 스레드가 죽어 '게임 연동 멈춤', 다음 판을 못 알아봤다)
+                try:
+                    self.watch_resources(now, gap)
+                    self.poll()
+                except Exception as e:
+                    self.state = {"inGame": False, "error": str(e)[:120]}
             # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
             time.sleep(LIVE_INTERVAL if self.state.get("inGame") else IDLE_INTERVAL)
 
@@ -351,10 +363,10 @@ class LiveWatcher(threading.Thread):
             # 한 번 끊긴 걸로 게임이 끝났다고 보지 않는다 (3번 연속 실패해야 끝, 기록 파일이 쓸데없이 늘지 않게)
             self._fails = getattr(self, "_fails", 0) + 1
             if self._fails >= 3:
-                if self.state.get("inGame") and getattr(self, "on_game_end", None):
-                    self.on_game_end()  # 한 판 기록 마무리 (zip)
-                self.state = {"inGame": False}
                 self._game_key = None
+                was, self.state = self.state.get("inGame"), {"inGame": False}
+                if was and getattr(self, "on_game_end", None):
+                    self.on_game_end()  # 한 판 기록 마무리 (zip). 실패해도 게임은 끝난 것으로 둔다
             return
         self._fails = 0
         try:
@@ -1378,18 +1390,21 @@ def main():
     watcher.on_new_game = on_new_game
 
     def on_game_end():
-        if reader:
-            # 한 판 동안 글자 인식·증강 칸 처리 시간 (평균·p95·최대): 실제 게임에서 느린 구간을 찾으려고
-            perf = reader.perf_summary()
-            # 표시 창 그리기·화면 쪽 추천 계산 시간도 같이 (게임 끊김 원인을 숫자로 보려고)
-            draw = ov.perf_summary() if ov else {}
-            calc = api.calc_summary()
-            perf.update({f"표시 {k}": v for k, v in draw.items()})
-            if calc:
-                perf["추천 계산"] = calc
-            rec.event("perf", {"ms": perf})
-            if perf:
-                diag.write("한 판 처리 시간(ms): " + " · ".join(f"{k} {v['n']}번 평균 {v['avg']} p95 {v['p95']} 최대 {v['max']}" for k, v in perf.items()))
+        try:
+            if reader:
+                # 한 판 동안 글자 인식·증강 칸 처리 시간 (평균·p95·최대): 실제 게임에서 느린 구간을 찾으려고
+                perf = reader.perf_summary()
+                # 표시 창 그리기·화면 쪽 추천 계산 시간도 같이 (게임 끊김 원인을 숫자로 보려고)
+                draw = ov.perf_summary() if ov else {}
+                calc = api.calc_summary()
+                perf.update({f"표시 {k}": v for k, v in draw.items()})
+                if calc:
+                    perf["추천 계산"] = calc
+                rec.event("perf", {"ms": perf})
+                if perf:
+                    diag.write(perf_line(perf))
+        except Exception as e:  # 기록이 실패해도 마무리(zip·CPU 상한 되돌리기)는 한다
+            diag.write(f"한 판 처리 시간 기록 실패: {str(e)[:100]}")
         rec.finish()
         webmem.set(in_game=False)
         if capped:
