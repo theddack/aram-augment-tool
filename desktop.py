@@ -1332,7 +1332,9 @@ def main():
         # 그 판 선택 화면에 떴던 증강하고만 비교해 가볍다 (numpy·Pillow 는 게임에서 처음 읽을 때 불러온다)
         reader.icon_dir = str(user_dir() / "web" / "icons" / "augment")
         try:
-            reader._id_names = {a["id"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]}
+            augs = json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"]
+            reader._id_names = {a["id"]: a["name"] for a in augs}
+            reader.no_icon = {a["name"] for a in augs if a.get("genericIcon")}
         except (OSError, ValueError, KeyError):
             reader._id_names = {}
         # 증강 칸 아이콘 크기를 해상도(게임 창 높이)별로 기억: 다음 게임부터 13가지 크기로 다 찾지 않는다

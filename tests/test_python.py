@@ -1200,6 +1200,23 @@ class HudIcons(unittest.TestCase):
         r.scan_shop_only(Cap(), Ocr(), (0, 0, 2520, 1575))
         self.assertIn("shopmiss", got, "오래전에 본 것은 못 알아본 것")
 
+    def test_generic_icon_augment_not_verified(self):
+        # 믿음직한 무기: 게임 데이터 아이콘은 공용 그림, 게임 증강 칸엔 챔피언 무기 그림 → 그림으로 확인하지 않는다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.no_icon = {"믿음직한 무기"}
+        r.icon_dir = "/없음"
+        got = []
+        r._rec = lambda k, d=None, **kw: got.append((k, d))
+        r.tracker.feed(["믿음직한 무기", "폭격기", "불여우"])
+        r.tracker.click(0)
+        before = dict(r.tracker.state)
+        r.tracker.feed(None)
+        r.tracker.feed(None)
+        r._after_pick(before, r.tracker.state)
+        self.assertIsNone(r._verify)
+        self.assertEqual([d["result"] for k, d in got if k == "verify"], ["공용 아이콘이라 확인 안 함"])
+
     def test_auto_protect_when_slow(self):
         # 느려지면 진단용 그림부터 줄이고(자동 보호), 다시 빨라지면 끈다. 증강 선택 읽기는 건드리지 않는다
         import augocr

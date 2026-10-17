@@ -868,23 +868,32 @@ class Reader(threading.Thread):
         if after.get("seq") != before.get("seq"):  # 새 선택지 (새로고침 포함): 읽은 글자 원문과 카드 이름 줄 그림
             self._rec("offers", {"read": segs, "offers": after.get("offers"), "pos": after.get("pos"),
                                  "image": self.rec.image("card", img, iw, ih) if self.rec else None})
-        if after.get("pickSeq") != before.get("pickSeq"):
-            self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
-            self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
-            self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
-            if self.icon_dir and after.get("pickedFrom"):
-                # 클릭으로 잡았으면 몇 번만 맞는지 보고, 못 잡았으면 VERIFY_FOR 초까지 (확인이 CPU 를 쓴다: 25초 내내면 평균 5→9%)
-                self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
-                                "until": time.time() + VERIFY_FOR, "tries": VERIFY_TRIES if after.get("picked") else 99,
-                                # 이름을 다 못 읽었거나 클릭을 못 잡았으면, 못 찾을 때 증강 전체로 넓혀 찾는다
-                                "unsure": not after.get("picked") or None in after["pickedFrom"]}
-            if after.get("picked"):
-                self._picked_names.add(after["picked"])
+        self._after_pick(before, after)
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
         if offers or partial:
             return
         self._hud_tick(rect)
         self.scan_shop_only(cap, ocr, rect)
+
+    def _after_pick(self, before, after):
+        """고른 것이 정해졌을 때: 기록하고, 증강 칸 그림으로 맞는지 확인을 건다"""
+        if after.get("pickSeq") == before.get("pickSeq"):
+            return
+        self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
+        self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
+        self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
+        if after.get("picked") and after["picked"] in getattr(self, "no_icon", ()):
+            # 공용 아이콘 증강(믿음직한 무기 등)은 증강 칸에 다른 그림이 떠서 찾을 수 없다 → 확인·넓혀 찾기를 돌리지 않는다
+            # (2026-10-17 사미라 판: 25초 확인 + 넓혀 찾기가 헛돌았다)
+            self._rec("verify", {"from": [n for n in after["pickedFrom"] if n], "click": after["picked"], "result": "공용 아이콘이라 확인 안 함"})
+        elif self.icon_dir and after.get("pickedFrom"):
+            # 클릭으로 잡았으면 몇 번만 맞는지 보고, 못 잡았으면 VERIFY_FOR 초까지 (확인이 CPU 를 쓴다: 25초 내내면 평균 5→9%)
+            self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
+                            "until": time.time() + VERIFY_FOR, "tries": VERIFY_TRIES if after.get("picked") else 99,
+                            # 이름을 다 못 읽었거나 클릭을 못 잡았으면, 못 찾을 때 증강 전체로 넓혀 찾는다
+                            "unsure": not after.get("picked") or None in after["pickedFrom"]}
+        if after.get("picked"):
+            self._picked_names.add(after["picked"])
 
     def _hud_tick(self, rect):
         """증강 칸 아이콘 (고른 증강): 고른 직후와 HUD_EVERY 초마다만 (무거워서).
