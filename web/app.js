@@ -20,11 +20,17 @@ const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ)
 const LIVE_STAT = { HP: "maxHealth", AD: "attackDamage", AP: "abilityPower", AS: "attackSpeed", CRIT: "critChance",
   ARMOR: "armor", MR: "magicResist", HASTE: "abilityHaste", MS: "moveSpeed", LETHALITY: "physicalLethality", LS: "lifeSteal" };
 const STAT_OFF = 0.05;  // 이만큼(5%) 넘게 다르면 표시
+// 게임 중 가방에 있는 부품 (계산·추천은 완성 아이템만, 지금 능력치에는 부품도 더한다)
+const partItems = () => (state.inventory || []).map((id) => {
+  const p = (state.data.parts || {})[id];
+  return p && p.stats && Object.keys(p.stats).length ? { id, name: p.name, stats: p.stats } : null;
+}).filter(Boolean);
+
 function statCheck() {
   const s = state.liveStats;
   if (!liveOn || !s || !state.champ || !state.data) return null;
   const c = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
-  const t = St.computeStats(c, state.level, state.items, augStats(), statOpts()).total;
+  const t = St.computeStats(c, state.level, [...state.items, ...partItems()], augStats(), statOpts()).total;
   const r2 = (v) => Math.round(v * 100) / 100;
   const rows = {};
   for (const [k, lk] of Object.entries(LIVE_STAT)) {
@@ -479,10 +485,10 @@ function renderStats() {
 function renderStatsNow() {
   const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);  // 검을 뽑아라 → 근접
   if (!c) { $("#metrics").innerHTML = ""; $("#stat-table").innerHTML = ""; $("#skills").innerHTML = ""; return; }
-  const L = state.level, o = statOpts();
+  const L = state.level, o = statOpts(), have = [...state.items, ...partItems()];
   const e0 = St.computeStats(c, L, [], [], o).total;
-  const e1 = St.computeStats(c, L, state.items, [], o).total;
-  const full = St.evaluate(c, L, state.items, augStats(), o);
+  const e1 = St.computeStats(c, L, have, [], o).total;
+  const full = St.evaluate(c, L, have, augStats(), o);
   const e2 = full.stats.total, m = full.m;
   const base = St.evaluate(c, L, [], [], o).m;
   const tile = (name, v, b, sub) => {

@@ -24,14 +24,15 @@ function replay(name) {
     if (!ap.championStats || !ap.championStats.moveSpeed) continue;  // 불러오는 중 (능력치가 0)
     const me = raw.allPlayers.find((p) => p.riotId === ap.riotId);
     const ids = me.items.map((i) => String(i.itemID));
-    const items = ids.map((id) => d.items.find((i) => i.id === id)).filter(Boolean);
+    // 완성 아이템 + 부품 (게임 중 지금 능력치는 부품도 더한다: app.js partItems)
+    const items = ids.map((id) => d.items.find((i) => i.id === id) || ((d.parts || {})[id] && (d.parts[id].stats ? { id, name: d.parts[id].name, stats: d.parts[id].stats } : null))).filter(Boolean);
     const augs = game.augments.filter(([, at]) => at <= t).map(([id]) => d.augments.find((a) => a.id === id));
     const c = S.withChosenFeatures(champ, augs, d.rules);
     const st = Stats.computeStats(c, ap.level, items, S.augStatsOf(augs, d.rules, c), { aram: true }).total;
     const stats = {};
     for (const [k, lk] of Object.entries(LIVE)) stats[k] = [Math.round((st[k] || 0) * 100) / 100, Math.round(ap.championStats[lk] * 100) / 100];
     rows.push({ file: f, t: Math.round(t), level: ap.level, items: items.map((i) => i.name),
-      parts: ids.filter((id) => !d.items.some((i) => i.id === id)).length, stats });
+      parts: ids.filter((id) => (d.parts || {})[id]).length, stats });
   }
   return { game, rows: rows.sort((a, b) => a.t - b.t) };
 }

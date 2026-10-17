@@ -1,0 +1,61 @@
+{
+  "champion": "Kaisa",
+  "note": "2026-10-17 카이사 판 (v0.1.34). 세 번째 증강은 클릭 짐작 '빵과 치즈'가 아니라 광휘의 검 업그레이드 (처음 누른 카드, 증강 칸 그림으로 확인). 시각 = 기록 시각 + 9.5초(게임 시간)",
+  "augments": [
+    [
+      "ARAM_SoulSiphon",
+      24
+    ],
+    [
+      "ARAM_FanTheHammer",
+      336
+    ],
+    [
+      "ARAM_Upgrade_Sheen",
+      603
+    ],
+    [
+      "CriticalMissile",
+      866
+    ]
+  ],
+  "known": {},
+  "gaps": {
+    "live_9s.json": {
+      "HP": 0,
+      "AD": 0.01,
+      "AP": 0,
+      "ARMOR": 0.01,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_310s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_611s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_913s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0.01,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    }
+  }
+}

@@ -1008,7 +1008,9 @@ def main():
         p = items.get(pid)
         if not p or pid in parts or not pid.isdigit():
             return
-        parts[pid] = {"name": p["name"], "gold": p["gold"]["total"], "from": [c for c in p.get("from", []) if c.isdigit()]}
+        parts[pid] = {"name": p["name"], "gold": p["gold"]["total"], "from": [c for c in p.get("from", []) if c.isdigit()],
+                      # 게임 중 지금 능력치에 넣는다 (2026-10-17 카이사 판: 부품 공격력 20~35 가 빠져 계산이 실제보다 낮았다)
+                      "stats": item_stats(p.get("description", ""))[0]}
         for c in parts[pid]["from"]:
             add_part(c)
     for i in out_items:
