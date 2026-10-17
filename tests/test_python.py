@@ -1280,6 +1280,12 @@ class ShopBox(unittest.TestCase):
         self.assertIsNotNone(bottom)
         self.assertAlmostEqual(bottom["top"], 1278 / 1575, places=3)
         self.assertIsNone(augocr.find_shop([("판매", 1000, 1278, 70, 30)], 2520, 1575), "판매 한 단어만으론 아님")
+        # 2026-10-17 카이사 판 놓친 상점 3번: 판매는 흐려서 못 읽고, 탭은 '보든 아이e'·'아이템 서로'로 읽혔다
+        self.assertIsNotNone(augocr.find_shop([("되돌리기", 1230, 1278, 120, 30), ("204", 1420, 1278, 60, 30)], 2520, 1575))
+        self.assertIsNotNone(augocr.find_shop([("보든", 700, 300, 40, 20), ("아이e", 745, 300, 60, 20), ("상위", 1300, 300, 40, 20),
+                                               ("아이템", 1345, 300, 60, 20)], 2520, 1575))
+        self.assertIsNone(augocr.find_shop([("산", 10, 100, 20, 20), ("아이템.", 35, 100, 60, 20), ("크라겐", 100, 100, 60, 20)], 2520, 1575),
+                          "우리 상자의 '산 아이템' 글자는 상점 아님")
         payload = {"cards": [None] * 3, "hud": ["다음 구매: 크라켄 학살자"]}
         self.assertEqual(overlay.layout(payload, W, H), [], "상점이 안 열려 있으면 상자를 띄우지 않는다")
         items = overlay.layout({**payload, "shop": shop}, W, H)

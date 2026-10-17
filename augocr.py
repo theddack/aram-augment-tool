@@ -116,8 +116,9 @@ def find_shop(words, width, height):
         text = norm("".join(w[0] for w in sorted(row, key=lambda r: r[1]))).lower()
         ko = "모든아이템" in text and ("아이템세트" in text or "추천" in text)
         en = "allitems" in text and ("itemsets" in text or "recommended" in text)  # 영어 클라이언트·검증용 가상 PC
-        # 아래쪽 버튼 줄 (판매 · 되돌리기)
-        ko = ko or ("판매" in text and "되돌리기" in text)
+        # 아래쪽 버튼 줄 (판매 · 되돌리기). 판매는 아이템을 안 골랐으면 흐려서 못 읽는다 → 되돌리기만으로도.
+        # 오른쪽 칸 제목 '상위 아이템' 은 탭 글자('모든'→'보든')보다 잘 읽힌다 (2026-10-17 카이사 판 놓친 3번 모두 읽힘)
+        ko = ko or "되돌리기" in text or "상위아이템" in text
         en = en or ("sell" in text and "undo" in text)
         if ko or en:
             x0 = min(w[1] for w in row)
