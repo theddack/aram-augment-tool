@@ -714,3 +714,22 @@ test("확인된 적 증강(급속 성장)의 체력을 상대 능력치에 넣�
   assert.deepEqual(p.errors, []);
 });
 
+
+test("우르곳 판 카드 문구: 역할에 있는 방향은 변신이 아니고, 수치가 안 늘면 '잘 맞아요'라고 하지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const cards = async (offers, seq) => {
+    p.w.applyAug({ offers, seq, pickSeq: seq > 1 ? 1 : 0 });
+    await new Promise((r) => setTimeout(r, 300));
+    return sent.at(-1).cards;
+  };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Urgot", level: 3, items: [] });
+  const first = await cards(["강타자", "도주 계획", "불을 밝혀"], 1);
+  assert.doesNotMatch(first[0].reason, /탱커형으로 변신/, "우르곳은 탱커 역할이 있다");
+  p.w.applyAug({ offers: null, seq: 1, picked: "불을 밝혀", pickedFrom: ["강타자", "도주 계획", "불을 밝혀"], pickSeq: 1 });
+  const second = await cards(["궁극기 봇", "한 발에 두 놈", "열의"], 2);
+  assert.match(second[0].label, /애매/);
+  assert.doesNotMatch(second[0].reason, /잘 맞아요/, second[0].reason);
+  assert.deepEqual(p.errors, []);
+});

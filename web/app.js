@@ -621,11 +621,14 @@ function champStyle() {
 // 증강이 실제로 키우는 효과 종류: 숫자가 있는 증강은 계수·배율이 붙은 것만 (scoring.js augContext lift).
 // 효과 종류 태그를 그대로 쓰면 '부식'(적 방어력 감소)이 '탱커형으로 변신'으로 나왔다 (2026-10-15)
 const augLift = (a) => S.augContext([a], state.data.rules).lift;
+// 챔피언 역할(라이엇 태그)이 이미 가진 방향: 우르곳(전사·탱커)에게 체력 증강을 '탱커형으로 변신'이라 하던 것 (2026-10-17)
+const ROLE_STYLE = { Fighter: ["fighter"], Tank: ["ehp", "fighter"], Marksman: ["dps"], Mage: ["combo", "mage"], Assassin: ["combo"], Support: ["support"] };
 function transform(a) {
   const rule = state.data.rules.augments[a.id] || {};
   if (rule.setsFeatures && (rule.setsFeatures.add || []).includes("melee") && !state.champ.melee) return "melee";
   const st = styleOf(augLift(a));
-  return st && st !== champStyle() ? st : null;
+  const own = new Set([champStyle(), ...(state.champ.tags || []).flatMap((t) => ROLE_STYLE[t] || [])]);
+  return st && !own.has(st) ? st : null;
 }
 
 function tierBadge(t) {
@@ -819,7 +822,13 @@ function augReason(a, t, sc, g) {
   if (t.reasons.includes("연계 없음")) return `${josa(names, "과", "와")} 직접 연계는 없어요.${g && g.gain > 0 ? " 그래도 그 자체로는 강해요 (종합 보기에서 확인)." : ""}${trText}`;
   if (t.link && t.link.kind === "conflict" && t.link.why) return t.link.why;
   if (t.reasons.includes("충돌")) return `${josa(names, "과", "와")} 같이 고르면 따로 고를 때보다 덜 강해져요 (계산상).`;
-  if (t.reasons.includes("궁합")) return `${josa(names, "과", "와")} 잘 맞아요. ${partText(topPart(1), "늘어요.")}`;
+  if (t.reasons.includes("궁합")) {
+    // 궁합은 +인데 늘어나는 수치가 없거나 등급이 낮으면 '잘 맞아요'만 쓰면 등급(애매)과 말이 엇갈린다 (2026-10-17 우르곳 판 궁극기 봇)
+    const pt = partText(topPart(1), "늘어요.");
+    if (!pt) return `${josa(names, "과", "와")} 조금 맞지만 수치 변화는 거의 없어요.`;
+    if (TIER_ORDER[t.tier] >= TIER_ORDER.C) return `${josa(names, "과", "와")} 조금 맞아요. ${pt}`;
+    return `${josa(names, "과", "와")} 잘 맞아요. ${pt}`;
+  }
   if (state.chosen.length && tierMode() === "synergy" && g && TIER_ORDER[t.tier] >= TIER_ORDER.C) {
     return `그 자체로는 ${partText(topPart(1), "늘지만")} ${josa(names, "과", "와")} 연계는 약해요.${trText}`;
   }
