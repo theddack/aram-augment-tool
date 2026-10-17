@@ -1068,6 +1068,7 @@ def main():
             # 게임 데이터 아이콘이 공용 그림(genericabilityaugmenticon 등)이면 게임 증강 칸엔 다른 그림이 뜬다
             # (믿음직한 무기 = 챔피언 무기 그림) → 증강 칸 그림으로 확인할 수 없다
             "genericIcon": "generic" in icon or None,
+            "num": a.get("AugmentPlatformId"),  # 경기 결과 파일(eog playerAugment1~6)의 증강 번호
             "effects": effects,
             "enName": en_name,
             "patch": patch_lines.get(ko_name),  # 이번 패치 변경

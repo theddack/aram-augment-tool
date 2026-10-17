@@ -1473,6 +1473,46 @@ class GameLog(unittest.TestCase):
         self.assertEqual(len(list(base.glob("*.zip"))), 2)
 
 
+    def test_tidy_by_end_of_game(self):
+        # 경기 결과의 증강과 고른 증강이 모두 같으면 맞게 읽은 그림(카드·상점)만 지운다. 틀리면 그대로 둔다
+        import zipfile
+        import gamelog
+        for eog, match in ((["무한 반복", "취약"], True), (["무한 반복", "도취"], False)):
+            base = pathlib.Path(tempfile.mkdtemp())
+            rec = gamelog.GameRecorder(base)
+            rec.start("Tristana")
+            rec.event("picked", {"picked": "무한 반복"})
+            rec.event("picked", {"picked": "취약"})
+            folder = rec.dir
+            for n in ("card_01.png", "shop_02.png", "shopmiss_03.png", "hudarea_04.png"):
+                (folder / n).write_bytes(b"x")
+            rec.finish()
+            self.assertEqual(rec.last_dir, folder)
+            self.assertEqual(gamelog.tidy(folder, eog), (match, 2 if match else 0))
+            left = sorted(p.name for p in folder.glob("*.png"))
+            self.assertEqual(left, ["hudarea_04.png", "shopmiss_03.png"] if match else ["card_01.png", "hudarea_04.png", "shop_02.png", "shopmiss_03.png"])
+            ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+            self.assertEqual((ev[-1]["kind"], ev[-1]["match"]), ("eog", match))
+            names = zipfile.ZipFile(str(folder) + ".zip").namelist()
+            self.assertEqual(f"{folder.name}/card_01.png" in names, not match)
+        self.assertIsNone(gamelog.tidy(base / "없음", ["취약"]))
+
+    def test_eog_numbers_in_data(self):
+        # 경기 결과의 증강 번호 → 이름 (2026-10-17 트리스타나 판 eog: 1388·1092·2016·1046)
+        augs = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))["augments"]
+        by = {a["num"]: a["name"] for a in augs if a.get("num")}
+        self.assertEqual([by[n] for n in (1388, 1092, 2016, 1046)], ["무한 반복", "취약", "도취", "지옥불 영혼"])
+        src = pathlib.Path(desktop.__file__).read_text(encoding="utf-8")
+        self.assertIn("lw.on_eog = on_eog", src)
+
+    def test_shop_text_is_not_augment_text(self):
+        # 이름 줄에 잡힌 상점 글자는 못 맞춘 증강 글자가 아니다. 증강 설명 줄은 상점 글자로 보지 않는다
+        import augocr
+        for t in ("체작할 아이템 선및", "2650", "공격력 75", "활률 25%"):
+            self.assertTrue(augocr.SHOP_TEXT.search(t), t)
+        for t in ("징수의", "아이팀 핓 지속 피해 효과에 지영다가", "공격력이 20% 증가할니다.", "` 치명하 활률이 25% 증가할니다."):
+            self.assertFalse(augocr.SHOP_TEXT.search(t), t)
+
 class LowResource(unittest.TestCase):
     def test_one_mode_low_resource(self):
         # 모드는 하나: 게임 중 CPU 상한이 게임 밖보다 낮고, 화면 엔진은 저사양 옵션

@@ -484,6 +484,7 @@ class LcuWatcher(threading.Thread):
         self.client = None
         self.measure_dir = measure_dir
         self._saved_games = set()
+        self.on_eog = None  # 경기 결과를 처음 받았을 때 (한 판 기록 정리)
         self.beat = time.time()
 
     def save_eog(self):
@@ -508,6 +509,11 @@ class LcuWatcher(threading.Thread):
                 except OSError:
                     pass
         self._saved_games.add(gid)
+        if self.on_eog:
+            try:
+                self.on_eog(eog)
+            except Exception:
+                pass
 
     def run(self):
         while True:
@@ -1395,6 +1401,26 @@ def main():
         trim_memory()
 
     watcher.on_game_end = on_game_end
+
+    # 경기 결과(고른 증강 정답)가 오면 방금 끝난 판 기록과 맞춰 본다: 다 맞았으면 맞게 읽은 화면 그림은 지운다
+    try:
+        aug_by_num = {a["num"]: a["name"] for a in json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))["augments"] if a.get("num")}
+    except (OSError, ValueError, KeyError):
+        aug_by_num = {}
+
+    def on_eog(eog):
+        if not rec.last_dir or time.time() - rec.last_end > 30 * 60 or not aug_by_num:
+            return
+        st = ((eog.get("localPlayer") or {}).get("stats") or {})
+        names = [aug_by_num.get(st.get(f"playerAugment{i}")) for i in range(1, 7) if st.get(f"playerAugment{i}")]
+        if None in names:  # 모르는 번호 (데이터가 옛것) → 판정하지 않는다
+            return
+        res = gamelog.tidy(rec.last_dir, names)
+        rec.last_dir = None
+        if res:
+            diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
+
+    lw.on_eog = on_eog
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

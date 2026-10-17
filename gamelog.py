@@ -28,6 +28,8 @@ class GameRecorder:
         self.keep = keep
         self.max_images = max_images
         self.dir = None
+        self.last_dir = None  # 마지막으로 끝난 판 (경기 결과 파일로 정리할 때)
+        self.last_end = 0.0
         self.events = []
         self.images = 0
         self._t0 = 0.0
@@ -109,6 +111,7 @@ class GameRecorder:
                     z.write(p, f"{self.dir.name}/{p.name}")
         except OSError:
             pass
+        self.last_dir, self.last_end = self.dir, time.time()
         self.dir = None
 
     def _prune(self):
@@ -122,3 +125,35 @@ class GameRecorder:
                     zp.unlink()
         except OSError:
             pass
+
+
+def tidy(game_dir, eog_names):
+    """경기 결과 파일(고른 증강 정답)로 끝난 판을 정리한다.
+    고른 증강이 모두 맞았으면 맞게 읽은 화면 그림(카드 이름 줄·알아본 상점)은 지운다. 한 판 그림이 6~7MB 라 15판이면 200MB 가까이 쌓였다.
+    하나라도 틀리면 그림을 그대로 둔다 (틀린 판의 그림이 고칠 때 필요하다). 못 알아본 상점(shopmiss)·증강 칸 그림은 늘 남긴다.
+    eog_names: 경기 결과의 증강 이름 (고른 순서). 돌려주는 값: (맞았나, 지운 그림 수) 또는 기록이 없으면 None"""
+    game_dir = Path(game_dir)
+    try:
+        events = json.loads((game_dir / "events.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    picked = [e.get("picked") for e in events if e.get("kind") == "picked"]
+    match = bool(eog_names) and picked == list(eog_names)
+    removed = []
+    if match:
+        for p in sorted(game_dir.glob("card_*.png")) + sorted(game_dir.glob("shop_*.png")):
+            try:
+                p.unlink()
+                removed.append(p.name)
+            except OSError:
+                pass
+    events.append({"t": events[-1].get("t", 0) if events else 0, "kind": "eog", "augments": list(eog_names),
+                   "picked": picked, "match": match, "removed": len(removed)})
+    try:
+        (game_dir / "events.json").write_text(json.dumps(events, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+        with zipfile.ZipFile(str(game_dir) + ".zip", "w", zipfile.ZIP_DEFLATED) as z:
+            for p in sorted(game_dir.iterdir()):
+                z.write(p, f"{game_dir.name}/{p.name}")
+    except OSError:
+        pass
+    return match, len(removed)
