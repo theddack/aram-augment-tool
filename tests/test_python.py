@@ -1174,6 +1174,32 @@ class HudIcons(unittest.TestCase):
         r.wait_shop_keys(Mouse(clicks=1), time.time() + 0.3)
         self.assertTrue(r._shop_now, "열려 있을 때 클릭(닫기)은 바로 읽는다")
 
+    def test_shop_seen_just_before_purchase_counts(self):
+        # 사고 바로 닫으면 산 직후 읽기 땐 이미 닫혀 있다 → 직전에 알아봤으면 알아본 것 (사미라 판 5번 중 4번이 이 경우)
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._changed = lambda: None
+        got = []
+        r._rec = lambda k, d=None, **kw: got.append(k)
+        r.rec = types.SimpleNamespace(image=lambda *a: "x.png")
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                return b"\0" * ((tw or w) * (th or h) * 4)
+
+        class Ocr:
+            def words(self, img, tw, th):
+                return []
+        r._shop_seen_at = time.time() - 3
+        r._shop_probe = time.time()
+        r.scan_shop_only(Cap(), Ocr(), (0, 0, 2520, 1575))
+        self.assertNotIn("shopmiss", got)
+        self.assertEqual(r.perf_summary()["횟수"].get("산 직후 알아봄"), 1)
+        r._shop_seen_at = time.time() - augocr.SHOP_SEEN_FOR - 1
+        r._shop_probe = time.time()
+        r.scan_shop_only(Cap(), Ocr(), (0, 0, 2520, 1575))
+        self.assertIn("shopmiss", got, "오래전에 본 것은 못 알아본 것")
+
     def test_auto_protect_when_slow(self):
         # 느려지면 진단용 그림부터 줄이고(자동 보호), 다시 빨라지면 끈다. 증강 선택 읽기는 건드리지 않는다
         import augocr

@@ -28,6 +28,7 @@ SHOP_FIND_MAX = 4  # 상점에서 자리를 찾아볼 아이템 수 (다음 구�
 SHOP_FIND = False
 SHOP_IMGS, SHOP_IMG_GAP = 2, 300.0  # 상점을 알아봤을 때 상점 창 그림: 한 판 최대 장수, 다음 장까지 최소 간격(초)  # (가로 범위, 세로 범위)
 OCR_HEIGHT = 900  # 글자 인식은 게임 창 높이가 이보다 크면 줄여서 읽는다 (글자가 커서 지장 없고 훨씬 가볍다. 렉 지적 2026-10-14)
+SHOP_SEEN_FOR = 15  # 초. 산 직후 확인 때 이 안에 상점을 알아봤으면 알아본 것 (사고 바로 닫은 경우)
 SHOP_PROBES = 3  # 한 판에 상점을 못 알아본 그림을 남기는 최대 횟수 (2026-10-15 실제 판: 상점을 한 번도 못 알아봄)
 SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마다 → 2초마다)
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
@@ -1106,11 +1107,16 @@ class Reader(threading.Thread):
         self._count("상점 읽기")
         if shop:
             self._count("상점 알아봄")
+        if shop:
+            self._shop_seen_at = time.time()
+        # 산 직후 읽기는 사고 바로 닫으면 상점이 이미 닫힌 뒤다 → 직전 SHOP_SEEN_FOR 초 안에 알아봤으면 알아본 것
+        # (2026-10-17 사미라 판: '산 직후 알아봄' 5번 중 1번이었지만 4번은 열려 있는 동안 이미 알아봤다)
+        seen = bool(shop) or time.time() - getattr(self, "_shop_seen_at", 0.0) <= SHOP_SEEN_FOR
         if self._shop_probe:
             self._count("산 직후 읽기")
-            if shop:
+            if seen:
                 self._count("산 직후 알아봄")  # 상점 인식 성공률 = 산 직후 알아봄 / 산 직후 읽기
-        if self._shop_probe and not shop and self.rec and not self.protect:
+        if self._shop_probe and not seen and self.rec and not self.protect:
             # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 읽은 글자와 가운데 넓은 그림을 남긴다 (상점이 어디 어떻게 보이는지)
             self._shop_probes += 1
             wide, ww, wh = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1280)
