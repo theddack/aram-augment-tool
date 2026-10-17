@@ -100,16 +100,19 @@
     t.bonusHP = t.HP - base.HP;
     let bonusAD = add.AD;
     let AP = add.AP;
-    // 적응형 능력치 증가: 스킬이 마법 위주면 주문력, 아니면 추가 공격력
+    // 적응형은 게임 규칙대로: 추가 공격력과 주문력 중 큰 쪽, 같으면(둘 다 0 등) 스킬이 마법 위주면 주문력.
+    // 챔피언 성향만 보면 공격력을 쌓은 트리스타나(마법 비중 높음)가 주문력을 받았다 (2026-10-17 판: 계산 주문력 18.75 · 실제 공격력 +11.25)
+    const adaptiveAP = () => AP !== bonusAD ? AP > bonusAD : (champ.magicShare ?? 0.5) >= 0.5;
+    // 적응형 능력치 증가
     if (mult.adaptiveMult) {
-      if ((champ.magicShare ?? 0.5) >= 0.5) AP *= 1 + mult.adaptiveMult;
+      if (adaptiveAP()) AP *= 1 + mult.adaptiveMult;
       else bonusAD *= 1 + mult.adaptiveMult;
     }
-    // 적응형 능력치(고정값): 마법 위주면 주문력, 아니면 추가 공격력 (적응형 1 = 공격력 0.6)
+    // 적응형 능력치(고정값): 주문력 또는 추가 공격력 (적응형 1 = 공격력 0.6)
     // 모드: 치명타 확률 100% 초과분 1%당 적응형 (ms.critAdaptive)
     const adaptive = (conv.adaptive || 0) + (ms.critAdaptive ? Math.max(0, add.CRIT - 1) * 100 * ms.critAdaptive : 0);
     if (adaptive) {
-      if ((champ.magicShare ?? 0.5) >= 0.5) AP += adaptive; else bonusAD += adaptive * 0.6;
+      if (adaptiveAP()) AP += adaptive; else bonusAD += adaptive * 0.6;
     }
     if (conv.bonusADtoAP) { AP += bonusAD * conv.bonusADtoAP; bonusAD = 0; }
     if (conv.APtoBonusAD) { bonusAD += AP * conv.APtoBonusAD; AP = 0; }

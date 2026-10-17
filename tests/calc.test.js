@@ -352,3 +352,11 @@ test("효과 종류만 있는 증강은 몰빵 빌드에 그 효과 아이템을
   const ctx = S.augContext([d.augments.find((x) => x.id === "ARAM_Snowday"), d.augments.find((x) => x.id === "PromQueen")], d.rules);
   assert.deepEqual(ctx.lift, {});
 });
+
+test("적응형은 추가 공격력과 주문력 중 큰 쪽으로 (2026-10-17 트리스타나 판: 치명타 125% → 초과 25% = 적응형 18.75 → 공격력 +11.25, 실제 334.05)", () => {
+  const its = ["루난의 허리케인", "크라켄 학살자", "광전사의 군화", "윤 탈 야생화살", "도미닉 경의 인사", "무한의 대검"].map(item);
+  const augs = [aug("ARAM_Vulnerability")];
+  const t = St.computeStats(champ("Tristana"), 18, its, S.augStatsOf(augs, d.rules, champ("Tristana")), { aram: true }).total;
+  assert.equal(t.AP, 0);
+  assert.ok(Math.abs(t.AD - 334.05) < 0.05, `AD ${t.AD}`);
+});
