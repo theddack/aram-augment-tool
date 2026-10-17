@@ -1422,6 +1422,7 @@ function renderNextBuy(rows) {
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
   state.nextTop = pick.length ? pick[0].item : null;
+  liveItemSet(pick.map((r) => r.item));
   renderBuyNow();
   box.querySelectorAll(".next-row").forEach((el) => el.addEventListener("click", () => addItem(el.dataset.id)));
   sendOverlay("next");
@@ -1479,6 +1480,23 @@ function itemSetBlocks(champ) {
   const st = buildStyle(items);
   return [{ type: `기본 빌드${st ? ` (${STYLE_LABEL[st]})` : ""} · 왼쪽부터 사세요`, items }];
 }
+// 게임 중 다시 쓰기 (시험, 2026-10-17): 게임 중에 세트를 바꾸면 상점에 바로 반영되는지 모른다 → 다음 구매가 바뀌면
+// 블록 이름에 게임 시각을 넣어 다시 쓴다. 상점에서 그 시각이 바뀌어 보이면 반영되는 것. 최소 간격 LIVE_SET_GAP 초
+const LIVE_SET_GAP = 60;
+let liveSetKey = "", liveSetAt = 0, setBlocks = null;
+function liveItemSet(next) {
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || !api.write_item_set || !liveOn || !lcuOn || !state.champ || !next.length) return;
+  if (!$("#itemset-toggle").checked || itemSetDone !== state.champ.id) return;  // 챔피언 선택 때 등록한 것 다음부터
+  const key = JSON.stringify([state.champ.id, next.map((i) => i.id)]);
+  if (key === liveSetKey || Date.now() - liveSetAt < LIVE_SET_GAP * 1000) return;
+  liveSetKey = key;
+  liveSetAt = Date.now();
+  const gt = Math.max(0, Math.round(state.gameTime || 0));
+  const when = `${Math.floor(gt / 60)}:${String(gt % 60).padStart(2, "0")}`;
+  const blocks = [{ type: `지금 추천 (게임 ${when} 갱신) · 왼쪽부터`, items: next.map((i) => i.id) }, ...(setBlocks || [])];
+  api.write_item_set(state.champ.key, `칼바람 증강 Addon · ${state.champ.name}`, blocks, true).catch(() => {});
+}
 let lcuChamp = null;
 async function applyLcu(api, L) {
   const el = $("#itemset-status");
@@ -1503,6 +1521,7 @@ async function applyLcu(api, L) {
     if (prev) St.setTarget(null);
     let blocks;
     try { blocks = itemSetBlocks(champ); } finally { if (prev) setTargetChamp(prev); }
+    setBlocks = blocks;
     const r = await api.write_item_set(champ.key, `칼바람 증강 Addon · ${champ.name}`, blocks);
     el.textContent = r && r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
     if (!r || !r.ok) itemSetDone = null;
@@ -1638,6 +1657,7 @@ function applyLive(L) {
   state.gold = L.gold ?? null;
   state.liveStats = L.stats && Object.keys(L.stats).length ? L.stats : null;
   state.liveLevel = level;
+  state.gameTime = L.gameTime ?? null;
   state.inventory = (L.items || []).map(String);
   const enemies = (L.enemies || []).map((id) => d.champions.find((c) => c.id.toLowerCase() === String(id).toLowerCase())).filter(Boolean);
   const enemyKey = enemies.map((c) => c.id).sort().join(",");

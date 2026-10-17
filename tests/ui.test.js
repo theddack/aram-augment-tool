@@ -662,6 +662,27 @@ test("게임 중 능력치 표에 게임 실제 값을 옆에 보여 주고, 5% 
   assert.deepEqual(p.errors, []);
 });
 
+test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유와 함께 (치유 감소는 점수에 없어 순위와 상관없이)", async () => {
+  // 2026-10-17 지적: 조언은 '치유 감소: 필멸자의 운명'인데 다음 구매엔 없었다
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const foes = ["Vladimir", "Soraka", "Aatrox", "Lux", "Malphite"];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
+  p.w.sendOverlay();
+  const next = sent.at(-1).hud.find((x) => x.startsWith("다음 구매"));
+  assert.match(next, /> 필멸자의 운명\(치유 감소\)$/, next);
+  assert.match(p.text("#next-buy"), /🛡️ 치유 감소/);
+  // 이미 샀으면 다시 권하지 않는다
+  const mr = p.data.items.find((i) => i.name === "필멸자의 운명").id;
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [mr], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
+  p.w.sendOverlay();
+  assert.doesNotMatch(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /필멸자의 운명/);
+  assert.deepEqual(p.errors, []);
+});
+
 test("적 구성 비율: 완성 아이템 2개 이상 산 적은 산 아이템으로 (AP 로 간 원딜)", async () => {
   const p = await loadPage({ simple: true });
   const id = (n) => p.data.items.find((i) => i.name === n).id;
@@ -693,23 +714,24 @@ test("확인된 적 증강(급속 성장)의 체력을 상대 능력치에 넣�
   assert.deepEqual(p.errors, []);
 });
 
-test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유와 함께 (치유 감소는 점수에 없어 순위와 상관없이)", async () => {
-  // 2026-10-17 지적: 조언은 '치유 감소: 필멸자의 운명'인데 다음 구매엔 없었다
+test("게임 중 아이템 세트 다시 쓰기 (시험): 다음 구매가 바뀌면 게임 시각을 넣어, 1분에 한 번까지", async () => {
   const p = await loadPage({ simple: true });
-  const sent = [];
-  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
-  const foes = ["Vladimir", "Soraka", "Aatrox", "Lux", "Malphite"];
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [], enemies: foes,
-    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
-  p.w.sendOverlay();
-  const next = sent.at(-1).hud.find((x) => x.startsWith("다음 구매"));
-  assert.match(next, /> 필멸자의 운명\(치유 감소\)$/, next);
-  assert.match(p.text("#next-buy"), /🛡️ 치유 감소/);
-  // 이미 샀으면 다시 권하지 않는다
-  const mr = p.data.items.find((i) => i.name === "필멸자의 운명").id;
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [mr], enemies: foes,
-    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
-  p.w.sendOverlay();
-  assert.doesNotMatch(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /필멸자의 운명/);
+  const writes = [];
+  const api = { set_overlay: () => {}, write_item_set: async (key, title, blocks, inGame) => { writes.push({ blocks, inGame }); return { ok: true, blocks: blocks.length }; } };
+  p.w.pywebview = { api };
+  p.q("#itemset-toggle").checked = true;
+  await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 222 });  // 징크스
+  assert.equal(writes.length, 1);
+  assert.notEqual(writes[0].inGame, true, "챔피언 선택 때 등록은 그대로");
+  await p.w.applyLcu(api, { connected: true, phase: "InProgress", championKey: 222 });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gameTime: 305 });
+  const live = writes.filter((x) => x.inGame === true);
+  assert.equal(live.length, 1, "게임 중 한 번");
+  assert.match(live[0].blocks[0].type, /^지금 추천 \(게임 5:05 갱신\)/);
+  assert.equal(live[0].blocks[0].items.length, 3);
+  assert.equal(live[0].blocks.length, 2, "챔피언 선택 때 만든 기본 빌드 블록도 그대로");
+  const crit = p.data.items.find((i) => i.name === "크라켄 학살자").id;
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [crit], gameTime: 330 });
+  assert.equal(writes.filter((x) => x.inGame === true).length, 1, "1분 안에는 다시 쓰지 않는다");
   assert.deepEqual(p.errors, []);
 });
