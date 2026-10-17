@@ -763,3 +763,19 @@ test("게임 중 지금 능력치엔 즉시 골드 증강의 능력치 환산을
   assert.equal(sent.at(-1).statCheck.rows.AD[0], before);
   assert.deepEqual(p.errors, []);
 });
+
+test("트리스타나 판: 지금 능력치의 무한 반복 가속은 처치 관여 수만큼, 윤 탈 광풍 공속(가동률)은 빼고 센다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const items = ["3085", "6672", "3006", "3032", "3036"];
+  const stats = { attackDamage: 239.22, armor: 87.9, magicResist: 48.92, moveSpeed: 403.3, maxHealth: 2471.74, abilityHaste: 147, attackSpeed: 1.88 };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Tristana", level: 16, items, stats, takedowns: 29 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "무한 반복", pickSeq: 1 });
+  p.w.applyAug({ offers: null, seq: 2, picked: "취약", pickSeq: 2 });
+  p.w.sendOverlay();
+  const rows = sent.at(-1).statCheck.rows;
+  assert.deepEqual([...rows.HASTE], [147, 147]);
+  assert.deepEqual([...rows.AS], [1.88, 1.88]);
+  assert.deepEqual(p.errors, []);
+});

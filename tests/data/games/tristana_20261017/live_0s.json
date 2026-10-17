@@ -1,0 +1,473 @@
+{
+ "activePlayer": {
+  "abilities": {
+   "E": {
+    "abilityLevel": 0,
+    "displayName": "폭발 화약",
+    "id": "TristanaE",
+    "rawDescription": "GeneratedTip_Spell_TristanaE_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaE_DisplayName"
+   },
+   "Passive": {
+    "displayName": "정조준",
+    "id": "TristanaPassive",
+    "rawDescription": "GeneratedTip_Passive_TristanaPassive_Description",
+    "rawDisplayName": "GeneratedTip_Passive_TristanaPassive_DisplayName"
+   },
+   "Q": {
+    "abilityLevel": 0,
+    "displayName": "속사",
+    "id": "TristanaQ",
+    "rawDescription": "GeneratedTip_Spell_TristanaQ_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaQ_DisplayName"
+   },
+   "R": {
+    "abilityLevel": 0,
+    "displayName": "대구경 탄환",
+    "id": "TristanaR",
+    "rawDescription": "GeneratedTip_Spell_TristanaR_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaR_DisplayName"
+   },
+   "W": {
+    "abilityLevel": 0,
+    "displayName": "로켓 점프",
+    "id": "TristanaW",
+    "rawDescription": "GeneratedTip_Spell_TristanaW_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaW_DisplayName"
+   }
+  },
+  "championStats": {
+   "abilityHaste": 0.0,
+   "abilityPower": 0.0,
+   "armor": 0.0,
+   "armorPenetrationFlat": 0.0,
+   "armorPenetrationPercent": 0.0,
+   "attackDamage": 25.0,
+   "attackRange": 0.0,
+   "attackSpeed": 0.656000018119812,
+   "bonusArmorPenetrationPercent": 0.0,
+   "bonusMagicPenetrationPercent": 0.0,
+   "critChance": 0.0,
+   "critDamage": 0.0,
+   "currentHealth": 640.0,
+   "healShieldPower": 0.0,
+   "healthRegenRate": 0.0,
+   "lifeSteal": 0.0,
+   "magicLethality": 0.0,
+   "magicPenetrationFlat": 0.0,
+   "magicPenetrationPercent": 0.0,
+   "magicResist": 0.0,
+   "maxHealth": 640.0,
+   "moveSpeed": 0.0,
+   "omnivamp": 0.0,
+   "physicalLethality": 0.0,
+   "physicalVamp": 0.0,
+   "resourceMax": 300.0,
+   "resourceRegenRate": 0.0,
+   "resourceType": "MANA",
+   "resourceValue": 300.0,
+   "spellVamp": 0.0,
+   "tenacity": 5.0
+  },
+  "currentGold": 0.0,
+  "fullRunes": {},
+  "level": 1,
+  "riotId": "플레이어0",
+  "riotIdGameName": "플레이어0",
+  "riotIdTagLine": "",
+  "summonerName": "플레이어0",
+  "teamRelativeColors": true
+ },
+ "allPlayers": [
+  {
+   "championName": "트리스타나",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Tristana",
+   "rawSkinName": "game_character_skin_displayname_Tristana_12",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어0",
+   "riotIdGameName": "플레이어0",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 12,
+   "skinName": "오메가 분대 트리스타나",
+   "summonerName": "플레이어0",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "에코",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Ekko",
+   "rawSkinName": "game_character_displayname_Ekko",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어1",
+   "riotIdGameName": "플레이어1",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "에코",
+   "summonerName": "플레이어1",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "암베사",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Ambessa",
+   "rawSkinName": "game_character_displayname_Ambessa",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어2",
+   "riotIdGameName": "플레이어2",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "암베사",
+   "summonerName": "플레이어2",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "모데카이저",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Mordekaiser",
+   "rawSkinName": "game_character_skin_displayname_Mordekaiser_13",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어3",
+   "riotIdGameName": "플레이어3",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 13,
+   "skinName": "프로젝트: 모데카이저",
+   "summonerName": "플레이어3",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "조이",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Zoe",
+   "rawSkinName": "game_character_displayname_Zoe",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어4",
+   "riotIdGameName": "플레이어4",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "조이",
+   "summonerName": "플레이어?",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "총명",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerMana_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerMana_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "브라이어",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Briar",
+   "rawSkinName": "game_character_displayname_Briar",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어5",
+   "riotIdGameName": "플레이어5",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "브라이어",
+   "summonerName": "플레이어5",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "카이사",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Kaisa",
+   "rawSkinName": "game_character_skin_displayname_Kaisa_29",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어6",
+   "riotIdGameName": "플레이어6",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 29,
+   "skinName": "바다용 카이사",
+   "summonerName": "플레이어6",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "블리츠크랭크",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Blitzcrank",
+   "rawSkinName": "game_character_skin_displayname_Blitzcrank_11",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어7",
+   "riotIdGameName": "플레이어7",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 11,
+   "skinName": "중간보스 블리츠크랭크",
+   "summonerName": "플레이어7",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "나미",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Nami",
+   "rawSkinName": "game_character_skin_displayname_Nami_32",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어8",
+   "riotIdGameName": "플레이어8",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 32,
+   "skinName": "마녀 나미",
+   "summonerName": "플레이어8",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "트위치",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "level": 1,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Twitch",
+   "rawSkinName": "game_character_displayname_Twitch",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어9",
+   "riotIdGameName": "플레이어9",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 0,
+    "creepScore": 0,
+    "deaths": 0,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "트위치",
+   "summonerName": "플레이어9",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  }
+ ],
+ "events": {
+  "Events": []
+ },
+ "gameData": {
+  "gameMode": "KIWI",
+  "gameTime": 0.02182920090854168,
+  "mapName": "Map12",
+  "mapNumber": 12,
+  "mapTerrain": "Default"
+ }
+}

@@ -25,11 +25,22 @@ function replay(name) {
     const me = raw.allPlayers.find((p) => p.riotId === ap.riotId);
     const ids = me.items.map((i) => String(i.itemID));
     // 완성 아이템 + 부품 (게임 중 지금 능력치는 부품도 더한다: app.js partItems)
-    const items = ids.map((id) => d.items.find((i) => i.id === id) || ((d.parts || {})[id] && (d.parts[id].stats ? { id, name: d.parts[id].name, stats: d.parts[id].stats } : null))).filter(Boolean);
+    // 가동률로 셈한 아이템 고유 효과(rules uptime)는 뺀다 (app.js nowItems)
+    const drop = (st, keys) => { const o = { ...st }; for (const k of keys || []) delete o[k]; return o; };
+    const items = ids.map((id) => d.items.find((i) => i.id === id) || ((d.parts || {})[id] && (d.parts[id].stats ? { id, name: d.parts[id].name, stats: d.parts[id].stats } : null))).filter(Boolean)
+      .map((it) => { const up = ((d.rules.items || {})[it.name] || {}).uptime; return up && it.passiveStats ? { ...it, passiveStats: drop(it.passiveStats, up) } : it; });
     const augs = game.augments.filter(([, at]) => at <= t).map(([id]) => d.augments.find((a) => a.id === id));
     const c = S.withChosenFeatures(champ, augs, d.rules);
     // 게임 중 지금 능력치처럼 즉시 골드 환산은 뺀다 (app.js nowAugStats)
-    const augSt = S.augStatsOf(augs, d.rules, c).map((s) => s && s.goldValue ? { ...s, goldValue: 0 } : s);
+    // 가동률 능력치는 빼고, 처치 관여로 쌓는 능력치는 처치 관여 수만큼 더한다 (app.js nowAugStats)
+    const takedowns = ((me.scores || {}).kills || 0) + ((me.scores || {}).assists || 0);
+    const augSt = S.augStatsOf(augs, d.rules, c).map((s, i) => {
+      if (!s) return s;
+      const rule = S.ruleOf(d.rules, augs[i]);
+      const o = drop(s.goldValue ? { ...s, goldValue: 0 } : s, rule.uptime);
+      for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * takedowns;
+      return o;
+    });
     const st = Stats.computeStats(c, ap.level, items, augSt, { aram: true }).total;
     const stats = {};
     for (const [k, lk] of Object.entries(LIVE)) stats[k] = [Math.round((st[k] || 0) * 100) / 100, Math.round(ap.championStats[lk] * 100) / 100];

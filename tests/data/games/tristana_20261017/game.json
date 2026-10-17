@@ -1,0 +1,30 @@
+{
+  "champion": "Tristana",
+  "note": "2026-10-17 트리스타나 판 (v0.1.38). 고른 증강 4개 = 경기 결과 파일과 같음. 시각 = 기록의 고른 시각(게임 시간과 몇 초 차이)",
+  "augments": [
+    [
+      "InfiniteRecursion",
+      25
+    ],
+    [
+      "ARAM_Vulnerability",
+      409
+    ],
+    [
+      "ARAM_Juiced",
+      527
+    ],
+    [
+      "ARAM_InfernalSoul",
+      833
+    ]
+  ],
+  "known": {
+    "CRIT": "605초 실제 0.47: 윤 탈 야생화살 치명타는 공격할 때마다 쌓여 최대 25% (계산은 다 쌓인 값)"
+  },
+  "gaps": {
+    "live_604s.json": {
+      "CRIT": 0.18
+    }
+  }
+}

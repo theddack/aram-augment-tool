@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]} — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -919,6 +919,9 @@
     "InfiniteRecursion": {
       "stats": {
         "HASTE": "StartingHaste"
+      },
+      "perTakedown": {
+        "HASTE": 3
       }
     },
     "ARAM_Zealot": {
@@ -1312,7 +1315,11 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "MSP",
+        "AS"
+      ]
     },
     "ARAM_CantTouchThis": {
       "stats": {
@@ -1469,7 +1476,10 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "MSP"
+      ]
     },
     "ItsGoTime": {
       "stats": {
@@ -1700,7 +1710,7 @@
     }
   },
   "items": {
-    "_설명": "아이템 고유 효과 중 능력치를 바꾸는 것. check 문구가 아이템 설명에 있어야 적용(패치로 바뀌면 빌드 시 경고)",
+    "_설명": "아이템 고유 효과 중 능력치를 바꾸는 것. check 문구가 아이템 설명에 있어야 적용(패치로 바뀌면 빌드 시 경고). uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다)",
     "라바돈의 죽음모자": {
       "stats": {
         "APmult": 0.3
@@ -1913,7 +1923,10 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "MR"
+      ]
     },
     "칠흑의 양날 도끼": {
       "stats": {
@@ -1929,7 +1942,10 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "MS"
+      ]
     },
     "우주의 추진력": {
       "stats": {
@@ -1945,7 +1961,10 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "MS"
+      ]
     },
     "윤 탈 야생화살": {
       "stats": {
@@ -1962,7 +1981,10 @@
             "noData": true
           }
         ]
-      }
+      },
+      "uptime": [
+        "AS"
+      ]
     }
   },
   "_챔피언": "champions: 중첩형 패시브·스킬. stats=게임 중반 평균 중첩일 때 능력치(중첩당 값은 설명 수치), stacks=스킬 피해의 '중첩당' 계산에 넣을 평균 중첩 수. basis 에 평균 중첩을 정한 이유",

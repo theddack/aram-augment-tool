@@ -231,6 +231,8 @@ def parse_live(raw):
         "level": ap.get("level"),
         "dead": bool(mine.get("isDead")) if mine else False,  # 죽어 있는 동안 증강을 고르는 일이 많다 (증강 인식을 자주)
         "items": [str(i.get("itemID")) for i in (mine.get("items") if mine else []) if i.get("itemID")],
+        # 처치 관여 = 킬 + 어시스트 (무한 반복처럼 처치 관여로 쌓는 증강의 지금 능력치)
+        "takedowns": sum(((mine.get("scores") or {}).get(k) or 0) for k in ("kills", "assists")) if mine else 0,
         "gold": ap.get("currentGold"),  # 지금 골드 ('지금 살 것' 안내)
         "stats": ap.get("championStats") or {},
         "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),

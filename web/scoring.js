@@ -700,7 +700,7 @@
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
-    SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, metricWeights,
+    SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
     conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures,
   };

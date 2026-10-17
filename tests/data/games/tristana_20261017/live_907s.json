@@ -1,0 +1,2224 @@
+{
+ "activePlayer": {
+  "abilities": {
+   "E": {
+    "abilityLevel": 5,
+    "displayName": "폭발 화약",
+    "id": "TristanaE",
+    "rawDescription": "GeneratedTip_Spell_TristanaE_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaE_DisplayName"
+   },
+   "Passive": {
+    "displayName": "정조준",
+    "id": "TristanaPassive",
+    "rawDescription": "GeneratedTip_Passive_TristanaPassive_Description",
+    "rawDisplayName": "GeneratedTip_Passive_TristanaPassive_DisplayName"
+   },
+   "Q": {
+    "abilityLevel": 5,
+    "displayName": "속사",
+    "id": "TristanaQ",
+    "rawDescription": "GeneratedTip_Spell_TristanaQ_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaQ_DisplayName"
+   },
+   "R": {
+    "abilityLevel": 3,
+    "displayName": "대구경 탄환",
+    "id": "TristanaR",
+    "rawDescription": "GeneratedTip_Spell_TristanaR_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaR_DisplayName"
+   },
+   "W": {
+    "abilityLevel": 3,
+    "displayName": "로켓 점프",
+    "id": "TristanaW",
+    "rawDescription": "GeneratedTip_Spell_TristanaW_Description",
+    "rawDisplayName": "GeneratedTip_Spell_TristanaW_DisplayName"
+   }
+  },
+  "championStats": {
+   "abilityHaste": 147.0,
+   "abilityPower": 0.0,
+   "armor": 87.90000915527344,
+   "armorPenetrationFlat": 0.0,
+   "armorPenetrationPercent": 0.6499999761581421,
+   "attackDamage": 239.2150115966797,
+   "attackRange": 682.3529052734375,
+   "attackSpeed": 2.7151846885681152,
+   "bonusArmorPenetrationPercent": 1.0,
+   "bonusMagicPenetrationPercent": 1.0,
+   "critChance": 0.9999998807907104,
+   "critDamage": 200.0,
+   "currentHealth": 2443.894287109375,
+   "healShieldPower": 0.0,
+   "healthRegenRate": 2.24750018119812,
+   "lifeSteal": 0.0,
+   "magicLethality": 0.0,
+   "magicPenetrationFlat": 0.0,
+   "magicPenetrationPercent": 1.0,
+   "magicResist": 48.92250061035156,
+   "maxHealth": 2471.744384765625,
+   "moveSpeed": 403.3000183105469,
+   "omnivamp": 0.0,
+   "physicalLethality": 0.0,
+   "physicalVamp": 0.0,
+   "resourceMax": 763.2000732421875,
+   "resourceRegenRate": 4.217538833618164,
+   "resourceType": "MANA",
+   "resourceValue": 755.614013671875,
+   "spellVamp": 0.0,
+   "tenacity": 5.0
+  },
+  "currentGold": 704.478759765625,
+  "fullRunes": {},
+  "level": 16,
+  "riotId": "플레이어0",
+  "riotIdGameName": "플레이어0",
+  "riotIdTagLine": "",
+  "summonerName": "플레이어0",
+  "teamRelativeColors": true
+ },
+ "allPlayers": [
+  {
+   "championName": "트리스타나",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "루난의 허리케인",
+     "itemID": 3085,
+     "price": 850,
+     "rawDescription": "GeneratedTip_Item_3085_Description",
+     "rawDisplayName": "Item_3085_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "크라켄 학살자",
+     "itemID": 6672,
+     "price": 325,
+     "rawDescription": "GeneratedTip_Item_6672_Description",
+     "rawDisplayName": "Item_6672_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "광전사의 군화",
+     "itemID": 3006,
+     "price": 300,
+     "rawDescription": "GeneratedTip_Item_3006_Description",
+     "rawDisplayName": "Item_3006_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "윤 탈 야생화살",
+     "itemID": 3032,
+     "price": 750,
+     "rawDescription": "GeneratedTip_Item_3032_Description",
+     "rawDisplayName": "Item_3032_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "도미닉 경의 인사",
+     "itemID": 3036,
+     "price": 550,
+     "rawDescription": "GeneratedTip_Item_3036_Description",
+     "rawDisplayName": "Item_3036_Name",
+     "slot": 4
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Tristana",
+   "rawSkinName": "game_character_skin_displayname_Tristana_12",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어0",
+   "riotIdGameName": "플레이어0",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 21,
+    "creepScore": 60,
+    "deaths": 6,
+    "kills": 8,
+    "wardScore": 0.0
+   },
+   "skinID": 12,
+   "skinName": "오메가 분대 트리스타나",
+   "summonerName": "플레이어0",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "에코",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "폭풍 쇄도",
+     "itemID": 4646,
+     "price": 800,
+     "rawDescription": "GeneratedTip_Item_4646_Description",
+     "rawDisplayName": "Item_4646_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "황혼과 새벽",
+     "itemID": 2510,
+     "price": 300,
+     "rawDescription": "GeneratedTip_Item_2510_Description",
+     "rawDisplayName": "Item_2510_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "명석함의 아이오니아 장화",
+     "itemID": 3158,
+     "price": 350,
+     "rawDescription": "GeneratedTip_Item_3158_Description",
+     "rawDisplayName": "Item_3158_Name",
+     "slot": 2
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 2,
+     "displayName": "포로 간식",
+     "itemID": 2052,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_2052_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 18,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Ekko",
+   "rawSkinName": "game_character_displayname_Ekko",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어1",
+   "riotIdGameName": "플레이어1",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 21,
+    "creepScore": 30,
+    "deaths": 1,
+    "kills": 16,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "에코",
+   "summonerName": "플레이어1",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "암베사",
+   "isBot": false,
+   "isDead": true,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "강철심장",
+     "itemID": 3084,
+     "price": 400,
+     "rawDescription": "GeneratedTip_Item_3084_Description",
+     "rawDisplayName": "Item_3084_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "지배자의 피갑옷",
+     "itemID": 2501,
+     "price": 1000,
+     "rawDescription": "GeneratedTip_Item_2501_Description",
+     "rawDisplayName": "Item_2501_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "오만",
+     "itemID": 126697,
+     "price": 900,
+     "rawDescription": "GeneratedTip_Item_126697_Description",
+     "rawDisplayName": "Item_126697_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "워모그의 갑옷",
+     "itemID": 3083,
+     "price": 500,
+     "rawDescription": "GeneratedTip_Item_3083_Description",
+     "rawDisplayName": "Item_3083_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "황금 뒤집개",
+     "itemID": 994403,
+     "price": 2500,
+     "rawDescription": "GeneratedTip_Item_994403_Description",
+     "rawDisplayName": "game_item_displayname_994403",
+     "slot": 4
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Ambessa",
+   "rawSkinName": "game_character_displayname_Ambessa",
+   "respawnTimer": 17.27775001525879,
+   "riotId": "플레이어2",
+   "riotIdGameName": "플레이어2",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 17,
+    "creepScore": 30,
+    "deaths": 13,
+    "kills": 8,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "암베사",
+   "summonerName": "플레이어2",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "빙글빙글",
+     "rawDescription": "GeneratedTip_Spell_Augment_YouSpinMeRightRound_Description",
+     "rawDisplayName": "GeneratedTip_Spell_Augment_YouSpinMeRightRound_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "모데카이저",
+   "isBot": false,
+   "isDead": true,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "라일라이의 수정홀",
+     "itemID": 3116,
+     "price": 450,
+     "rawDescription": "GeneratedTip_Item_3116_Description",
+     "rawDisplayName": "Item_3116_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "균열 생성기",
+     "itemID": 4633,
+     "price": 950,
+     "rawDescription": "GeneratedTip_Item_4633_Description",
+     "rawDisplayName": "Item_4633_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "리안드리의 고통",
+     "itemID": 6653,
+     "price": 800,
+     "rawDescription": "GeneratedTip_Item_6653_Description",
+     "rawDisplayName": "Item_6653_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "정령의 형상",
+     "itemID": 3065,
+     "price": 650,
+     "rawDescription": "GeneratedTip_Item_3065_Description",
+     "rawDisplayName": "Item_3065_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "장화",
+     "itemID": 1001,
+     "price": 300,
+     "rawDescription": "GeneratedTip_Item_1001_Description",
+     "rawDisplayName": "Item_1001_Name",
+     "slot": 4
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 2,
+     "displayName": "포로 간식",
+     "itemID": 2052,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_2052_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Mordekaiser",
+   "rawSkinName": "game_character_skin_displayname_Mordekaiser_13",
+   "respawnTimer": 1.4815101623535156,
+   "riotId": "플레이어3",
+   "riotIdGameName": "플레이어3",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 17,
+    "creepScore": 0,
+    "deaths": 13,
+    "kills": 9,
+    "wardScore": 0.0
+   },
+   "skinID": 13,
+   "skinName": "프로젝트: 모데카이저",
+   "summonerName": "플레이어3",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "조이",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "대천사의 포옹",
+     "itemID": 3040,
+     "price": 2900,
+     "rawDescription": "GeneratedTip_Item_3040_Description",
+     "rawDisplayName": "Item_3040_Name",
+     "slot": 0
+    },
+    {
+     "canUse": true,
+     "consumable": false,
+     "count": 1,
+     "displayName": "충전형 물약",
+     "itemID": 2031,
+     "price": 150,
+     "rawDescription": "GeneratedTip_Item_2031_Description",
+     "rawDisplayName": "Item_2031_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "마법사의 신발",
+     "itemID": 3020,
+     "price": 800,
+     "rawDescription": "GeneratedTip_Item_3020_Description",
+     "rawDisplayName": "Item_3020_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "라바돈의 죽음모자",
+     "itemID": 3089,
+     "price": 1100,
+     "rawDescription": "GeneratedTip_Item_3089_Description",
+     "rawDisplayName": "Item_3089_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "지평선의 초점",
+     "itemID": 4628,
+     "price": 600,
+     "rawDescription": "GeneratedTip_Item_4628_Description",
+     "rawDisplayName": "Item_4628_Name",
+     "slot": 4
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "역병의 보석",
+     "itemID": 4630,
+     "price": 700,
+     "rawDescription": "GeneratedTip_Item_4630_Description",
+     "rawDisplayName": "Item_4630_Name",
+     "slot": 5
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Zoe",
+   "rawSkinName": "game_character_displayname_Zoe",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어4",
+   "riotIdGameName": "플레이어4",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 27,
+    "creepScore": 20,
+    "deaths": 7,
+    "kills": 2,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "조이",
+   "summonerName": "플레이어?",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "총명",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerMana_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerMana_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "ORDER"
+  },
+  {
+   "championName": "브라이어",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "갈라진 하늘",
+     "itemID": 6610,
+     "price": 900,
+     "rawDescription": "GeneratedTip_Item_6610_Description",
+     "rawDisplayName": "Item_6610_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "죽음의 무도",
+     "itemID": 6333,
+     "price": 275,
+     "rawDescription": "GeneratedTip_Item_6333_Description",
+     "rawDisplayName": "Item_6333_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "판금 장화",
+     "itemID": 3047,
+     "price": 600,
+     "rawDescription": "GeneratedTip_Item_3047_Description",
+     "rawDisplayName": "Item_3047_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "월식",
+     "itemID": 6692,
+     "price": 625,
+     "rawDescription": "GeneratedTip_Item_6692_Description",
+     "rawDisplayName": "Item_6692_Name",
+     "slot": 3
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 1,
+     "displayName": "포로 간식",
+     "itemID": 2052,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_2052_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Briar",
+   "rawSkinName": "game_character_displayname_Briar",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어5",
+   "riotIdGameName": "플레이어5",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 17,
+    "creepScore": 10,
+    "deaths": 10,
+    "kills": 6,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "브라이어",
+   "summonerName": "플레이어5",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "카이사",
+   "isBot": false,
+   "isDead": true,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "크라켄 학살자",
+     "itemID": 6672,
+     "price": 325,
+     "rawDescription": "GeneratedTip_Item_6672_Description",
+     "rawDisplayName": "Item_6672_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "구인수의 격노검",
+     "itemID": 3124,
+     "price": 1025,
+     "rawDescription": "GeneratedTip_Item_3124_Description",
+     "rawDisplayName": "Item_3124_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "광전사의 군화",
+     "itemID": 3006,
+     "price": 300,
+     "rawDescription": "GeneratedTip_Item_3006_Description",
+     "rawDisplayName": "Item_3006_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "경계",
+     "itemID": 3302,
+     "price": 1100,
+     "rawDescription": "GeneratedTip_Item_3302_Description",
+     "rawDisplayName": "Item_3302_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "쓸데없이 큰 지팡이",
+     "itemID": 1058,
+     "price": 1200,
+     "rawDescription": "GeneratedTip_Item_1058_Description",
+     "rawDisplayName": "Item_1058_Name",
+     "slot": 4
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "증폭의 고서",
+     "itemID": 1052,
+     "price": 400,
+     "rawDescription": "GeneratedTip_Item_1052_Description",
+     "rawDisplayName": "Item_1052_Name",
+     "slot": 5
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 1,
+     "displayName": "포로 간식",
+     "itemID": 2052,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_2052_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 17,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Kaisa",
+   "rawSkinName": "game_character_skin_displayname_Kaisa_29",
+   "respawnTimer": 13.31039047241211,
+   "riotId": "플레이어6",
+   "riotIdGameName": "플레이어6",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 9,
+    "creepScore": 60,
+    "deaths": 12,
+    "kills": 22,
+    "wardScore": 0.0
+   },
+   "skinID": 29,
+   "skinName": "바다용 카이사",
+   "summonerName": "플레이어6",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "블리츠크랭크",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "강철심장",
+     "itemID": 3084,
+     "price": 400,
+     "rawDescription": "GeneratedTip_Item_3084_Description",
+     "rawDisplayName": "Item_3084_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "여신의 눈물",
+     "itemID": 3070,
+     "price": 400,
+     "rawDescription": "GeneratedTip_Item_3070_Description",
+     "rawDisplayName": "Item_3070_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "마법사의 신발",
+     "itemID": 3020,
+     "price": 800,
+     "rawDescription": "GeneratedTip_Item_3020_Description",
+     "rawDisplayName": "Item_3020_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "악의",
+     "itemID": 3118,
+     "price": 650,
+     "rawDescription": "GeneratedTip_Item_3118_Description",
+     "rawDisplayName": "Item_3118_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "폭풍 쇄도",
+     "itemID": 4646,
+     "price": 800,
+     "rawDescription": "GeneratedTip_Item_4646_Description",
+     "rawDisplayName": "Item_4646_Name",
+     "slot": 4
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "루비 수정",
+     "itemID": 1028,
+     "price": 400,
+     "rawDescription": "GeneratedTip_Item_1028_Description",
+     "rawDisplayName": "Item_1028_Name",
+     "slot": 5
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 1,
+     "displayName": "포로 간식",
+     "itemID": 2052,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_2052_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Blitzcrank",
+   "rawSkinName": "game_character_skin_displayname_Blitzcrank_11",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어7",
+   "riotIdGameName": "플레이어7",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 18,
+    "creepScore": 20,
+    "deaths": 8,
+    "kills": 5,
+    "wardScore": 0.0
+   },
+   "skinID": 11,
+   "skinName": "중간보스 블리츠크랭크",
+   "summonerName": "플레이어7",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "나미",
+   "isBot": false,
+   "isDead": true,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "악마의 마법서",
+     "itemID": 3108,
+     "price": 200,
+     "rawDescription": "GeneratedTip_Item_3108_Description",
+     "rawDisplayName": "Item_3108_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "악곡의 왕관",
+     "itemID": 2530,
+     "price": 2250,
+     "rawDescription": "GeneratedTip_Item_2530_Description",
+     "rawDisplayName": "Item_2530_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "월석 재생기",
+     "itemID": 6617,
+     "price": 500,
+     "rawDescription": "GeneratedTip_Item_6617_Description",
+     "rawDisplayName": "Item_6617_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "불타는 향로",
+     "itemID": 3504,
+     "price": 700,
+     "rawDescription": "GeneratedTip_Item_3504_Description",
+     "rawDisplayName": "Item_3504_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "명석함의 아이오니아 장화",
+     "itemID": 3158,
+     "price": 350,
+     "rawDescription": "GeneratedTip_Item_3158_Description",
+     "rawDisplayName": "Item_3158_Name",
+     "slot": 4
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "요정의 부적",
+     "itemID": 1004,
+     "price": 200,
+     "rawDescription": "GeneratedTip_Item_1004_Description",
+     "rawDisplayName": "Item_1004_Name",
+     "slot": 5
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 1,
+     "displayName": "포로 간식",
+     "itemID": 220013,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_220013_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 17,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Nami",
+   "rawSkinName": "game_character_skin_displayname_Nami_32",
+   "respawnTimer": 1.716796875,
+   "riotId": "플레이어8",
+   "riotIdGameName": "플레이어8",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 35,
+    "creepScore": 0,
+    "deaths": 5,
+    "kills": 0,
+    "wardScore": 0.0
+   },
+   "skinID": 32,
+   "skinName": "마녀 나미",
+   "summonerName": "플레이어8",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "표식",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerSnowball_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSnowball_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  },
+  {
+   "championName": "트위치",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "광전사의 군화",
+     "itemID": 3006,
+     "price": 300,
+     "rawDescription": "GeneratedTip_Item_3006_Description",
+     "rawDisplayName": "Item_3006_Name",
+     "slot": 0
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "루난의 허리케인",
+     "itemID": 3085,
+     "price": 850,
+     "rawDescription": "GeneratedTip_Item_3085_Description",
+     "rawDisplayName": "Item_3085_Name",
+     "slot": 1
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "징수의 총",
+     "itemID": 6676,
+     "price": 525,
+     "rawDescription": "GeneratedTip_Item_6676_Description",
+     "rawDisplayName": "Item_6676_Name",
+     "slot": 2
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "무한의 대검",
+     "itemID": 3031,
+     "price": 725,
+     "rawDescription": "GeneratedTip_Item_3031_Description",
+     "rawDisplayName": "Item_3031_Name",
+     "slot": 3
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "정찰병의 새총",
+     "itemID": 3144,
+     "price": 100,
+     "rawDescription": "GeneratedTip_Item_3144_Description",
+     "rawDisplayName": "Item_3144_Name",
+     "slot": 4
+    },
+    {
+     "canUse": false,
+     "consumable": false,
+     "count": 1,
+     "displayName": "에테르 환영",
+     "itemID": 3113,
+     "price": 500,
+     "rawDescription": "GeneratedTip_Item_3113_Description",
+     "rawDisplayName": "Item_3113_Name",
+     "slot": 5
+    },
+    {
+     "canUse": true,
+     "consumable": true,
+     "count": 1,
+     "displayName": "포로 간식",
+     "itemID": 220013,
+     "price": 0,
+     "rawDescription": "GeneratedTip_Item_220013_Description",
+     "rawDisplayName": "Item_2052_Name",
+     "slot": 6
+    }
+   ],
+   "level": 16,
+   "position": "NONE",
+   "rawChampionName": "game_character_displayname_Twitch",
+   "rawSkinName": "game_character_displayname_Twitch",
+   "respawnTimer": 0.0,
+   "riotId": "플레이어9",
+   "riotIdGameName": "플레이어9",
+   "riotIdTagLine": "",
+   "runes": null,
+   "scores": {
+    "assists": 15,
+    "creepScore": 40,
+    "deaths": 8,
+    "kills": 7,
+    "wardScore": 0.0
+   },
+   "skinID": 0,
+   "skinName": "트위치",
+   "summonerName": "플레이어9",
+   "summonerSpells": {
+    "summonerSpellOne": {
+     "displayName": "점멸",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerFlash_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"
+    },
+    "summonerSpellTwo": {
+     "displayName": "유체화",
+     "rawDescription": "GeneratedTip_SummonerSpell_SummonerHaste_Description",
+     "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerHaste_DisplayName"
+    }
+   },
+   "team": "CHAOS"
+  }
+ ],
+ "events": {
+  "Events": [
+   {
+    "EventID": 0,
+    "EventName": "GameStart",
+    "EventTime": 0.02182920090854168
+   },
+   {
+    "EventID": 1,
+    "EventName": "MinionsSpawning",
+    "EventTime": 50.02390670776367
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 2,
+    "EventName": "ChampionKill",
+    "EventTime": 90.77751159667969,
+    "KillerName": "플레이어6",
+    "VictimName": "조이"
+   },
+   {
+    "EventID": 3,
+    "EventName": "FirstBlood",
+    "EventTime": 90.77751159667969,
+    "Recipient": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 4,
+    "EventName": "ChampionKill",
+    "EventTime": 91.03971862792969,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2"
+    ],
+    "EventID": 5,
+    "EventName": "ChampionKill",
+    "EventTime": 124.68743133544922,
+    "KillerName": "조이",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어8"
+    ],
+    "EventID": 6,
+    "EventName": "ChampionKill",
+    "EventTime": 124.77733612060547,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어8"
+    ],
+    "EventID": 7,
+    "EventName": "ChampionKill",
+    "EventTime": 162.39779663085938,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 8,
+    "EventName": "ChampionKill",
+    "EventTime": 164.64080810546875,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 9,
+    "EventName": "ChampionKill",
+    "EventTime": 168.40597534179688,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 10,
+    "EventName": "ChampionKill",
+    "EventTime": 184.98292541503906,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "조이"
+    ],
+    "EventID": 11,
+    "EventName": "ChampionKill",
+    "EventTime": 187.42510986328125,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어8"
+    ],
+    "EventID": 12,
+    "EventName": "ChampionKill",
+    "EventTime": 206.46255493164062,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어0"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 13,
+    "EventName": "ChampionKill",
+    "EventTime": 221.04669189453125,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 14,
+    "EventName": "ChampionKill",
+    "EventTime": 221.14329528808594,
+    "KillerName": "플레이어7",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 15,
+    "EventName": "ChampionKill",
+    "EventTime": 224.3121795654297,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어3"
+    ],
+    "EventID": 16,
+    "EventName": "ChampionKill",
+    "EventTime": 225.2899932861328,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어8"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 17,
+    "EventName": "ChampionKill",
+    "EventTime": 235.241455078125,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어7"
+   },
+   {
+    "EventID": 18,
+    "EventName": "Multikill",
+    "EventTime": 235.241455078125,
+    "KillStreak": 2,
+    "KillerName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어9"
+    ],
+    "EventID": 19,
+    "EventName": "ChampionKill",
+    "EventTime": 235.7461700439453,
+    "KillerName": "플레이어7",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "조이"
+    ],
+    "EventID": 20,
+    "EventName": "ChampionKill",
+    "EventTime": 248.0155792236328,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 21,
+    "EventName": "ChampionKill",
+    "EventTime": 283.47833251953125,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 22,
+    "EventName": "ChampionKill",
+    "EventTime": 284.8188781738281,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 23,
+    "EventName": "ChampionKill",
+    "EventTime": 287.2314758300781,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어5"
+    ],
+    "EventID": 24,
+    "EventName": "ChampionKill",
+    "EventTime": 291.0361633300781,
+    "KillerName": "플레이어6",
+    "VictimName": "조이"
+   },
+   {
+    "EventID": 25,
+    "EventName": "Multikill",
+    "EventTime": 291.0361633300781,
+    "KillStreak": 2,
+    "KillerName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 26,
+    "EventName": "ChampionKill",
+    "EventTime": 305.18878173828125,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2"
+    ],
+    "EventID": 27,
+    "EventName": "ChampionKill",
+    "EventTime": 308.2323303222656,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어7",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 28,
+    "EventName": "ChampionKill",
+    "EventTime": 338.4469299316406,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 29,
+    "EventName": "ChampionKill",
+    "EventTime": 360.3466796875,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "조이"
+    ],
+    "EventID": 30,
+    "EventName": "ChampionKill",
+    "EventTime": 382.6986999511719,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어9"
+   },
+   {
+    "Assisters": [],
+    "EventID": 31,
+    "EventName": "ChampionKill",
+    "EventTime": 389.9617004394531,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어0"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 32,
+    "EventName": "ChampionKill",
+    "EventTime": 392.3325500488281,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 33,
+    "EventName": "ChampionKill",
+    "EventTime": 392.403076171875,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "플레이어3"
+    ],
+    "EventID": 34,
+    "EventName": "ChampionKill",
+    "EventTime": 408.7876281738281,
+    "KillerName": "조이",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 35,
+    "EventName": "ChampionKill",
+    "EventTime": 411.39208984375,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "조이"
+    ],
+    "EventID": 36,
+    "EventName": "ChampionKill",
+    "EventTime": 416.6457824707031,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 37,
+    "EventName": "ChampionKill",
+    "EventTime": 422.1362609863281,
+    "KillerName": "플레이어9",
+    "VictimName": "플레이어1"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어6",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 38,
+    "EventName": "ChampionKill",
+    "EventTime": 428.3161926269531,
+    "KillerName": "플레이어9",
+    "VictimName": "조이"
+   },
+   {
+    "EventID": 39,
+    "EventName": "Multikill",
+    "EventTime": 428.3161926269531,
+    "KillStreak": 2,
+    "KillerName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "조이"
+    ],
+    "EventID": 40,
+    "EventName": "ChampionKill",
+    "EventTime": 429.3634033203125,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어8"
+    ],
+    "EventID": 41,
+    "EventName": "ChampionKill",
+    "EventTime": 430.96234130859375,
+    "KillerName": "플레이어9",
+    "VictimName": "플레이어3"
+   },
+   {
+    "EventID": 42,
+    "EventName": "Multikill",
+    "EventTime": 430.96234130859375,
+    "KillStreak": 3,
+    "KillerName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어8"
+    ],
+    "EventID": 43,
+    "EventName": "ChampionKill",
+    "EventTime": 459.0418701171875,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어2"
+    ],
+    "EventID": 44,
+    "EventName": "ChampionKill",
+    "EventTime": 459.2872619628906,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2"
+    ],
+    "EventID": 45,
+    "EventName": "ChampionKill",
+    "EventTime": 466.638916015625,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어8"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2",
+     "플레이어3"
+    ],
+    "EventID": 46,
+    "EventName": "ChampionKill",
+    "EventTime": 470.2770690917969,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어3"
+    ],
+    "EventID": 47,
+    "EventName": "ChampionKill",
+    "EventTime": 473.85369873046875,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어9"
+   },
+   {
+    "EventID": 48,
+    "EventName": "Multikill",
+    "EventTime": 473.85369873046875,
+    "KillStreak": 2,
+    "KillerName": "플레이어1"
+   },
+   {
+    "EventID": 49,
+    "EventName": "FirstBrick",
+    "EventTime": 485.8526611328125,
+    "KillerName": "Minion_T100L1S17N0105"
+   },
+   {
+    "Assisters": [],
+    "EventID": 50,
+    "EventName": "TurretKilled",
+    "EventTime": 485.8526611328125,
+    "KillerName": "플레이어0",
+    "TurretKilled": "Turret_TChaos_L1_P3_671196429_0"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어3"
+    ],
+    "EventID": 51,
+    "EventName": "ChampionKill",
+    "EventTime": 488.1717224121094,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어9"
+    ],
+    "EventID": 52,
+    "EventName": "ChampionKill",
+    "EventTime": 489.65264892578125,
+    "KillerName": "플레이어7",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 53,
+    "EventName": "ChampionKill",
+    "EventTime": 502.0381164550781,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 54,
+    "EventName": "ChampionKill",
+    "EventTime": 503.91168212890625,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어0"
+   },
+   {
+    "EventID": 55,
+    "EventName": "Multikill",
+    "EventTime": 503.91168212890625,
+    "KillStreak": 2,
+    "KillerName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2"
+    ],
+    "EventID": 56,
+    "EventName": "ChampionKill",
+    "EventTime": 516.8064575195312,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 57,
+    "EventName": "ChampionKill",
+    "EventTime": 557.4014282226562,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어5"
+    ],
+    "EventID": 58,
+    "EventName": "ChampionKill",
+    "EventTime": 559.847900390625,
+    "KillerName": "플레이어6",
+    "VictimName": "조이"
+   },
+   {
+    "EventID": 59,
+    "EventName": "Multikill",
+    "EventTime": 559.847900390625,
+    "KillStreak": 2,
+    "KillerName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 60,
+    "EventName": "ChampionKill",
+    "EventTime": 560.0099487304688,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 61,
+    "EventName": "ChampionKill",
+    "EventTime": 561.2032470703125,
+    "KillerName": "플레이어9",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 62,
+    "EventName": "ChampionKill",
+    "EventTime": 562.4825439453125,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 63,
+    "EventName": "ChampionKill",
+    "EventTime": 570.6102294921875,
+    "KillerName": "플레이어9",
+    "VictimName": "플레이어0"
+   },
+   {
+    "EventID": 64,
+    "EventName": "Multikill",
+    "EventTime": 570.6102294921875,
+    "KillStreak": 2,
+    "KillerName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 65,
+    "EventName": "ChampionKill",
+    "EventTime": 602.552490234375,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [],
+    "EventID": 66,
+    "EventName": "ChampionKill",
+    "EventTime": 603.3836059570312,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어8"
+   },
+   {
+    "Assisters": [
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 67,
+    "EventName": "ChampionKill",
+    "EventTime": 605.0186767578125,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "조이"
+    ],
+    "EventID": 68,
+    "EventName": "ChampionKill",
+    "EventTime": 628.929931640625,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1"
+    ],
+    "EventID": 69,
+    "EventName": "ChampionKill",
+    "EventTime": 642.9291381835938,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어9"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 70,
+    "EventName": "ChampionKill",
+    "EventTime": 650.07763671875,
+    "KillerName": "플레이어5",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 71,
+    "EventName": "ChampionKill",
+    "EventTime": 652.1463623046875,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어2",
+     "조이"
+    ],
+    "EventID": 72,
+    "EventName": "ChampionKill",
+    "EventTime": 706.2208862304688,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어1"
+    ],
+    "EventID": 73,
+    "EventName": "ChampionKill",
+    "EventTime": 709.8112182617188,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어8"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어6",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 74,
+    "EventName": "ChampionKill",
+    "EventTime": 714.2539672851562,
+    "KillerName": "플레이어9",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "플레이어2"
+    ],
+    "EventID": 75,
+    "EventName": "ChampionKill",
+    "EventTime": 714.6691284179688,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어9"
+   },
+   {
+    "EventID": 76,
+    "EventName": "Multikill",
+    "EventTime": 714.6691284179688,
+    "KillStreak": 2,
+    "KillerName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "플레이어2",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 77,
+    "EventName": "ChampionKill",
+    "EventTime": 720.2725219726562,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 78,
+    "EventName": "ChampionKill",
+    "EventTime": 722.7407836914062,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 79,
+    "EventName": "ChampionKill",
+    "EventTime": 724.9010620117188,
+    "KillerName": "플레이어0",
+    "VictimName": "플레이어6"
+   },
+   {
+    "EventID": 80,
+    "EventName": "Multikill",
+    "EventTime": 724.9010620117188,
+    "KillStreak": 2,
+    "KillerName": "플레이어0"
+   },
+   {
+    "Acer": "플레이어0",
+    "AcingTeam": "ORDER",
+    "EventID": 81,
+    "EventName": "Ace",
+    "EventTime": 724.9010620117188
+   },
+   {
+    "Assisters": [
+     "플레이어8"
+    ],
+    "EventID": 82,
+    "EventName": "ChampionKill",
+    "EventTime": 725.1162109375,
+    "KillerName": "플레이어6",
+    "VictimName": "조이"
+   },
+   {
+    "EventID": 83,
+    "EventName": "Multikill",
+    "EventTime": 725.1162109375,
+    "KillStreak": 2,
+    "KillerName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어1"
+    ],
+    "EventID": 84,
+    "EventName": "TurretKilled",
+    "EventTime": 737.6536865234375,
+    "KillerName": "플레이어0",
+    "TurretKilled": "Turret_TChaos_L1_P2_620863572_0"
+   },
+   {
+    "Assisters": [
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 85,
+    "EventName": "ChampionKill",
+    "EventTime": 776.141845703125,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1",
+     "조이"
+    ],
+    "EventID": 86,
+    "EventName": "ChampionKill",
+    "EventTime": 780.9188842773438,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 87,
+    "EventName": "ChampionKill",
+    "EventTime": 786.1749267578125,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어3",
+     "조이"
+    ],
+    "EventID": 88,
+    "EventName": "ChampionKill",
+    "EventTime": 804.1099243164062,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어7"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 89,
+    "EventName": "ChampionKill",
+    "EventTime": 806.0511474609375,
+    "KillerName": "플레이어9",
+    "VictimName": "조이"
+   },
+   {
+    "Assisters": [
+     "조이"
+    ],
+    "EventID": 90,
+    "EventName": "ChampionKill",
+    "EventTime": 808.5090942382812,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어9"
+   },
+   {
+    "EventID": 91,
+    "EventName": "Multikill",
+    "EventTime": 808.5090942382812,
+    "KillStreak": 2,
+    "KillerName": "플레이어1"
+   },
+   {
+    "Assisters": [
+     "플레이어6",
+     "플레이어8",
+     "플레이어9"
+    ],
+    "EventID": 92,
+    "EventName": "ChampionKill",
+    "EventTime": 814.8734741210938,
+    "KillerName": "플레이어7",
+    "VictimName": "플레이어0"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 93,
+    "EventName": "ChampionKill",
+    "EventTime": 831.5496215820312,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어8"
+    ],
+    "EventID": 94,
+    "EventName": "ChampionKill",
+    "EventTime": 834.0137939453125,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "EventID": 95,
+    "EventName": "Multikill",
+    "EventTime": 834.0137939453125,
+    "KillStreak": 2,
+    "KillerName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 96,
+    "EventName": "TurretKilled",
+    "EventTime": 854.0410766601562,
+    "KillerName": "플레이어6",
+    "TurretKilled": "Turret_TOrder_L1_P3_2250400266_0"
+   },
+   {
+    "Assisters": [
+     "조이"
+    ],
+    "EventID": 97,
+    "EventName": "ChampionKill",
+    "EventTime": 857.4669799804688,
+    "KillerName": "플레이어1",
+    "VictimName": "플레이어5"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 98,
+    "EventName": "ChampionKill",
+    "EventTime": 857.8671264648438,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어0"
+   },
+   {
+    "Assisters": [
+     "플레이어5",
+     "플레이어8"
+    ],
+    "EventID": 99,
+    "EventName": "ChampionKill",
+    "EventTime": 863.8220825195312,
+    "KillerName": "플레이어7",
+    "VictimName": "조이"
+   },
+   {
+    "Assisters": [
+     "플레이어0",
+     "플레이어1"
+    ],
+    "EventID": 100,
+    "EventName": "ChampionKill",
+    "EventTime": 873.2364501953125,
+    "KillerName": "플레이어3",
+    "VictimName": "플레이어8"
+   },
+   {
+    "Assisters": [
+     "플레이어7",
+     "플레이어8"
+    ],
+    "EventID": 101,
+    "EventName": "ChampionKill",
+    "EventTime": 875.0011596679688,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어3"
+   },
+   {
+    "Assisters": [
+     "플레이어1"
+    ],
+    "EventID": 102,
+    "EventName": "ChampionKill",
+    "EventTime": 884.830078125,
+    "KillerName": "플레이어2",
+    "VictimName": "플레이어6"
+   },
+   {
+    "Assisters": [
+     "플레이어8"
+    ],
+    "EventID": 103,
+    "EventName": "ChampionKill",
+    "EventTime": 888.7974243164062,
+    "KillerName": "플레이어6",
+    "VictimName": "플레이어2"
+   }
+  ]
+ },
+ "gameData": {
+  "gameMode": "KIWI",
+  "gameTime": 907.5196533203125,
+  "mapName": "Map12",
+  "mapNumber": 12,
+  "mapTerrain": "Default"
+ }
+}

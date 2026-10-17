@@ -30,3 +30,12 @@ test(`${name}: 모든 기록에서 능력치가 실제와 같다 (${why})`, () =
   assert.ok(rows.some((r) => r.parts > 0), "부품을 든 기록이 있다");
   for (const r of rows) for (const [k, [calc, real]] of Object.entries(r.stats)) assert.ok(Math.abs(calc - real) < 0.05, `${r.t}초 ${k}: 계산 ${calc} · 실제 ${real}`);
 });
+
+test("트리스타나 판: 무한 반복 가속은 60 + 처치 관여당 3, 치명타 100% 초과분은 공격력으로 (윤 탈 치명타 쌓는 중인 605초 치명타만 빼고 실제와 같다)", () => {
+  const { rows } = replay("tristana_20261017");
+  assert.deepEqual(rows.map((r) => r.stats.HASTE[1]), [84, 117, 147, 162]);
+  for (const r of rows) for (const [k, [calc, real]] of Object.entries(r.stats)) {
+    if (r.t === 605 && k === "CRIT") continue;
+    assert.ok(Math.abs(calc - real) < 0.05, `${r.t}초 ${k}: 계산 ${calc} · 실제 ${real}`);
+  }
+});
