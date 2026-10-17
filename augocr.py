@@ -80,6 +80,11 @@ class Matcher:
         if inside:
             k = max(inside, key=len)
             return self.names[k], 0.9
+        # 잘린 이름이 여러 증강 이름의 앞부분이면 정하지 않는다 (2026-10-17 사미라 판: 설명 창이 가려 '지옥불'만 읽혀
+        # 지옥불 영혼으로 짐작 → 실제는 지옥불 난사 발동. 그 짐작 상태에서 카드를 눌러 고른 증강이 틀렸다)
+        heads = {n for k, n in self.names.items() if len(k) > len(t) and k.startswith(t)}
+        if len(heads) > 1:
+            return None, 0.0
         # 짧은 이름(3~5글자)은 한 글자만 틀려도 비율이 확 떨어진다 → 한 글자 차이까지 같은 이름 ('양파상' → 앙파상, 2026-10-14 실제)
         if 3 <= len(t) <= 5:
             near = [k for k in self.names if len(k) == len(t) and sum(a != b for a, b in zip(k, t)) == 1]
@@ -285,6 +290,9 @@ class Tracker:
             self._miss = 0
             if pos and pos != self.state.get("pos"):
                 self.state = {**self.state, "pos": pos}
+            if (self._last is not None and offers3 != self._last and None in offers3
+                    and all(n is None or n == old for n, old in zip(offers3, self._last))):
+                return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
             if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
                 self._last, self._click = offers3, None
                 self.state = {**self.state, "offers": offers3, "seq": self.state["seq"] + 1}

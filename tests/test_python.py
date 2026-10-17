@@ -641,6 +641,24 @@ class AugOcr(unittest.TestCase):
         self.assertTrue(m.partial("포로"))
         self.assertFalse(m.partial("이전 공격과 다른 기본 공격 또는 스킬로 적 챔피언에게 피해를 입히면"))
 
+    def test_cut_name_shared_by_two_augments_is_not_guessed(self):
+        # 2026-10-17 사미라 판: 설명 창이 가려 '지옥불'만 읽혔는데 지옥불 영혼으로 짐작 → 그 상태에서 누른 카드가 틀린 증강으로
+        m = self.o.Matcher(["지옥불 영혼", "지옥불 난사 발동", "미친 과학자", "우르프의 챔피언"])
+        self.assertEqual(m.match("지옥불")[0], None)
+        self.assertEqual(m.match("지옥불 난사 발동")[0], "지옥불 난사 발동")
+        self.assertEqual(m.match("미친 과학")[0], "미친 과학자", "앞부분이 한 증강뿐이면 그대로")
+        t = self.o.Tracker()
+        full = ["지옥불 난사 발동", "미친 과학자", "우르프의 챔피언"]
+        t.feed(full)
+        seq = t.state["seq"]
+        t.feed([None, None, "우르프의 챔피언"])  # 설명 창이 가린 읽기
+        self.assertEqual((t.state["seq"], t.state["offers"]), (seq, full), "가려진 읽기는 같은 선택지")
+        t.click(0)
+        t.feed([None, None, "우르프의 챔피언"])
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "지옥불 난사 발동")
+
     def test_tracker_first_card_click_is_the_pick(self):
         # 2026-10-17 카이사 판: 광휘의 검 클릭 → 0.6초 뒤 사라지는 옆 카드(빵과 치즈) 클릭 → 빵과 치즈로 알렸다
         t = self.o.Tracker()
