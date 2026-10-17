@@ -641,6 +641,17 @@ class AugOcr(unittest.TestCase):
         self.assertTrue(m.partial("포로"))
         self.assertFalse(m.partial("이전 공격과 다른 기본 공격 또는 스킬로 적 챔피언에게 피해를 입히면"))
 
+    def test_tracker_first_card_click_is_the_pick(self):
+        # 2026-10-17 카이사 판: 광휘의 검 클릭 → 0.6초 뒤 사라지는 옆 카드(빵과 치즈) 클릭 → 빵과 치즈로 알렸다
+        t = self.o.Tracker()
+        t.feed(["광휘의 검 업그레이드", "빵과 치즈", "마도사의 주스 상자"])
+        t.click(0)
+        t.click(None)
+        t.click(1)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "광휘의 검 업그레이드")
+
     def test_tracker_reroll_resets_click_and_unknown(self):
         t = self.o.Tracker()
         t.feed(["눈 폭발", "강타자", "정신 변환"])

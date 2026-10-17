@@ -2,7 +2,7 @@
 
 - 라이엇 게임 중 데이터(Live Client Data)에는 증강이 없다 (2026-10-14 실제 기록 307초, 증강 고른 뒤에도 없음).
 - 화면을 읽기만 한다 (게임 메모리·입력에 손대지 않음). 블리츠 같은 프로그램과 같은 방식.
-- 고른 증강: 선택 화면이 떠 있는 동안 마지막으로 클릭한 카드 (마우스 위치·왼쪽 버튼 상태만 읽는다, 게임에 입력을 보내지 않음).
+- 고른 증강: 선택 화면이 떠 있는 동안 처음 클릭한 카드 (마우스 위치·왼쪽 버튼 상태만 읽는다, 게임에 입력을 보내지 않음).
   카드 테두리 색은 등급(실버·골드·프리즘)이라 고른 표시로 쓸 수 없다 (2026-10-14 실제 화면: 세 장 모두 금색인 판).
   클릭을 못 봤으면 None → 화면(app.js)이 '이걸로 선택'을 눌러 달라고 안내한다.
 
@@ -244,7 +244,7 @@ class Tracker:
     def __init__(self):
         self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0}
         self._miss = 0
-        self._click = None  # 이번 선택 화면에서 마지막으로 클릭한 카드 칸
+        self._click = None  # 이번 선택 화면에서 처음 클릭한 카드 칸
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
 
@@ -253,7 +253,9 @@ class Tracker:
         return self._last is not None
 
     def click(self, slot):
-        if self._last is not None and slot is not None:
+        # 카드는 누르는 순간 골라진다 → 처음 누른 카드. 그 뒤 클릭은 사라지는 카드 위를 누른 것
+        # (2026-10-17 카이사: 광휘의 검을 누르고 0.6초 뒤 옆 카드를 또 눌러 '빵과 치즈'로 잘못 알림. 예전 기록 3판도 첫 클릭이 맞았다)
+        if self._last is not None and slot is not None and self._click is None:
             self._click = slot
 
     def feed(self, offers3, pos=None, partial=False):
