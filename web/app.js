@@ -51,7 +51,14 @@ function enemyInfo() {
   const list = state.enemies || [];
   if (!list.length) return null;
   const share = { magic: 1, physical: 0, mixed: 0.5 };
-  const magic = list.reduce((a, c) => a + (share[c.damageType] ?? 0.5), 0) / list.length;
+  // 완성 아이템을 2개 이상 산 적은 산 아이템(주문력 vs 공격력)으로 (AP 원딜·AD 혼합 챔피언이 챔피언 유형과 다르게 갈 때)
+  const byItems = (c) => {
+    const its = enemyItems(c).filter((i) => i.kind === "legendary");
+    const ap = its.filter((i) => ((i.tags || {}).AP || 0) >= 0.5).length, ad = its.filter((i) => ((i.tags || {}).AD || 0) >= 0.5).length;
+    return its.length >= 2 && ap + ad ? ap / (ap + ad) : null;
+  };
+  const magic = list.reduce((a, c) => a + (byItems(c) ?? share[c.damageType] ?? 0.5), 0) / list.length;
+  const fromItems = list.some((c) => byItems(c) != null);
   // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
@@ -60,7 +67,7 @@ function enemyInfo() {
   const healAug = (c) => enemyAugs(c).some((a) => (augTags(a).HEALSHIELD || 0) >= 0.5);
   const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c));
   const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
-  return { list, magic, healers, tanks };
+  return { list, magic, healers, tanks, fromItems };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -202,7 +209,7 @@ function enemyAdvice() {
   const out = [];
   const pct = Math.round(e.magic * 100);
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)으로 짐작한 비율이라 '추정'이라고 쓴다
-  out.push(`적 구성 추정: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
+  out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (pct >= 65 ? " → 마법 저항 우선" : pct <= 35 ? " → 방어력 우선" : ""));
   const items = state.data.items.filter((i) => i.kind === "legendary");
   const mineType = state.champ.damageType === "magic" ? "magic" : "physical";
   // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것

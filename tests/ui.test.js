@@ -661,3 +661,18 @@ test("게임 중 능력치 표에 게임 실제 값을 옆에 보여 주고, 5% 
   p.w.applyLive({ enabled: true, inGame: false });
   assert.deepEqual(p.errors, []);
 });
+
+test("적 구성 비율: 완성 아이템 2개 이상 산 적은 산 아이템으로 (AP 로 간 원딜)", async () => {
+  const p = await loadPage({ simple: true });
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const foes = ["Ezreal", "Kaisa", "Corki", "Varus", "Garen"];
+  const live = (items) => p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items })) });
+  live([]);
+  const before = p.w.enemyInfo().magic;
+  assert.match(p.text("#next-buy"), /적 구성 추정: 마법/);
+  live([id("리치베인"), id("루덴의 메아리")]);
+  assert.ok(p.w.enemyInfo().magic > before + 0.3, `${before} → ${p.w.enemyInfo().magic}`);
+  assert.match(p.text("#next-buy"), /적 구성 \(산 아이템 반영\): 마법 100%/);
+  assert.deepEqual(p.errors, []);
+});
