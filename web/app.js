@@ -29,6 +29,7 @@ const partItems = () => (state.inventory || []).map((id) => {
 function statCheck() {
   const s = state.liveStats;
   if (!liveOn || !s || !state.champ || !state.data) return null;
+  if (!Number(s.moveSpeed)) return null;  // 불러오는 중 (게임 능력치가 전부 0)
   // 게임 레벨을 아직 반영하기 전(쿨타임 다시 그리기가 먼저 보낸다)이면 비교하지 않는다 (2026-10-17 카이사 판: 첫 기록이 18레벨 vs 실제 3레벨)
   if (state.liveLevel != null && state.liveLevel !== state.level) return null;
   const c = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
