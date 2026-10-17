@@ -1162,9 +1162,15 @@ class HudIcons(unittest.TestCase):
         self.assertTrue(r.shop, "바로 읽어서 상점을 알아본다")
         self.assertFalse(r._shop_now)
         r._shop_click_at = time.time()
-        t0 = time.time()
         r.wait_shop_keys(Mouse(clicks=1), time.time() + 0.3)
         self.assertFalse(r._shop_now, "클릭은 SHOP_CLICK_GAP 에 한 번만")
+        r._shop_click_at = 0.0
+        r.shop = None
+        r.wait_shop_keys(Mouse(clicks=1), time.time() + 0.3)
+        self.assertFalse(r._shop_now, "상점이 닫혀 있을 때 클릭으로는 안 읽는다 (사미라 판: 싸울 때 클릭마다 215번)")
+        r.shop = {"left": 0.4}
+        r.wait_shop_keys(Mouse(clicks=1), time.time() + 0.3)
+        self.assertTrue(r._shop_now, "열려 있을 때 클릭(닫기)은 바로 읽는다")
 
     def test_auto_protect_when_slow(self):
         # 느려지면 진단용 그림부터 줄이고(자동 보호), 다시 빨라지면 끈다. 증강 선택 읽기는 건드리지 않는다

@@ -45,7 +45,7 @@ CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 �
 # 우르곳 판: 6:40 에 상점에서 두 번 샀는데 2초 간격 읽기 사이에 열고 닫아서 한 번도 못 알아봄). 키 상태만 읽고 게임에 입력은 안 보낸다
 SHOP_KEYS = (0x50, 0x1B)  # P(상점 기본 키) · ESC(닫기)
 SHOP_KEY_DELAY = 0.25  # 초. 키를 누른 뒤 상점 창이 그려질 때까지
-SHOP_CLICK_GAP = 2.0  # 초. 왼쪽 클릭(상점 버튼·닫기 ✕)으로 바로 읽기는 이 간격에 한 번만 (싸울 때 클릭마다 읽지 않게)
+SHOP_CLICK_GAP = 2.0  # 초. 상점이 열려 있을 때 왼쪽 클릭(닫기 ✕)으로 바로 읽기는 이 간격에 한 번만
 
 
 def norm(s):
@@ -789,7 +789,9 @@ class Reader(threading.Thread):
         while time.time() < end:
             if active and mouse is not None:
                 key = any(mouse.pressed(vk) for vk in SHOP_KEYS)
-                click = mouse.clicked() is not None and time.time() - getattr(self, "_shop_click_at", 0.0) >= SHOP_CLICK_GAP
+                # 클릭은 상점이 열려 있을 때만 (✕·바깥 클릭으로 닫기). 닫혀 있을 때 클릭마다 읽었더니 한 판 215번 (사미라 판, 싸울 때 클릭)
+                click = (mouse.clicked() is not None and bool(self.shop)
+                         and time.time() - getattr(self, "_shop_click_at", 0.0) >= SHOP_CLICK_GAP)
                 if key or click:
                     if click:
                         self._shop_click_at = time.time()
