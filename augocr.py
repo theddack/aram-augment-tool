@@ -47,6 +47,8 @@ IDLE_INTERVAL = 2.0  # 초 (선택 화면이 아닐 때. 뜨면 2초 안에 알�
 CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
 # 상점 여닫기 키·클릭을 보면 2초를 기다리지 않고 곧바로 상점 창을 읽는다 (2026-10-17 지적: 상점을 열고 닫을 때 상자가 뜨다 말다.
 # 우르곳 판: 6:40 에 상점에서 두 번 샀는데 2초 간격 읽기 사이에 열고 닫아서 한 번도 못 알아봄). 키 상태만 읽고 게임에 입력은 안 보낸다
+# 이름 줄에 잡힌 상점 글자 (제작할 아이템 선택·가격·능력치 줄). 증강 설명에도 '아이템'·'공격력이 20%'가 있어 좁게 잡는다
+SHOP_TEXT = re.compile(r"작할 아이템|아이템 선|^\d{3,5}$|^(공격력|공격 속도|치명타|확률|활률) ?\d")
 SHOP_KEYS = (0x50, 0x1B)  # P(상점 기본 키) · ESC(닫기)
 SHOP_KEY_DELAY = 0.25  # 초. 키를 누른 뒤 상점 창이 그려질 때까지
 SHOP_CLICK_GAP = 2.0  # 초. 상점이 열려 있을 때 왼쪽 클릭(닫기 ✕)으로 바로 읽기는 이 간격에 한 번만
@@ -856,7 +858,10 @@ class Reader(threading.Thread):
                 if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh and cx >= gw * OWN_BOX_RIGHT]
         if not offers:
             # 이름이 하나라도 (일부라도) 맞으면 선택 화면이 아직 떠 있는 것 → 읽은 글자를 기록에 남긴다
-            partial = any(matcher.match(t)[0] or matcher.partial(t) for t in segs)
+            # 상점 글자(징수의 총·무한의 대검 같은 아이템 이름이 업그레이드 증강 이름과 겹친다)는 빼고 본다
+            # (2026-10-17 트리스타나 판: '제작할 아이템 선택 | 무한의 대검 | 징수의 | 2650' 이 못 맞춘 증강 글자로 남았다)
+            shopish = self.shop or any(SHOP_TEXT.search(t) for t in segs)
+            partial = not shopish and any(matcher.match(t)[0] or matcher.partial(t) for t in segs)
             if partial:
                 self.near = " | ".join(segs)[:160]
                 self._rec("near", {"read": segs}, dedupe=True)
